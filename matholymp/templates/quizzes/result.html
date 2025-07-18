@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Resultado</h1>
+<p>Obtuviste {{ score }} respuestas correctas de {{ quiz.questions.count }}.</p>
+<a href="{% url 'quizzes:home' %}">Volver</a>
+{% endblock %}
