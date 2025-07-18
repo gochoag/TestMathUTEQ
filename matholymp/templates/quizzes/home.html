@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Cuestionarios</h1>
+<ul class="list-group">
+  {% for quiz in quizzes %}
+  <li class="list-group-item">
+    <a href="{% url 'quizzes:take_quiz' quiz.pk %}">{{ quiz.title }}</a>
+  </li>
+  {% empty %}
+  <li class="list-group-item">No hay cuestionarios</li>
+  {% endfor %}
+</ul>
+{% endblock %}

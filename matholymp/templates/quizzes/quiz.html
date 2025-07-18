@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>{{ quiz.title }}</h1>
+<form method="post">
+  {% csrf_token %}
+  {% for q in quiz.questions.all %}
+  <div class="mb-3">
+    <p>{{ forloop.counter }}. {{ q.text|safe }}</p>
+    {% for opt in q.options.all %}
+    <div class="form-check">
+      <input class="form-check-input" type="radio" name="{{ q.id }}" value="{{ opt.id }}" id="opt{{ opt.id }}">
+      <label class="form-check-label" for="opt{{ opt.id }}">{{ opt.text }}</label>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Enviar</button>
+</form>
+{% endblock %}
