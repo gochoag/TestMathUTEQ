@@ -1,14 +1,39 @@
+<!-- quizzes/home.html -->
 {% extends 'base.html' %}
+{% block sidebar %}
+    <div class="sidebar-header p-2 border-bottom">
+        <h6 class="mb-0 text-primary fw-bold">
+            <i class="bi bi-gear-fill me-1"></i>Panel de Control
+        </h6>
+    </div>
+    
+    <div class="sidebar-content">
+        {% if user.is_superuser %}
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'quizzes:manage_admins' %}">
+                <i class="bi bi-people-fill"></i>
+                <span>Gestionar Admins</span>
+            </a>
+        </li>
+        {% endif %}
+        {% if user.is_superuser or user.adminprofile %}
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'quizzes:manage_participants' %}">
+                <i class="bi bi-person-badge"></i>
+                <span>Gestionar Participantes</span>
+            </a>
+        </li>
+        {% endif %}
+        <li class="nav-item">
+            <a class="nav-link active" href="{% url 'quizzes:dashboard' %}">
+                <i class="bi bi-clipboard-check"></i>
+                <span>Evaluaciones</span>
+            </a>
+        </li>
+    </div>
+{% endblock %}
 
 {% block content %}
-<h1>Cuestionarios</h1>
-<ul class="list-group">
-  {% for quiz in quizzes %}
-  <li class="list-group-item">
-    <a href="{% url 'quizzes:take_quiz' quiz.pk %}">{{ quiz.title }}</a>
-  </li>
-  {% empty %}
-  <li class="list-group-item">No hay cuestionarios</li>
-  {% endfor %}
-</ul>
+    <h1>Bienvenido a la Plataforma de Olimpiadas de Matemáticas</h1>
+    <p>Esta es la página principal. Puedes acceder a tus quices, gestionar participantes y administradores desde aquí.</p>
 {% endblock %}

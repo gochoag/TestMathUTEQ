@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block sidebar %}
+    <div class="sidebar-header p-2 border-bottom">
+        <h6 class="mb-0 text-primary fw-bold">
+            <i class="bi bi-gear-fill me-1"></i>Panel de Control
+        </h6>
+    </div>
+    
+    <div class="sidebar-content">
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'quizzes:manage_participants' %}">
+                <i class="bi bi-person-badge"></i>
+                <span>Gestionar Participantes</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link active" href="{% url 'quizzes:manage_admins' %}">
+                <i class="bi bi-people-fill"></i>
+                <span>Gestionar Admins</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'quizzes:dashboard' %}">
+                <i class="bi bi-clipboard-check"></i>
+                <span>Ver Evaluaciones</span>
+            </a>
+        </li>
+    </div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mt-4">Administradores</h2>
+    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#addAdminModal">Agregar Admin</button>
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>Usuario</th>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Contraseña</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for admin in admins %}
+            <tr>
+                <td>{{ admin.user.username }}</td>
+                <td>{{ admin.user.get_full_name }}</td>
+                <td>{{ admin.user.email }}</td>
+                <td>{{ admin.password }}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editAdminModal{{ admin.id }}">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="confirmDeleteAdmin('{{ admin.id }}', '{{ admin.user.get_full_name }}')">Eliminar</button>
+                </td>
+            </tr>
+            <!-- Modal Editar -->
+            <div class="modal fade" id="editAdminModal{{ admin.id }}" tabindex="-1" aria-labelledby="editAdminLabel{{ admin.id }}" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="editAdminLabel{{ admin.id }}">Editar Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <form method="post" action="">
+                        {% csrf_token %}
+                        <input type="hidden" name="edit_id" value="{{ admin.id }}">
+                        <div class="mb-2"><label>Usuario</label><input type="text" name="username" class="form-control" value="{{ admin.user.username }}" required></div>
+                        <div class="mb-2"><label>Nombres</label><input type="text" name="first_name" class="form-control" value="{{ admin.user.first_name }}" required></div>
+                        <div class="mb-2"><label>Apellidos</label><input type="text" name="last_name" class="form-control" value="{{ admin.user.last_name }}" required></div>
+                        <div class="mb-2"><label>Email</label><input type="email" name="email" class="form-control" value="{{ admin.user.email }}" required></div>
+                        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Modal Agregar -->
+    <div class="modal fade" id="addAdminModal" tabindex="-1" aria-labelledby="addAdminLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="addAdminLabel">Agregar Admin</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form method="post" action="">
+                {% csrf_token %}
+                <input type="hidden" name="add_admin" value="1">
+                <div class="mb-2"><label>Usuario</label><input type="text" name="username" class="form-control" required></div>
+                <div class="mb-2"><label>Nombres</label><input type="text" name="first_name" class="form-control" required></div>
+                <div class="mb-2"><label>Apellidos</label><input type="text" name="last_name" class="form-control" required></div>
+                <div class="mb-2"><label>Email</label><input type="email" name="email" class="form-control" required></div>
+                <button type="submit" class="btn btn-success">Agregar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+</div>
+
+<!-- SweetAlert2 para eliminar -->
+{% endblock %}
