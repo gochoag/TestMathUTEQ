@@ -1,54 +1,6 @@
 {% extends 'base.html' %}
 {% block sidebar %}
-    <div class="sidebar-header p-2 border-bottom">
-        <h6 class="mb-0 text-primary fw-bold">
-            <i class="bi bi-gear-fill me-1"></i>Menu Principal
-        </h6>
-    </div>
-    
-    <div class="sidebar-content">
-        {% if role == 'superadmin' %}
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'quizzes:manage_admins' %}">
-                    <i class="bi bi-people-fill"></i>
-                    <span>Gestionar Admins</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'quizzes:manage_participants' %}">
-                    <i class="bi bi-person-badge"></i>
-                    <span>Gestionar Participantes</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'quizzes:dashboard' %}">
-                    <i class="bi bi-clipboard-check"></i>
-                    <span>Ver Evaluaciones</span>
-                </a>
-            </li>
-        {% elif role == 'admin' %}
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'quizzes:manage_participants' %}">
-                    <i class="bi bi-person-badge"></i>
-                    <span>Gestionar Participantes</span>
-                </a>
-            </li>
-        {% elif role == 'participant' %}
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'quizzes:dashboard' %}">
-                    <i class="bi bi-clipboard-check"></i>
-                    <span>Evaluaciones</span>
-                </a>
-            </li>
-        {% else %}
-            <li class="nav-item">
-                <span class="nav-link text-muted">
-                    <i class="bi bi-exclamation-triangle"></i>
-                    <span>Sin opciones disponibles</span>
-                </span>
-            </li>
-        {% endif %}
-    </div>
+    {% include 'quizzes/sidebar.html' %}
 {% endblock %}
 
 {% block content %}

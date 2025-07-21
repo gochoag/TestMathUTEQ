@@ -10,67 +10,23 @@
     <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
   </head>
   <body class="d-flex flex-column min-vh-100">
-    <!-- Header -->
-    <nav class="navbar navbar-expand-lg custom-header">
-      <div class="container-fluid">
-        <!-- Nombre de la marca, se mantiene en la izquierda -->
-        <a class="navbar-brand text-white" href="#">
-          <img src="{% static 'img/logo-fci.png' %}" alt="Logo FCI" class="brand-logo">
-          <span class="brand-separator">|</span>
-          <span class="brand-subtitle">Sistema de Olimpiadas de Matemáticas</span>
-        </a>
-      </div>
-    </nav>
-
-    <!-- Contenido principal que se expande -->
-    <div class="container-fluid flex-grow-1 p-0">
-      <div class="row h-100">
-        <!-- Menú lateral (esto solo debe aparecer si el usuario está autenticado) -->
-        {% if user.is_authenticated %}
-        <button class="btn sidebar-toggle d-md-none" onclick="toggleSidebar()">
-            <i class="bi bi-list"></i>
-        </button>
-        <nav class="col-md-2 bg-light sidebar">
-          <div class="position-sticky">
-            <ul class="nav flex-column">
-              {% block sidebar %}{% endblock %}
-            </ul>
-          </div>
-        </nav>
-        <!-- Contenido principal con sidebar -->
-        <main class="col-md-10 ms-sm-auto col-lg-10 px-md-4 py-4">
-        {% else %}
-        <!-- Contenido principal sin sidebar -->
-        <main class="col-12 p-0 overflow-hidden h-100">
-        {% endif %}
-          {% block content %}{% endblock %}
-        </main>
-      </div>
-    </div>
-
-
-
+    {% if user.is_authenticated  %}
+      <nav class="navbar navbar-expand-lg custom-header">
+        <div class="container-fluid position-absolute d-flex align-items-center justify-content-start">
+          <button class="btn btn-sidebar-toggle d-inline-flex align-items-center justify-content-start me-2" id="sidebarToggleBtnHeader" aria-label="Expandir menú" type="button" style="font-size: 2rem;">
+            <i class="bi bi-arrow-right-square-fill"></i>
+          </button>
+          <span class="header-separator mx-1">|</span>
+          <span class="header-title text-white fw-semibold" style="font-size: 1.05rem; letter-spacing: 0.5px;">Olimpiadas de Matemáticas</span>
+        </div>
+      </nav>
+      {% include 'quizzes/sidebar.html' %}
+    {% endif %}
+    <main id="main-content" class="flex-grow-1">
+      {% block content %}{% endblock %}
+    </main>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="{% static 'js/actions.js' %}"></script>
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            sidebar.classList.toggle('show');
-        }
-        
-        // Cerrar sidebar al hacer clic fuera en móviles
-        document.addEventListener('click', function(e) {
-            const sidebar = document.querySelector('.sidebar');
-            const sidebarToggle = document.querySelector('.sidebar-toggle');
-            
-            if (window.innerWidth <= 768 && 
-                !sidebar.contains(e.target) && 
-                !sidebarToggle.contains(e.target) && 
-                sidebar.classList.contains('show')) {
-                sidebar.classList.remove('show');
-            }
-        });
-    </script>
   </body>
 </html>

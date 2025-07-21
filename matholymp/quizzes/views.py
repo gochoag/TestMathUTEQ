@@ -5,10 +5,7 @@ from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
 
-def home(request):
-    if request.user.is_authenticated:
-        return redirect('quizzes:dashboard')  
-    return render(request, 'quizzes/home.html')
+# Vista de login
 
 def custom_login(request):
     if request.method == 'POST':
@@ -24,11 +21,9 @@ def custom_login(request):
     return render(request, 'quizzes/login.html', {'form': form})
 
 
-
 def custom_logout(request):
     logout(request)  # Cierra la sesión
-    return redirect('quizzes:home')  # Redirige a la página principal después de cerrar sesión
-
+    return redirect('quizzes:login')  # Redirige al dashboard después de cerrar sesión
 
 
 @login_required
