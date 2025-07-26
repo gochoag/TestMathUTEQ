@@ -1,3 +1,5 @@
+from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Quiz
@@ -8,22 +10,36 @@ from django.contrib.auth import authenticate, login,logout
 # Vista de login
 
 def custom_login(request):
+    if request.GET.get('session_expired'):
+        messages.warning(request, 'Tu sesión expiró por inactividad')
+        return redirect(settings.LOGIN_URL)
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             # Autenticar al usuario
             user = form.get_user()
             login(request, user)
+            request.session['last_activity'] = timezone.now().timestamp()
             return redirect('quizzes:dashboard')  # Redirige a la página de dashboard después del login
     else:
         form = AuthenticationForm()
-    
-    return render(request, 'quizzes/login.html', {'form': form})
+
+    return render(request, 'quizzes/login.html', {
+        'form': form,
+        'messages': messages.get_messages(request)  # Pasa los mensajes existentes
+    })
+
 
 
 def custom_logout(request):
     logout(request)  # Cierra la sesión
     return redirect('quizzes:login')  # Redirige al dashboard después de cerrar sesión
+
+
+def session_check(request):
+    return JsonResponse({
+        'is_authenticated': request.user.is_authenticated
+    }, status=200 if request.user.is_authenticated else 403)
 
 
 @login_required

@@ -1,0 +1,22 @@
+{% load static %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+  {% for message in messages %}
+  <div class="toast fade" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="{% if message.tags == 'warning' %}7000{% else %}5000{% endif %}"">
+    <div class="toast-header bg-{{ message.tags|default:'info' }} text-white">
+      <i class="bi bi-bell-fill me-2" style="font-size: 1.25rem;"></i>
+      <strong class="me-auto">
+        {% if message.tags == 'success' %}Éxito{% endif %}
+        {% if message.tags == 'warning' %}Advertencia{% endif %}
+        {% if message.tags == 'error' %}Error{% endif %}
+        {% if not message.tags or message.tags == 'info' %}Notificación{% endif %}
+      </strong>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+    <div class="toast-body bg-light rounded-bottom">
+      {{ message }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script src="{% static 'js/toasts.js' %}"></script>
