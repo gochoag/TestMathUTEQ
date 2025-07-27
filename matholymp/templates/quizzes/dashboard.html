@@ -4,16 +4,101 @@
 {% endblock %}
 
 {% block content %}
-    <div class="container">
-        <h2 class="mt-4">Bienvenido a la Plataforma de Olimpiadas de Matemáticas</h2>
-        {% if role == 'superadmin' %}
-            <p>Acceso completo: gestión de admins, participantes y evaluaciones.</p>
-        {% elif role == 'admin' %}
-            <p>Solo puedes gestionar participantes.</p>
-        {% elif role == 'participant' %}
-            <p>Consulta y realiza tus evaluaciones disponibles.</p>
-        {% else %}
-            <p>No tienes permisos asignados.</p>
-        {% endif %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <i class="fas fa-home"></i>
+                        Bienvenido a la Plataforma de Olimpiadas de Matemáticas
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>Hola, {{ user.get_full_name|default:user.username }}!</h4>
+                            
+                            {% if role == 'superadmin' %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-crown"></i>
+                                    <strong>Super Administrador:</strong> Tienes acceso completo a todas las funcionalidades del sistema.
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item"><i class="fas fa-shield-check"></i> Gestionar Permisos de Admins</li>
+                                    <li class="list-group-item"><i class="fas fa-users-cog"></i> Gestionar Administradores</li>
+                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                </ul>
+                            {% elif role == 'admin' and has_full_access %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-user-shield"></i>
+                                    <strong>Administrador con Acceso Total:</strong> Puedes gestionar administradores, participantes y evaluaciones.
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item"><i class="fas fa-users-cog"></i> Gestionar Administradores</li>
+                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                </ul>
+                            {% elif role == 'admin' %}
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-user"></i>
+                                    <strong>Administrador:</strong> Puedes gestionar participantes y evaluaciones.
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                </ul>
+                            {% elif role == 'participant' %}
+                                <div class="alert alert-primary">
+                                    <i class="fas fa-user-graduate"></i>
+                                    <strong>Participante:</strong> Consulta y realiza tus evaluaciones disponibles.
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Ver Evaluaciones Disponibles</li>
+                                    <li class="list-group-item"><i class="fas fa-chart-bar"></i> Ver Resultados</li>
+                                </ul>
+                            {% else %}
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <strong>Sin Permisos:</strong> No tienes permisos asignados. Contacta al administrador.
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">
+                                        <i class="fas fa-info-circle"></i>
+                                        Información de Usuario
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>Usuario:</strong> {{ user.username }}</p>
+                                    <p><strong>Email:</strong> {{ user.email }}</p>
+                                    <p><strong>Rol:</strong> 
+                                        {% if role == 'superadmin' %}
+                                            <span class="badge bg-danger">Super Admin</span>
+                                        {% elif role == 'admin' %}
+                                            {% if has_full_access %}
+                                                <span class="badge bg-success">Admin Total</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">Admin Limitado</span>
+                                            {% endif %}
+                                        {% elif role == 'participant' %}
+                                            <span class="badge bg-primary">Participante</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Sin Rol</span>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+</div>
 {% endblock %}

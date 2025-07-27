@@ -49,6 +49,10 @@
     <script src="{% static 'js/actions.js' %}"></script>
     
     {% if user.is_authenticated %}
+    
+
+
+
     <script>
       // Configura el timeout igual que Django (en milisegundos)
       const SESSION_TIMEOUT = {{ request.session.get_expiry_age }} * 1000;

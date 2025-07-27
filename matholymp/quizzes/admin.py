@@ -1,17 +1,26 @@
 from django.contrib import admin
-from .models import ParticipantGroup, Participant, Quiz, Question, Option
+from .models import GrupoParticipantes, Participantes, Evaluacion, Pregunta, Opcion, AdminProfile
 
 
-class OptionInline(admin.TabularInline):
-    model = Option
+class OpcionInline(admin.TabularInline):
+    model = Opcion
     extra = 1
 
 
-class QuestionAdmin(admin.ModelAdmin):
-    inlines = [OptionInline]
+class PreguntaAdmin(admin.ModelAdmin):
+    inlines = [OpcionInline]
 
 
-admin.site.register(ParticipantGroup)
-admin.site.register(Participant)
-admin.site.register(Quiz)
-admin.site.register(Question, QuestionAdmin)
+@admin.register(AdminProfile)
+class AdminProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'acceso_total', 'created_by')
+    list_filter = ('acceso_total',)
+    search_fields = ('user__username', 'user__first_name', 'user__last_name')
+    list_editable = ('acceso_total',)
+
+
+admin.site.register(GrupoParticipantes)
+admin.site.register(Participantes)
+admin.site.register(Evaluacion)
+admin.site.register(Pregunta, PreguntaAdmin)
+admin.site.register(Opcion)

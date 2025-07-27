@@ -1,11 +1,13 @@
+from django.contrib.auth.decorators import login_required
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from django.views.generic import RedirectView
 
 app_name = 'quizzes'
 
 urlpatterns = [
-    path('', views.custom_login, name='home'),
+    path('', login_required(RedirectView.as_view(pattern_name='quizzes:dashboard', permanent=False)), name='home'),
     path('login/', views.custom_login, name='login'),
     path('logout/', views.custom_logout, name='logout'),
     path('session-check/', views.session_check, name='session_check'),
@@ -13,4 +15,7 @@ urlpatterns = [
     path('quiz/<int:pk>/', views.take_quiz, name='take_quiz'),
     path('gestionar-participantes/', views.manage_participants, name='manage_participants'),
     path('gestionar-admins/', views.manage_admins, name='manage_admins'),
+    path('gestionar-permisos/', views.manage_admin_permissions, name='manage_admin_permissions'),
+    path('gestionar-representantes/', views.manage_representantes, name='manage_representantes'),
+    path('gestionar-grupos/', views.manage_grupos, name='manage_grupos'),
 ]

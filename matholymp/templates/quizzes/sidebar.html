@@ -8,6 +8,13 @@
     </li>
     {% if user.is_superuser %}
     <li class="nav-item">
+      <a class="nav-link {% if request.resolver_match.url_name == 'manage_admin_permissions' %}active{% endif %}" href="{% url 'quizzes:manage_admin_permissions' %}" onclick="hideSidebarOnMobile()">
+        <i class="bi bi-shield-check"></i> <span class="sidebar-link-text">Permisos</span>
+      </a>
+    </li>
+    {% endif %}
+    {% if user.is_superuser or user.adminprofile.acceso_total %}
+    <li class="nav-item">
       <a class="nav-link {% if request.resolver_match.url_name == 'manage_admins' %}active{% endif %}" href="{% url 'quizzes:manage_admins' %}" onclick="hideSidebarOnMobile()">
         <i class="bi bi-people-fill"></i> <span class="sidebar-link-text">Administradores</span>
       </a>
@@ -17,6 +24,16 @@
     <li class="nav-item">
       <a class="nav-link {% if request.resolver_match.url_name == 'manage_participants' %}active{% endif %}" href="{% url 'quizzes:manage_participants' %}" onclick="hideSidebarOnMobile()">
         <i class="bi bi-person-badge"></i> <span class="sidebar-link-text">Participantes</span>
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if request.resolver_match.url_name == 'manage_representantes' %}active{% endif %}" href="{% url 'quizzes:manage_representantes' %}" onclick="hideSidebarOnMobile()">
+        <i class="bi bi-person-lines-fill"></i> <span class="sidebar-link-text">Representantes</span>
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if request.resolver_match.url_name == 'manage_grupos' %}active{% endif %}" href="{% url 'quizzes:manage_grupos' %}" onclick="hideSidebarOnMobile()">
+        <i class="bi bi-people"></i> <span class="sidebar-link-text">Grupos</span>
       </a>
     </li>
     {% endif %}
