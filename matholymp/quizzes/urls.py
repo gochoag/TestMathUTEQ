@@ -18,4 +18,6 @@ urlpatterns = [
     path('gestionar-permisos/', views.manage_admin_permissions, name='manage_admin_permissions'),
     path('gestionar-representantes/', views.manage_representantes, name='manage_representantes'),
     path('gestionar-grupos/', views.manage_grupos, name='manage_grupos'),
+    path('procesar-excel-participantes/', views.process_excel_participants, name='process_excel_participants'),
+    path('guardar-excel-participantes/', views.save_excel_participants, name='save_excel_participants'),
 ]

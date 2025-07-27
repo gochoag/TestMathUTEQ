@@ -10,8 +10,12 @@ from django.contrib.auth.models import User
 from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
+from django.db.models import Q
 import re
 from django.core.exceptions import ValidationError
+from openpyxl import load_workbook
+import json
+from django.http import JsonResponse
 
 
 # Función helper para verificar acceso total
@@ -179,14 +183,26 @@ def manage_participants(request):
         participante.save()
         return redirect('quizzes:manage_participants')
 
+    # Búsqueda de participantes
+    search_query = request.GET.get('search', '').strip()
     participantes = Participantes.objects.select_related('user').all()
     
+    if search_query:
+        participantes = participantes.filter(
+            Q(NombresCompletos__icontains=search_query) |
+            Q(cedula__icontains=search_query)
+        )
+    
     # Paginación para participantes
-    paginator = Paginator(participantes, 15)  # 15 elementos por página
+    paginator = Paginator(participantes, 7)  # 7 elementos por página
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    return render(request, 'quizzes/manage_participants.html', {'participantes': page_obj})
+    return render(request, 'quizzes/manage_participants.html', {
+        'participantes': page_obj,
+        'page_obj': page_obj,
+        'search_query': search_query
+    })
 
 
 
@@ -375,7 +391,10 @@ def manage_representantes(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    return render(request, 'quizzes/manage_representantes.html', {'representantes': page_obj})
+    return render(request, 'quizzes/manage_representantes.html', {
+        'representantes': page_obj,
+        'page_obj': page_obj
+    })
 
 # Vista para listar y crear grupos de participantes
 @login_required
@@ -399,7 +418,22 @@ def manage_grupos(request):
             name = request.POST.get('name')
             representante_id = request.POST.get('representante')
             participantes_ids = request.POST.getlist('participantes')
+            
+            # Validar que el representante no esté en otro grupo
             representante = Representante.objects.get(id=representante_id)
+            if representante.grupos.exists():
+                messages.error(request, f'El representante "{representante.NombresRepresentante}" ya está asignado a otro grupo.')
+                return redirect('quizzes:manage_grupos')
+            
+            # Validar que los participantes no estén en otros grupos
+            participantes_seleccionados = Participantes.objects.filter(id__in=participantes_ids)
+            participantes_en_otros_grupos = participantes_seleccionados.filter(grupos__isnull=False)
+            
+            if participantes_en_otros_grupos.exists():
+                nombres_problema = [p.NombresCompletos for p in participantes_en_otros_grupos]
+                messages.error(request, f'Los siguientes participantes ya están en otros grupos: {", ".join(nombres_problema)}')
+                return redirect('quizzes:manage_grupos')
+            
             grupo = GrupoParticipantes.objects.create(name=name, representante=representante)
             grupo.participantes.set(participantes_ids)
             messages.success(request, 'Grupo creado exitosamente.')
@@ -411,17 +445,45 @@ def manage_grupos(request):
             name = request.POST.get('name')
             representante_id = request.POST.get('representante')
             participantes_ids = request.POST.getlist('participantes')
+            
+            # Validar que el representante no esté en otro grupo (excluyendo el grupo actual)
+            representante = Representante.objects.get(id=representante_id)
+            if representante.grupos.exclude(id=edit_id).exists():
+                messages.error(request, f'El representante "{representante.NombresRepresentante}" ya está asignado a otro grupo.')
+                return redirect('quizzes:manage_grupos')
+            
+            # Validar que los participantes no estén en otros grupos (excluyendo el grupo actual)
+            participantes_seleccionados = Participantes.objects.filter(id__in=participantes_ids)
+            participantes_en_otros_grupos = participantes_seleccionados.filter(
+                grupos__isnull=False
+            ).exclude(grupos=edit_id)
+            
+            if participantes_en_otros_grupos.exists():
+                nombres_problema = [p.NombresCompletos for p in participantes_en_otros_grupos]
+                messages.error(request, f'Los siguientes participantes ya están en otros grupos: {", ".join(nombres_problema)}')
+                return redirect('quizzes:manage_grupos')
+            
             grupo = GrupoParticipantes.objects.get(id=edit_id)
             grupo.name = name
-            grupo.representante = Representante.objects.get(id=representante_id)
+            grupo.representante = representante
             grupo.participantes.set(participantes_ids)
             grupo.save()
             messages.success(request, 'Grupo actualizado exitosamente.')
             return redirect('quizzes:manage_grupos')
 
     grupos = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').all()
-    representantes = Representante.objects.all()
-    participantes = Participantes.objects.all()
+    
+    # Obtener representantes disponibles (que no están en ningún grupo)
+    representantes_disponibles = Representante.objects.filter(grupos__isnull=True)
+    
+    # Obtener todos los representantes para mostrar en modales de edición
+    representantes_todos = Representante.objects.all()
+    
+    # Obtener participantes disponibles (que no están en ningún grupo)
+    participantes_disponibles = Participantes.objects.filter(grupos__isnull=True)
+    
+    # Obtener todos los participantes para mostrar en modales de edición
+    participantes_todos = Participantes.objects.all()
     
     # Paginación para grupos
     paginator = Paginator(grupos, 10)  # 10 elementos por página
@@ -430,10 +492,157 @@ def manage_grupos(request):
     
     return render(request, 'quizzes/manage_grupos.html', {
         'grupos': page_obj,
-        'representantes': representantes,
-        'participantes': participantes
+        'page_obj': page_obj,
+        'representantes': representantes_disponibles,  # Solo disponibles para crear
+        'representantes_todos': representantes_todos,  # Todos para editar
+        'participantes': participantes_disponibles,  # Solo disponibles para crear
+        'participantes_todos': participantes_todos   # Todos para editar
     })
 
+
+# Vista para procesar archivo Excel de participantes
+@login_required
+def process_excel_participants(request):
+    if not can_manage_representantes(request.user):
+        return JsonResponse({'error': 'No tienes permisos para acceder a esta sección.'}, status=403)
+    
+    if request.method == 'POST':
+        try:
+            # Obtener el archivo y mapeo de columnas
+            excel_file = request.FILES.get('excel_file')
+            column_mapping = json.loads(request.POST.get('column_mapping', '{}'))
+            
+            if not excel_file:
+                return JsonResponse({'error': 'No se ha seleccionado ningún archivo.'}, status=400)
+            
+            # Cargar el archivo Excel
+            workbook = load_workbook(excel_file, data_only=True)
+            worksheet = workbook.active
+            
+            # Obtener todas las filas (excluyendo la primera que son los headers)
+            rows = list(worksheet.iter_rows(min_row=2, values_only=True))
+            
+            # Procesar cada fila
+            processed_data = []
+            errors = []
+            
+            for row_index, row in enumerate(rows, start=2):
+                if not any(row):  # Fila vacía
+                    continue
+                    
+                row_data = {}
+                row_errors = []
+                
+                # Mapear columnas según el mapeo proporcionado
+                for excel_col, model_field in column_mapping.items():
+                    try:
+                        col_index = int(excel_col) - 1  # Convertir a índice base 0
+                        if col_index < len(row):
+                            value = row[col_index]
+                            if value is not None:
+                                row_data[model_field] = str(value).strip()
+                            else:
+                                row_data[model_field] = ''
+                        else:
+                            row_data[model_field] = ''
+                    except (ValueError, IndexError):
+                        row_data[model_field] = ''
+                
+                # Validar datos requeridos
+                if not row_data.get('cedula'):
+                    row_errors.append('Cédula es requerida')
+                elif not validate_cedula_format(row_data['cedula'])[0]:
+                    row_errors.append(f"Cédula inválida: {row_data['cedula']}")
+                
+                if not row_data.get('NombresCompletos'):
+                    row_errors.append('Nombres Completos es requerido')
+                
+                if not row_data.get('email'):
+                    row_errors.append('Email es requerido')
+                elif '@' not in row_data['email']:
+                    row_errors.append('Email inválido')
+                
+                # Validar teléfono si está presente
+                if row_data.get('phone') and not validate_phone_format(row_data['phone'])[0]:
+                    row_errors.append(f"Teléfono inválido: {row_data['phone']}")
+                
+                # Validar edad si está presente
+                if row_data.get('edad'):
+                    try:
+                        edad = int(row_data['edad'])
+                        if edad < 0 or edad > 120:
+                            row_errors.append('Edad debe estar entre 0 y 120')
+                    except ValueError:
+                        row_errors.append('Edad debe ser un número válido')
+                
+                if row_errors:
+                    errors.append(f"Fila {row_index}: {', '.join(row_errors)}")
+                else:
+                    processed_data.append({
+                        'row_index': row_index,
+                        'data': row_data
+                    })
+            
+            return JsonResponse({
+                'success': True,
+                'data': processed_data,
+                'errors': errors,
+                'total_rows': len(rows),
+                'valid_rows': len(processed_data),
+                'error_rows': len(errors)
+            })
+            
+        except Exception as e:
+            return JsonResponse({'error': f'Error al procesar el archivo: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+# Vista para guardar participantes desde Excel
+@login_required
+def save_excel_participants(request):
+    if not can_manage_representantes(request.user):
+        return JsonResponse({'error': 'No tienes permisos para acceder a esta sección.'}, status=403)
+    
+    if request.method == 'POST':
+        try:
+            participants_data = json.loads(request.POST.get('participants_data', '[]'))
+            
+            created_count = 0
+            errors = []
+            
+            for participant_info in participants_data:
+                try:
+                    data = participant_info['data']
+                    
+                    # Verificar si la cédula ya existe
+                    if Participantes.objects.filter(cedula=data['cedula']).exists():
+                        errors.append(f"Cédula {data['cedula']} ya existe")
+                        continue
+                    
+                    # Crear el participante
+                    participante, password = Participantes.create_participant(
+                        cedula=data['cedula'],
+                        NombresCompletos=data['NombresCompletos'],
+                        email=data['email'],
+                        phone=data.get('phone', ''),
+                        edad=int(data['edad']) if data.get('edad') else None
+                    )
+                    
+                    created_count += 1
+                    
+                except Exception as e:
+                    errors.append(f"Error al crear participante con cédula {data.get('cedula', 'N/A')}: {str(e)}")
+            
+            return JsonResponse({
+                'success': True,
+                'created_count': created_count,
+                'errors': errors
+            })
+            
+        except Exception as e:
+            return JsonResponse({'error': f'Error al guardar participantes: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
 
 # Función utilitaria para enviar credenciales por correo
 from django.core.mail import send_mail
