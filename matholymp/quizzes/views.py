@@ -16,6 +16,11 @@ from django.core.exceptions import ValidationError
 from openpyxl import load_workbook
 import json
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import os
+from django.conf import settings
+from .models import Pregunta, Opcion
 
 
 # Función helper para verificar acceso total
@@ -72,14 +77,44 @@ def session_check(request):
 @login_required
 def take_quiz(request, pk):
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar que sea estudiante
+    if not Participantes.objects.filter(user=request.user).exists():
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    # Verificar que la evaluación esté disponible usando los nuevos métodos
+    if evaluacion.is_not_started():
+        messages.warning(request, 'Esta evaluación aún no ha comenzado.')
+        return redirect('quizzes:quiz')
+    
+    if evaluacion.is_finished():
+        messages.warning(request, 'Esta evaluación ya ha finalizado.')
+        return redirect('quizzes:quiz')
+    
+    if not evaluacion.is_available():
+        messages.warning(request, 'Esta evaluación no está disponible en este momento.')
+        return redirect('quizzes:quiz')
+    
     if request.method == 'POST':
         score = 0
+        total_questions = evaluacion.preguntas.count()
+        
         for pregunta in evaluacion.preguntas.all():
-            selected = request.POST.get(str(pregunta.id))
+            selected = request.POST.get(f'pregunta_{pregunta.id}')
             if selected and pregunta.opciones.filter(id=selected, is_correct=True).exists():
                 score += 1
-        return render(request, 'quizzes/result.html', {'evaluacion': evaluacion, 'score': score})
-    return render(request, 'quizzes/quiz.html', {'evaluacion': evaluacion})
+        
+        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
+        
+        return render(request, 'quizzes/result.html', {
+            'evaluacion': evaluacion, 
+            'score': score,
+            'total_questions': total_questions,
+            'percentage': percentage
+        })
+    
+    return render(request, 'quizzes/take_quiz.html', {'evaluacion': evaluacion})
 
 
 
@@ -144,7 +179,7 @@ def manage_participants(request):
         
         # Crear el participante
         participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
-        #send_credentials_email(NombresCompletos, cedula, password, email, rol='Participante')
+        send_credentials_email(NombresCompletos, cedula, password, email, rol='Participante')
         return redirect('quizzes:manage_participants')
 
     # Editar participante
@@ -672,3 +707,597 @@ def send_credentials_email(nombre, username, password, email, rol='Administrador
         [email],
         fail_silently=False  
     )
+
+@login_required
+def quiz_view(request):
+    """
+    Vista que maneja las evaluaciones según el rol del usuario:
+    - Superuser: muestra manage_quizs.html para gestionar evaluaciones
+    - Admin (con o sin acceso_total): muestra manage_quizs.html para gestionar evaluaciones
+    - Estudiante: muestra quiz.html para ver evaluaciones disponibles
+    """
+    user = request.user
+    
+    # Determinar el tipo de usuario
+    is_admin = user.is_superuser or AdminProfile.objects.filter(user=user).exists()
+    
+    if is_admin:
+        # Es admin (superuser, admin con acceso_total, o admin sin acceso_total) - mostrar gestión de evaluaciones
+        return manage_quizs(request)
+    else:
+        # Es estudiante - mostrar evaluaciones disponibles
+        return student_quizs(request)
+
+@login_required
+def manage_quizs(request):
+    """
+    Vista para que los administradores gestionen las evaluaciones
+    Acceso permitido para:
+    - Superuser
+    - Admin con acceso_total = True
+    - Admin con acceso_total = False
+    """
+    user = request.user
+    
+    # Verificar que sea admin (superuser o admin con perfil)
+    is_superuser = user.is_superuser
+    is_admin = AdminProfile.objects.filter(user=user).exists()
+    
+    if not (is_superuser or is_admin):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    # Obtener todas las evaluaciones
+    evaluaciones = Evaluacion.objects.all().order_by('-start_time')
+    
+    # Determinar el tipo específico de admin para el contexto
+    if is_superuser:
+        admin_type = 'superuser'
+    elif is_admin:
+        admin_profile = AdminProfile.objects.get(user=user)
+        admin_type = 'admin_full' if admin_profile.acceso_total else 'admin_limited'
+    else:
+        admin_type = 'unknown'
+    
+    context = {
+        'evaluaciones': evaluaciones,
+        'role': 'admin',
+        'admin_type': admin_type,
+        'now': timezone.now(),
+        'user': user
+    }
+    
+    return render(request, 'quizzes/manage_quizs.html', context)
+
+@login_required
+def student_quizs(request):
+    """
+    Vista para que los estudiantes vean las evaluaciones disponibles
+    """
+    # Verificar que sea estudiante
+    if Participantes.objects.filter(user=request.user).exists():
+        # Obtener evaluaciones disponibles usando los nuevos métodos del modelo
+        evaluaciones_disponibles = Evaluacion.objects.filter(
+            start_time__lte=timezone.now(),
+            end_time__gte=timezone.now()
+        ).order_by('start_time')
+        
+        context = {
+            'evaluaciones': evaluaciones_disponibles,
+            'role': 'student',
+            'current_time': timezone.now(),
+            'now': timezone.now()
+        }
+        return render(request, 'quizzes/quiz.html', context)
+    else:
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+
+@login_required
+def manage_questions(request, eval_id):
+    """
+    Vista para gestionar las preguntas de una evaluación específica
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=eval_id)
+    # Optimizar consulta para incluir opciones y evitar N+1
+    preguntas = evaluacion.preguntas.prefetch_related('opciones').order_by('id')
+    context = {
+        'evaluacion': evaluacion,
+        'preguntas': preguntas
+    }
+    return render(request, 'quizzes/manage_questions.html', context)
+
+@csrf_exempt
+@login_required
+def create_evaluacion(request):
+    if request.method == 'POST':
+        import json
+        data = json.loads(request.body.decode('utf-8'))
+        title = data.get('title')
+        start_date = data.get('start_date')
+        start_time = data.get('start_time')
+        end_date = data.get('end_date')
+        end_time = data.get('end_time')
+        duration = data.get('duration')
+        description = data.get('description', '')
+        
+        from datetime import datetime
+        from django.utils import timezone
+        try:
+            start_dt = timezone.make_aware(datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M"))
+            end_dt = timezone.make_aware(datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M"))
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': 'Formato de fecha/hora inválido.'}, status=400)
+        
+        if not title or not duration or not start_date or not start_time or not end_date or not end_time:
+            return JsonResponse({'success': False, 'error': 'Faltan campos obligatorios.'}, status=400)
+        
+        try:
+            evaluacion = Evaluacion.objects.create(
+                title=title,
+                start_time=start_dt,
+                end_time=end_dt,
+                duration_minutes=int(duration)
+            )
+            return JsonResponse({'success': True, 'id': evaluacion.id, 'title': evaluacion.title})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    return JsonResponse({'success': False, 'error': 'Método no permitido.'}, status=405)
+
+@csrf_exempt
+@login_required
+def upload_image(request):
+    """
+    Vista para subir imágenes desde CKEditor
+    """
+    if request.method == 'POST':
+        if request.FILES.get('upload'):
+            uploaded_file = request.FILES['upload']
+            
+            # Validar que sea una imagen (permitir más formatos)
+            allowed_types = [
+                'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 
+                'image/bmp', 'image/webp', 'image/tiff', 'image/svg+xml'
+            ]
+            
+            # Si el content_type no está en la lista, verificar la extensión del archivo
+            if uploaded_file.content_type not in allowed_types:
+                # Verificar extensión del archivo como respaldo
+                file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+                allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg']
+                
+                if file_extension not in allowed_extensions:
+                    return JsonResponse({
+                        'error': {
+                            'message': f'Formato de imagen no soportado. Formatos permitidos: JPEG, PNG, GIF, BMP, WebP, TIFF, SVG'
+                        }
+                    }, status=400)
+            
+            # Crear directorio si no existe en static/media/ckeditor_uploads
+            upload_dir = os.path.join(settings.BASE_DIR, 'static', 'media', 'ckeditor_uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            # Generar nombre único para el archivo
+            import uuid
+            file_extension = os.path.splitext(uploaded_file.name)[1]
+            filename = f"{uuid.uuid4()}{file_extension}"
+            filepath = os.path.join(upload_dir, filename)
+            
+            # Guardar el archivo
+            with open(filepath, 'wb+') as destination:
+                for chunk in uploaded_file.chunks():
+                    destination.write(chunk)
+            
+            # Retornar URL para CKEditor (usando static URL)
+            file_url = f"/static/media/ckeditor_uploads/{filename}"
+            
+            return JsonResponse({
+                'url': file_url,
+                'uploaded': 1,
+                'fileName': filename
+            })
+        else:
+            return JsonResponse({
+                'error': {
+                    'message': 'No se recibió ningún archivo'
+                }
+            }, status=400)
+    
+    return JsonResponse({
+        'error': {
+            'message': 'Método no permitido'
+        }
+    }, status=405)
+
+@csrf_exempt
+@login_required
+def save_question(request, eval_id):
+    """
+    Vista para guardar una pregunta y sus opciones
+    """
+    if request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body.decode('utf-8'))
+            
+            # Obtener la evaluación
+            evaluacion = get_object_or_404(Evaluacion, pk=eval_id)
+            
+            # Obtener datos del formulario
+            pregunta_texto = data.get('pregunta', '').strip()
+            opciones = data.get('opciones', [])
+            opcion_correcta = data.get('opcion_correcta')
+            
+            # Validaciones
+            if not pregunta_texto:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'El enunciado de la pregunta es obligatorio'
+                }, status=400)
+            
+            if len(opciones) != 4:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Debe proporcionar exactamente 4 opciones'
+                }, status=400)
+            
+            if not opcion_correcta or not opcion_correcta.isdigit() or int(opcion_correcta) < 1 or int(opcion_correcta) > 4:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Debe seleccionar una opción correcta válida'
+                }, status=400)
+            
+            # Crear la pregunta
+            pregunta = Pregunta.objects.create(
+                evaluacion=evaluacion,
+                text=pregunta_texto
+            )
+            
+            # Validar que todas las opciones tengan contenido
+            for i, opcion_texto in enumerate(opciones):
+                if not opcion_texto.strip():
+                    return JsonResponse({
+                        'success': False, 
+                        'error': f'La opción {chr(65 + i)} ({"ABCD"[i]}) es obligatoria'
+                    }, status=400)
+            
+            # Crear las opciones
+            opcion_correcta_index = int(opcion_correcta) - 1  # Convertir a índice 0-based
+            
+            for i, opcion_texto in enumerate(opciones):
+                Opcion.objects.create(
+                    pregunta=pregunta,
+                    text=opcion_texto.strip(),
+                    is_correct=(i == opcion_correcta_index)
+                )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Pregunta guardada exitosamente',
+                'pregunta_id': pregunta.id,
+                'total_preguntas': evaluacion.preguntas.count()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Datos JSON inválidos'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al guardar la pregunta: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False, 
+        'error': 'Método no permitido'
+    }, status=405)
+
+@csrf_exempt
+@login_required
+def delete_question(request, pk):
+    """
+    Vista para eliminar una pregunta y sus opciones
+    """
+    if request.method == 'POST':
+        try:
+            pregunta = get_object_or_404(Pregunta, pk=pk)
+            evaluacion = pregunta.evaluacion
+            
+            # Eliminar la pregunta (esto también eliminará las opciones por CASCADE)
+            pregunta.delete()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Pregunta eliminada exitosamente',
+                'total_preguntas': evaluacion.preguntas.count()
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al eliminar la pregunta: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False, 
+        'error': 'Método no permitido'
+    }, status=405)
+
+
+@csrf_exempt
+@login_required
+def get_question_data(request, pk):
+    """
+    Vista para obtener los datos de una pregunta para edición
+    """
+    if request.method == 'GET':
+        try:
+            pregunta = get_object_or_404(Pregunta, pk=pk)
+            opciones = pregunta.opciones.all().order_by('id')
+            
+            # Encontrar la opción correcta
+            opcion_correcta = None
+            for i, opcion in enumerate(opciones):
+                if opcion.is_correct:
+                    opcion_correcta = i + 1
+                    break
+            
+            return JsonResponse({
+                'success': True,
+                'data': {
+                    'pregunta': pregunta.text,
+                    'opciones': [opcion.text for opcion in opciones],
+                    'opcion_correcta': opcion_correcta
+                }
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al obtener datos de la pregunta: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False, 
+        'error': 'Método no permitido'
+    }, status=405)
+
+
+@csrf_exempt
+@login_required
+def update_question(request, pk):
+    """
+    Vista para actualizar una pregunta existente
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            pregunta = get_object_or_404(Pregunta, pk=pk)
+            
+            # Validar datos
+            pregunta_texto = data.get('pregunta', '').strip()
+            opciones = data.get('opciones', [])
+            opcion_correcta = data.get('opcion_correcta')
+            
+            if not pregunta_texto:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'El enunciado de la pregunta es obligatorio'
+                }, status=400)
+            
+            if not opcion_correcta:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Debe seleccionar una opción correcta'
+                }, status=400)
+            
+            # Validar que todas las opciones tengan contenido
+            for i, opcion_texto in enumerate(opciones):
+                if not opcion_texto.strip():
+                    return JsonResponse({
+                        'success': False, 
+                        'error': f'La opción {chr(65 + i)} ({"ABCD"[i]}) es obligatoria'
+                    }, status=400)
+            
+            # Actualizar la pregunta
+            pregunta.text = pregunta_texto
+            pregunta.save()
+            
+            # Eliminar opciones existentes y crear nuevas
+            pregunta.opciones.all().delete()
+            
+            # Crear las nuevas opciones
+            opcion_correcta_index = int(opcion_correcta) - 1  # Convertir a índice 0-based
+            
+            for i, opcion_texto in enumerate(opciones):
+                Opcion.objects.create(
+                    pregunta=pregunta,
+                    text=opcion_texto.strip(),
+                    is_correct=(i == opcion_correcta_index)
+                )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Pregunta actualizada exitosamente'
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Datos JSON inválidos'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al actualizar la pregunta: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False, 
+        'error': 'Método no permitido'
+    }, status=405)
+
+# Nuevas vistas para las opciones del dropdown de evaluaciones
+
+@login_required
+def view_evaluacion(request, pk):
+    """
+    Vista para ver los detalles de una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos (solo admins pueden ver detalles)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    context = {
+        'evaluacion': evaluacion,
+        'preguntas': evaluacion.preguntas.prefetch_related('opciones').all(),
+        'total_preguntas': evaluacion.preguntas.count(),
+        'participantes_count': Participantes.objects.count()
+    }
+    
+    return render(request, 'quizzes/view_evaluacion.html', context)
+
+@login_required
+def edit_evaluacion(request, pk):
+    """
+    Vista para editar una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos (solo admins pueden editar)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            
+            # Validar datos
+            title = data.get('title', '').strip()
+            start_date = data.get('start_date')
+            start_time = data.get('start_time')
+            end_date = data.get('end_date')
+            end_time = data.get('end_time')
+            duration = data.get('duration')
+            
+            if not all([title, start_date, start_time, end_date, end_time, duration]):
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Todos los campos son obligatorios'
+                }, status=400)
+            
+            # Convertir fechas
+            from datetime import datetime
+            start_dt = timezone.make_aware(datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M"))
+            end_dt = timezone.make_aware(datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M"))
+            
+            # Validar que la fecha de inicio sea anterior a la de fin
+            if start_dt >= end_dt:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La fecha de inicio debe ser anterior a la fecha de finalización'
+                }, status=400)
+            
+            # Actualizar evaluación
+            evaluacion.title = title
+            evaluacion.start_time = start_dt
+            evaluacion.end_time = end_dt
+            evaluacion.duration_minutes = int(duration)
+            evaluacion.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Evaluación actualizada exitosamente',
+                'evaluacion': {
+                    'id': evaluacion.id,
+                    'title': evaluacion.title,
+                    'start_time': evaluacion.start_time.strftime("%d/%m/%Y %H:%M"),
+                    'end_time': evaluacion.end_time.strftime("%d/%m/%Y %H:%M"),
+                    'duration_minutes': evaluacion.duration_minutes,
+                    'status': evaluacion.get_status(),
+                    'status_display': evaluacion.get_status_display()
+                }
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Datos JSON inválidos'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al actualizar la evaluación: {str(e)}'
+            }, status=500)
+    
+    # GET request - mostrar formulario de edición
+    context = {
+        'evaluacion': evaluacion
+    }
+    return render(request, 'quizzes/edit_evaluacion.html', context)
+
+@login_required
+def evaluacion_results(request, pk):
+    """
+    Vista para ver los resultados de una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos (solo admins pueden ver resultados)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    # Por ahora, esta vista mostrará información básica
+    # En el futuro se puede expandir para mostrar resultados reales de participantes
+    context = {
+        'evaluacion': evaluacion,
+        'total_preguntas': evaluacion.preguntas.count(),
+        'participantes_count': Participantes.objects.count(),
+        'evaluacion_status': evaluacion.get_status(),
+        'evaluacion_status_display': evaluacion.get_status_display()
+    }
+    
+    return render(request, 'quizzes/evaluacion_results.html', context)
+
+@csrf_exempt
+@login_required
+def delete_evaluacion(request, pk):
+    """
+    Vista para eliminar una evaluación
+    """
+    if request.method == 'POST':
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        
+        # Verificar permisos (solo admins pueden eliminar)
+        if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+            return JsonResponse({
+                'success': False, 
+                'error': 'No tienes permisos para eliminar evaluaciones'
+            }, status=403)
+        
+        try:
+            # Eliminar la evaluación (esto también eliminará preguntas y opciones por CASCADE)
+            evaluacion.delete()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Evaluación eliminada exitosamente'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al eliminar la evaluación: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False, 
+        'error': 'Método no permitido'
+    }, status=405)

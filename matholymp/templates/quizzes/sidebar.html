@@ -38,7 +38,7 @@
     </li>
     {% endif %}
     <li class="nav-item">
-      <a class="nav-link {% if request.resolver_match.url_name == 'quiz' %}active{% endif %}" href="#" onclick="hideSidebarOnMobile()">
+      <a class="nav-link {% if request.resolver_match.url_name == 'quiz' %}active{% endif %}" href="{% url 'quizzes:quiz' %}" onclick="hideSidebarOnMobile()">
         <i class="bi bi-clipboard-check"></i> <span class="sidebar-link-text">Evaluaciones</span>
       </a>
     </li>

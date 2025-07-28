@@ -1,23 +1,140 @@
 {% extends 'base.html' %}
-{% block sidebar %}
-    {% include 'quizzes/sidebar.html' %}
-{% endblock %}
+{% load static %}
+
+{% block title %}Evaluaciones Disponibles{% endblock %}
 
 {% block content %}
-<h1>{{ evaluacion.title }}</h1>
-<form method="post">
-  {% csrf_token %}
-  {% for q in evaluacion.preguntas.all %}
-  <div class="mb-3">
-    <p>{{ forloop.counter }}. {{ q.text|safe }}</p>
-    {% for opt in q.opciones.all %}
-    <div class="form-check">
-      <input class="form-check-input" type="radio" name="{{ q.id }}" value="{{ opt.id }}" id="opt{{ opt.id }}">
-      <label class="form-check-label" for="opt{{ opt.id }}">{{ opt.text }}</label>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="text-center mb-4">
+                <h2 class="mb-3">
+                    <i class="bi bi-clipboard-check me-2"></i>
+                    Evaluaciones Disponibles
+                </h2>
+                <p class="text-muted">Selecciona una evaluación para comenzar</p>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <div class="row justify-content-center">
+                {% if evaluaciones %}
+                    {% for evaluacion in evaluaciones %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100 shadow-sm border-0">
+                                <div class="card-header bg-gradient-primary text-white text-center py-4">
+                                    <i class="bi bi-clipboard-check display-4 mb-3"></i>
+                                    <h4 class="card-title mb-0">{{ evaluacion.title }}</h4>
+                                </div>
+                                <div class="card-body text-center">
+                                    <div class="mb-4">
+                                        <div class="row text-center">
+                                            <div class="col-6">
+                                                <div class="border-end">
+                                                    <i class="bi bi-clock text-primary fs-1"></i>
+                                                    <p class="mb-0 text-muted">Duración</p>
+                                                    <h5 class="mb-0">{{ evaluacion.duration_minutes }} min</h5>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <i class="bi bi-question-circle text-success fs-1"></i>
+                                                <p class="mb-0 text-muted">Preguntas</p>
+                                                <h5 class="mb-0">{{ evaluacion.preguntas.count }}</h5>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-calendar-event me-2"></i>
+                                            <strong>Ventana de acceso:</strong><br>
+                                            <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
+                                            <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        {% if evaluacion.get_status == 'pending' %}
+                                            <div class="alert alert-warning">
+                                                <i class="bi bi-hourglass-split me-2"></i>
+                                                La evaluación aún no ha comenzado
+                                            </div>
+                                        {% elif evaluacion.get_status == 'active' %}
+                                            <div class="alert alert-success">
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                Evaluación disponible
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-secondary">
+                                                <i class="bi bi-x-circle me-2"></i>
+                                                Evaluación finalizada
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-light text-center">
+                                    {% if evaluacion.get_status == 'active' %}
+                                        <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
+                                            <i class="bi bi-play-circle me-2"></i>
+                                            Iniciar Evaluación
+                                        </a>
+                                    {% elif evaluacion.get_status == 'pending' %}
+                                        <button class="btn btn-secondary btn-lg w-100" disabled>
+                                            <i class="bi bi-clock me-2"></i>
+                                            Próximamente
+                                        </button>
+                                    {% else %}
+                                        <button class="btn btn-outline-secondary btn-lg w-100" disabled>
+                                            <i class="bi bi-x-circle me-2"></i>
+                                            Finalizada
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="col-12">
+                        <div class="text-center py-5">
+                            <i class="bi bi-clipboard-x display-1 text-muted"></i>
+                            <h4 class="mt-3 text-muted">No hay evaluaciones disponibles</h4>
+                            <p class="text-muted">No hay evaluaciones programadas para este momento</p>
+                            <div class="mt-4">
+                                <i class="bi bi-info-circle text-info me-2"></i>
+                                <span class="text-muted">Las evaluaciones aparecerán aquí cuando estén disponibles</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
-    {% endfor %}
-  </div>
-  {% endfor %}
-  <button type="submit" class="btn btn-primary">Enviar</button>
-</form>
+</div>
+
+<style>
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+}
+
+.btn-lg {
+    padding: 12px 24px;
+    font-size: 1.1rem;
+}
+</style>
 {% endblock %}

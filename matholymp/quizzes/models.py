@@ -3,6 +3,7 @@ from django.db import models
 from django.utils.crypto import get_random_string
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 import re
 
 # Validadores personalizados
@@ -73,11 +74,64 @@ class Participantes(models.Model):
 # Modelo Evaluacion para las evaluaciones
 class Evaluacion(models.Model):
     title = models.CharField(max_length=200)
-    start_time = models.DateTimeField()
-    duration_minutes = models.PositiveIntegerField()
+    start_time = models.DateTimeField(help_text='Fecha y hora de inicio de la ventana de acceso')
+    end_time = models.DateTimeField(help_text='Fecha y hora de finalización de la ventana de acceso')
+    duration_minutes = models.PositiveIntegerField(help_text='Tiempo disponible para completar la evaluación (en minutos)')
 
     def __str__(self):
         return self.title
+    
+    def is_available(self):
+        """Verifica si la evaluación está disponible para ser tomada"""
+        now = timezone.now()
+        return self.start_time <= now <= self.end_time
+    
+    def is_finished(self):
+        """Verifica si la evaluación ya terminó"""
+        now = timezone.now()
+        return now > self.end_time
+    
+    def is_not_started(self):
+        """Verifica si la evaluación aún no ha comenzado"""
+        now = timezone.now()
+        return now < self.start_time
+    
+    def get_status(self):
+        """Retorna el estado actual de la evaluación"""
+        if self.is_not_started():
+            return 'pending'
+        elif self.is_available():
+            return 'active'
+        else:
+            return 'finished'
+    
+    def get_status_display(self):
+        """Retorna el texto del estado de la evaluación"""
+        status = self.get_status()
+        if status == 'pending':
+            return 'Pendiente'
+        elif status == 'active':
+            return 'Disponible'
+        else:
+            return 'Finalizada'
+    
+    def clean(self):
+        """Validación personalizada del modelo"""
+        from django.core.exceptions import ValidationError
+        
+        if self.start_time and self.end_time:
+            if self.start_time >= self.end_time:
+                raise ValidationError('La fecha de inicio debe ser anterior a la fecha de finalización.')
+        
+        if self.duration_minutes <= 0:
+            raise ValidationError('La duración debe ser mayor a 0 minutos.')
+        
+        if self.duration_minutes > 480:  # 8 horas máximo
+            raise ValidationError('La duración no puede exceder 8 horas.')
+    
+    class Meta:
+        verbose_name = 'Evaluación'
+        verbose_name_plural = 'Evaluaciones'
 
 # Modelo para las preguntas
 class Pregunta(models.Model):

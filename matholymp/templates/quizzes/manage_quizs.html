@@ -1,0 +1,524 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Gestionar Evaluaciones{% endblock %}
+
+{% block extra_css %}
+<style>
+/* CSS para que SweetAlert2 aparezca por encima del modal */
+.swal-over-modal {
+    z-index: 9999 !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-clipboard-check me-2"></i>
+                        Gestionar Evaluaciones
+                    </h2>
+                    <small class="text-muted">
+                        {% if admin_type == 'superuser' %}
+                            <i class="bi bi-shield-fill text-danger me-1"></i>Super Administrador
+                        {% elif admin_type == 'admin_full' %}
+                            <i class="bi bi-shield-check text-success me-1"></i>Administrador con Acceso Total
+                        {% elif admin_type == 'admin_limited' %}
+                            <i class="bi bi-shield text-warning me-1"></i>Administrador
+                        {% endif %}
+                    </small>
+                </div>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Crear Evaluación
+                </button>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <div class="row">
+                {% if evaluaciones %}
+                    {% for evaluacion in evaluaciones %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header bg-primary text-white">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
+                                                <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
+                                                <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
+                                                <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar-event me-1"></i>
+                                            <strong>Ventana de acceso:</strong>
+                                        </small>
+                                        <p class="mb-1">
+                                            <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
+                                            <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
+                                        </p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-clock me-1"></i>
+                                            <strong>Tiempo de evaluación:</strong>
+                                        </small>
+                                        <p class="mb-1">{{ evaluacion.duration_minutes }} minutos</p>
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-question-circle me-1"></i>
+                                            <strong>Preguntas:</strong>
+                                        </small>
+                                        <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
+                                        {% if evaluacion.preguntas.count == 0 %}
+                                            <div class="mt-2">
+                                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
+                                                    <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
+                                                </a>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-people me-1"></i>
+                                            <strong>Estado:</strong>
+                                        </small>
+                                        {% if evaluacion.get_status == 'pending' %}
+                                            <span class="badge bg-warning">Pendiente</span>
+                                        {% elif evaluacion.get_status == 'active' %}
+                                            <span class="badge bg-success">Disponible</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Finalizada</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-light">
+                                    <div class="d-flex justify-content-between">
+                                        <button class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye me-1"></i>Ver Detalles
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-success">
+                                            <i class="bi bi-graph-up me-1"></i>Resultados
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="col-12">
+                        <div class="text-center py-5">
+                            <i class="bi bi-clipboard-x display-1 text-muted"></i>
+                            <h4 class="mt-3 text-muted">No hay evaluaciones creadas</h4>
+                            <p class="text-muted">Comienza creando tu primera evaluación</p>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
+                                <i class="bi bi-plus-circle me-2"></i>
+                                Crear Evaluación
+                            </button>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para crear evaluación -->
+<div class="modal fade" id="createQuizModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title mb-0">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Crear Nueva Evaluación
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="card-title mb-0">
+                            <i class="bi bi-gear me-2"></i>
+                            Configuración de la Evaluación
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <form id="createQuizForm">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="mb-3">
+                                        <label for="quizTitle" class="form-label">
+                                            <i class="bi bi-type me-1"></i>
+                                            Título de la Evaluación <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="text" class="form-control" id="quizTitle" 
+                                               placeholder="Ej: Evaluación de Matemáticas - Primer Parcial" required>
+                                        <div class="form-text">Nombre descriptivo de la evaluación</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="quizDuration" class="form-label">
+                                            <i class="bi bi-clock me-1"></i>
+                                            Duración (minutos) <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" class="form-control" id="quizDuration" 
+                                               min="1" max="480" placeholder="30" required>
+                                        <div class="form-text">Máximo 8 horas (480 min)</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="quizStartDate" class="form-label">
+                                            <i class="bi bi-calendar-plus me-1"></i>
+                                            Fecha de Inicio <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="date" class="form-control" id="quizStartDate" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="quizStartTime" class="form-label">
+                                            <i class="bi bi-clock me-1"></i>
+                                            Hora de Inicio <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="time" class="form-control" id="quizStartTime" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="quizEndDate" class="form-label">
+                                            <i class="bi bi-calendar-x me-1"></i>
+                                            Fecha de Finalización <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="date" class="form-control" id="quizEndDate" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="quizEndTime" class="form-label">
+                                            <i class="bi bi-clock me-1"></i>
+                                            Hora de Finalización <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="time" class="form-control" id="quizEndTime" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="quizDescription" class="form-label">
+                                    <i class="bi bi-text-paragraph me-1"></i>
+                                    Descripción (Opcional)
+                                </label>
+                                <textarea class="form-control" id="quizDescription" rows="3" 
+                                          placeholder="Descripción detallada de la evaluación, temas a evaluar, instrucciones especiales..."></textarea>
+                                <div class="form-text">Información adicional sobre la evaluación</div>
+                            </div>
+
+                            <hr>
+
+                            <!-- Información de Ayuda -->
+                            <div class="alert alert-info">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <div>
+                                        <strong>Información importante:</strong>
+                                        <ul class="mb-0 mt-1">
+                                            <li>La evaluación se creará sin preguntas inicialmente</li>
+                                            <li>Podrás agregar preguntas después desde el menú de opciones</li>
+                                            <li>El estado se actualiza automáticamente según las fechas</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="createQuiz()">
+                    <i class="bi bi-plus-circle me-1"></i> Crear Evaluación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.createQuiz = function() {
+    // Obtener datos del formulario
+    const title = document.getElementById('quizTitle').value.trim();
+    const duration = document.getElementById('quizDuration').value;
+    const startDate = document.getElementById('quizStartDate').value;
+    const startTime = document.getElementById('quizStartTime').value;
+    const endDate = document.getElementById('quizEndDate').value;
+    const endTime = document.getElementById('quizEndTime').value;
+    const description = document.getElementById('quizDescription').value.trim();
+
+    // Validación básica
+    if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Campos requeridos',
+            text: 'Por favor, completa todos los campos obligatorios.',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Validar duración
+    if (duration < 1 || duration > 480) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Duración inválida',
+            text: 'La duración debe estar entre 1 y 480 minutos.',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Validar fechas
+    const startDateTime = new Date(`${startDate} ${startTime}`);
+    const endDateTime = new Date(`${endDate} ${endTime}`);
+    
+    if (startDateTime >= endDateTime) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Fechas inválidas',
+            text: 'La fecha de inicio debe ser anterior a la fecha de finalización.',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Mostrar loading
+    Swal.fire({
+        title: 'Creando evaluación...',
+        text: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+        customClass: {
+            container: 'swal-over-modal'
+        }
+    });
+
+    // Enviar datos al backend
+    fetch("{% url 'quizzes:create_evaluacion' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            title: title,
+            duration: duration,
+            start_date: startDate,
+            start_time: startTime,
+            end_date: endDate,
+            end_time: endTime,
+            description: description
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Cerrar el modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createQuizModal'));
+            modal.hide();
+            
+            Swal.fire({
+                icon: 'success',
+                title: '¡Creada exitosamente!',
+                text: 'La evaluación ha sido creada correctamente',
+                timer: 1500,
+                showConfirmButton: false,
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            }).then(() => {
+                // Recargar la página para mostrar el nuevo card
+                window.location.reload();
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'Error al crear la evaluación',
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de conexión al crear la evaluación',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+    });
+}
+
+// Función para obtener el CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showToast(message, type = 'info') {
+    // SweetAlert2
+    let icon = 'info';
+    if (type === 'success') icon = 'success';
+    else if (type === 'danger' || type === 'error') icon = 'error';
+    else if (type === 'warning') icon = 'warning';
+    Swal.fire({
+        icon: icon,
+        title: message,
+        timer: 1800,
+        showConfirmButton: false
+    });
+}
+
+// Establecer fecha actual por defecto cuando se abre el modal
+document.addEventListener('DOMContentLoaded', function() {
+    const createQuizModal = document.getElementById('createQuizModal');
+    if (createQuizModal) {
+        createQuizModal.addEventListener('show.bs.modal', function() {
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Establecer fecha actual
+            document.getElementById('quizStartDate').value = today;
+            document.getElementById('quizEndDate').value = today;
+            
+            // Dejar las horas vacías
+            document.getElementById('quizStartTime').value = '';
+            document.getElementById('quizEndTime').value = '';
+            
+            // Dejar la duración vacía
+            document.getElementById('quizDuration').value = '';
+        });
+    }
+});
+
+// Función para eliminar evaluación
+function deleteEvaluacion(evaluacionId, evaluacionTitle) {
+    Swal.fire({
+        title: '¿Estás seguro?',
+        text: `¿Realmente quieres eliminar la evaluación "${evaluacionTitle}"? Esta acción no se puede deshacer.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Mostrar loading
+            Swal.fire({
+                title: 'Eliminando...',
+                text: 'Por favor espera',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            // Enviar petición de eliminación
+            fetch(`/evaluacion/${evaluacionId}/eliminar/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Eliminada!',
+                        text: 'La evaluación ha sido eliminada exitosamente',
+                        timer: 1500,
+                        showConfirmButton: false
+                    }).then(() => {
+                        // Recargar la página para actualizar la lista
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: data.error || 'Error al eliminar la evaluación'
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Error de conexión al eliminar la evaluación'
+                });
+            });
+        }
+    });
+}
+</script>
+{% endblock %} 

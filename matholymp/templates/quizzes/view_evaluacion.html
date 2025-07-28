@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ver Evaluación - {{ evaluacion.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-eye me-2"></i>
+                        Detalles de la Evaluación
+                    </h2>
+                    <small class="text-muted">Información completa de la evaluación</small>
+                </div>
+                <div>
+                    <a href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}" class="btn btn-primary me-2">
+                        <i class="bi bi-pencil me-1"></i> Editar
+                    </a>
+                    <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-success me-2">
+                        <i class="bi bi-question-square me-1"></i> Gestionar Preguntas
+                    </a>
+                    <a href="{% url 'quizzes:quiz' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-1"></i> Volver
+                    </a>
+                </div>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <div class="row">
+                <!-- Información General -->
+                <div class="col-md-8">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Información General
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">Título</h6>
+                                    <p class="h5">{{ evaluacion.title }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">Estado</h6>
+                                    {% if evaluacion.get_status == 'pending' %}
+                                        <span class="badge bg-warning fs-6">Pendiente</span>
+                                    {% elif evaluacion.get_status == 'active' %}
+                                        <span class="badge bg-success fs-6">Disponible</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary fs-6">Finalizada</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">
+                                        <i class="bi bi-calendar-event me-1"></i>
+                                        Ventana de Acceso
+                                    </h6>
+                                    <p><strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}</p>
+                                    <p><strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">
+                                        <i class="bi bi-clock me-1"></i>
+                                        Duración
+                                    </h6>
+                                    <p class="h6">{{ evaluacion.duration_minutes }} minutos</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Preguntas -->
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-success text-white">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi bi-question-circle me-2"></i>
+                                    Preguntas ({{ preguntas.count }})
+                                </h5>
+                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-light btn-sm">
+                                    <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
+                                </a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            {% if preguntas %}
+                                <div class="accordion" id="preguntasAccordion">
+                                    {% for pregunta in preguntas %}
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header" id="pregunta{{ pregunta.id }}">
+                                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ pregunta.id }}">
+                                                    <strong>Pregunta {{ forloop.counter }}:</strong> {{ pregunta.text|striptags|truncatechars:50 }}
+                                                </button>
+                                            </h2>
+                                            <div id="collapse{{ pregunta.id }}" class="accordion-collapse collapse" data-bs-parent="#preguntasAccordion">
+                                                <div class="accordion-body">
+                                                    <div class="pregunta-content mb-3">
+                                                        {{ pregunta.text|safe }}
+                                                    </div>
+                                                    
+                                                    <h6 class="text-muted">Opciones:</h6>
+                                                    <div class="row">
+                                                        {% for opcion in pregunta.opciones.all %}
+                                                            <div class="col-md-6 mb-2">
+                                                                <div class="d-flex align-items-center">
+                                                                    <span class="badge {% if opcion.is_correct %}bg-success{% else %}bg-secondary{% endif %} me-2">
+                                                                        {% if forloop.counter == 1 %}A{% elif forloop.counter == 2 %}B{% elif forloop.counter == 3 %}C{% else %}D{% endif %}
+                                                                    </span>
+                                                                    <div class="opcion-text">
+                                                                        {{ opcion.text|safe }}
+                                                                        {% if opcion.is_correct %}
+                                                                            <i class="bi bi-check-circle-fill text-success ms-2"></i>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="text-center py-4">
+                                    <i class="bi bi-question-circle display-4 text-muted"></i>
+                                    <h5 class="mt-3 text-muted">No hay preguntas registradas</h5>
+                                    <p class="text-muted">Esta evaluación aún no tiene preguntas</p>
+                                    <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-success">
+                                        <i class="bi bi-plus-circle me-2"></i> Agregar Primera Pregunta
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estadísticas -->
+                <div class="col-md-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-graph-up me-2"></i>
+                                Estadísticas
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-6 mb-3">
+                                    <div class="border-end">
+                                        <h3 class="text-primary">{{ total_preguntas }}</h3>
+                                        <small class="text-muted">Preguntas</small>
+                                    </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <h3 class="text-success">{{ participantes_count }}</h3>
+                                    <small class="text-muted">Participantes</small>
+                                </div>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="d-grid gap-2">
+                                <a href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}" class="btn btn-outline-info">
+                                    <i class="bi bi-graph-up me-2"></i> Ver Resultados
+                                </a>
+                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-outline-success">
+                                    <i class="bi bi-question-square me-2"></i> Gestionar Preguntas
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Acciones Rápidas -->
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-lightning me-2"></i>
+                                Acciones Rápidas
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary" onclick="window.print()">
+                                    <i class="bi bi-printer me-2"></i> Imprimir
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="copiarEnlace()">
+                                    <i class="bi bi-link-45deg me-2"></i> Copiar Enlace
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copiarEnlace() {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+        Swal.fire({
+            icon: 'success',
+            title: 'Enlace copiado',
+            text: 'El enlace ha sido copiado al portapapeles',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    }).catch(() => {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No se pudo copiar el enlace'
+        });
+    });
+}
+</script>
+{% endblock %} 
