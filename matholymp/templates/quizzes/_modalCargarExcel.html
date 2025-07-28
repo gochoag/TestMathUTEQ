@@ -7,7 +7,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="loadExcelLabel">
-                    <i class="fas fa-file-excel"></i> Cargar Participantes desde Excel
+                    <i class="bi bi-filetype-xls"></i> Cargar Participantes desde Excel
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -15,7 +15,7 @@
                 <!-- Paso 1: Seleccionar archivo -->
                 <div id="step1">
                     <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
+                        <i class="bi bi-info-circle"></i>
                         <strong>Instrucciones:</strong>
                         <ul class="mb-0 mt-2">
                             <li>El archivo debe ser un Excel (.xlsx o .xls)</li>
@@ -34,7 +34,7 @@
                         <div class="d-flex justify-content-end gap-2">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="button" class="btn btn-primary" onclick="processExcelFile()">
-                                <i class="fas fa-upload"></i> Procesar Archivo
+                                <i class="bi bi-upload"></i> Procesar Archivo
                             </button>
                         </div>
                     </form>
@@ -44,7 +44,7 @@
                 <div id="step2" style="display: none;">
                     <h6 class="mb-3">Mapeo de Columnas</h6>
                     <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i>
+                        <i class="bi bi-exclamation-triangle"></i>
                         <strong>Importante:</strong> Selecciona qué columna del Excel corresponde a cada campo del sistema.
                     </div>
                     
@@ -84,7 +84,7 @@
                     <div class="d-flex justify-content-end gap-2 mt-3">
                         <button type="button" class="btn btn-secondary" onclick="showStep1()">Atrás</button>
                         <button type="button" class="btn btn-primary" onclick="previewData()">
-                            <i class="fas fa-eye"></i> Previsualizar Datos
+                            <i class="bi bi-eye"></i> Previsualizar Datos
                         </button>
                     </div>
                 </div>
@@ -122,7 +122,7 @@
                     <div class="d-flex justify-content-end gap-2 mt-3">
                         <button type="button" class="btn btn-secondary" onclick="showStep2()">Atrás</button>
                         <button type="button" class="btn btn-success" onclick="saveParticipants()" id="saveBtn" style="display: none;">
-                            <i class="fas fa-save"></i> Guardar Participantes
+                            <i class="bi bi-save"></i> Guardar Participantes
                         </button>
                     </div>
                 </div>

@@ -10,7 +10,7 @@
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title">
-                        <i class="fas fa-home"></i>
+                        <i class="bi bi-house-fill"></i>
                         Bienvenido a la Plataforma de Olimpiadas de Matemáticas
                     </h2>
                 </div>
@@ -21,46 +21,46 @@
                             
                             {% if role == 'superadmin' %}
                                 <div class="alert alert-success">
-                                    <i class="fas fa-crown"></i>
+                                    <i class="bi bi-crown"></i>
                                     <strong>Super Administrador:</strong> Tienes acceso completo a todas las funcionalidades del sistema.
                                 </div>
                                 <ul class="list-group list-group-flush">
-                                    <li class="list-group-item"><i class="fas fa-shield-check"></i> Gestionar Permisos de Admins</li>
-                                    <li class="list-group-item"><i class="fas fa-users-cog"></i> Gestionar Administradores</li>
-                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
-                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                    <li class="list-group-item"><i class="bi bi-shield-check"></i> Gestionar Permisos de Admins</li>
+                                    <li class="list-group-item"><i class="bi bi-people-fill"></i> Gestionar Administradores</li>
+                                    <li class="list-group-item"><i class="bi bi-people-fill"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="bi bi-clipboard-check"></i> Gestionar Evaluaciones</li>
                                 </ul>
                             {% elif role == 'admin' and has_full_access %}
                                 <div class="alert alert-info">
-                                    <i class="fas fa-user-shield"></i>
+                                    <i class="bi bi-shield-check"></i>
                                     <strong>Administrador con Acceso Total:</strong> Puedes gestionar administradores, participantes y evaluaciones.
                                 </div>
                                 <ul class="list-group list-group-flush">
-                                    <li class="list-group-item"><i class="fas fa-users-cog"></i> Gestionar Administradores</li>
-                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
-                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                    <li class="list-group-item"><i class="bi bi-people-fill"></i> Gestionar Administradores</li>
+                                    <li class="list-group-item"><i class="bi bi-people-fill"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="bi bi-clipboard-check"></i> Gestionar Evaluaciones</li>
                                 </ul>
                             {% elif role == 'admin' %}
                                 <div class="alert alert-warning">
-                                    <i class="fas fa-user"></i>
+                                    <i class="bi bi-person-fill"></i>
                                     <strong>Administrador:</strong> Puedes gestionar participantes y evaluaciones.
                                 </div>
                                 <ul class="list-group list-group-flush">
-                                    <li class="list-group-item"><i class="fas fa-user-friends"></i> Gestionar Participantes</li>
-                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Gestionar Evaluaciones</li>
+                                    <li class="list-group-item"><i class="bi bi-people-fill"></i> Gestionar Participantes</li>
+                                    <li class="list-group-item"><i class="bi bi-clipboard-check"></i> Gestionar Evaluaciones</li>
                                 </ul>
                             {% elif role == 'participant' %}
                                 <div class="alert alert-primary">
-                                    <i class="fas fa-user-graduate"></i>
+                                    <i class="bi bi-person-fill"></i>
                                     <strong>Participante:</strong> Consulta y realiza tus evaluaciones disponibles.
                                 </div>
                                 <ul class="list-group list-group-flush">
-                                    <li class="list-group-item"><i class="fas fa-clipboard-check"></i> Ver Evaluaciones Disponibles</li>
-                                    <li class="list-group-item"><i class="fas fa-chart-bar"></i> Ver Resultados</li>
+                                    <li class="list-group-item"><i class="bi bi-clipboard-check"></i> Ver Evaluaciones Disponibles</li>
+                                    <li class="list-group-item"><i class="bi bi-chart-bar"></i> Ver Resultados</li>
                                 </ul>
                             {% else %}
                                 <div class="alert alert-danger">
-                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <i class="bi bi-exclamation-triangle"></i>
                                     <strong>Sin Permisos:</strong> No tienes permisos asignados. Contacta al administrador.
                                 </div>
                             {% endif %}
@@ -70,7 +70,7 @@
                             <div class="card bg-light">
                                 <div class="card-header">
                                     <h5 class="card-title mb-0">
-                                        <i class="fas fa-info-circle"></i>
+                                        <i class="bi bi-info-circle"></i>
                                         Información de Usuario
                                     </h5>
                                 </div>
