@@ -389,7 +389,7 @@ def manage_participants(request):
         
         # Crear el participante
         participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
-        send_credentials_email(NombresCompletos, cedula, password, email, rol='Participante')
+        #send_credentials_email(NombresCompletos, cedula, password, email, rol='Participante')
         return redirect('quizzes:manage_participants')
 
     # Editar participante
@@ -1597,8 +1597,6 @@ def evaluacion_results(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Por ahora, esta vista mostrará información básica
-    # En el futuro se puede expandir para mostrar resultados reales de participantes
     context = {
         'evaluacion': evaluacion,
         'total_preguntas': evaluacion.preguntas.count(),

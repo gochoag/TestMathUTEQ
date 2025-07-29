@@ -55,6 +55,7 @@
 .evaluacion-card {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     border: none;
+    min-height: 450px; /* Altura mínima para consistencia */
 }
 
 .evaluacion-card:hover {
@@ -75,7 +76,11 @@
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 576px) {
+    .evaluacion-card {
+        min-height: 400px;
+    }
+    
     .etapa-badge {
         width: 50px;
         height: 50px;
@@ -93,6 +98,23 @@
         width: 35px;
         height: 35px;
     }
+}
+
+@media (min-width: 1200px) {
+    .evaluacion-card {
+        min-height: 500px;
+    }
+}
+
+/* Grid layout improvements */
+.row {
+    margin-left: -10px;
+    margin-right: -10px;
+}
+
+.col-sm-6, .col-md-4, .col-lg-3, .col-xl-2 {
+    padding-left: 10px;
+    padding-right: 10px;
 }
 </style>
 {% endblock %}
@@ -149,7 +171,7 @@
                     {% with evaluaciones_etapa1=evaluaciones|dictsort:"etapa" %}
                         {% for evaluacion in evaluaciones_etapa1 %}
                             {% if evaluacion.etapa == 1 %}
-                                <div class="col-md-6 col-lg-4 mb-4">
+                                <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2 mb-4">
                                     <div class="card h-100 shadow-sm evaluacion-card etapa-1-card">
                                         <div class="card-header bg-primary text-white">
                                             <div class="d-flex justify-content-between align-items-center">
@@ -259,7 +281,7 @@
                     
                     {% for evaluacion in evaluaciones %}
                         {% if evaluacion.etapa == 2 %}
-                            <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2 mb-4">
                                 <div class="card h-100 shadow-sm evaluacion-card etapa-2-card">
                                     <div class="card-header bg-warning text-dark">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -376,7 +398,7 @@
                     
                     {% for evaluacion in evaluaciones %}
                         {% if evaluacion.etapa == 3 %}
-                            <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2 mb-4">
                                 <div class="card h-100 shadow-sm evaluacion-card etapa-3-card">
                                     <div class="card-header bg-success text-white">
                                         <div class="d-flex justify-content-between align-items-center">
