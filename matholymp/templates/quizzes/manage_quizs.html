@@ -9,6 +9,91 @@
 .swal-over-modal {
     z-index: 9999 !important;
 }
+
+/* Estilos para las etapas */
+.etapa-badge {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.5rem;
+    color: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.etapa-1 {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.etapa-2 {
+    background: linear-gradient(135deg, #ffc107, #e0a800);
+}
+
+.etapa-3 {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+}
+
+.etapa-number {
+    font-size: 1.8rem;
+    font-weight: 900;
+}
+
+/* Separadores entre etapas */
+.etapa-separator {
+    border: none;
+    height: 3px;
+    background: linear-gradient(to right, #007bff, #ffc107, #28a745);
+    border-radius: 2px;
+    margin: 2rem 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Estilos para las cards de evaluaciones */
+.evaluacion-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: none;
+}
+
+.evaluacion-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+}
+
+.etapa-1-card {
+    border-left: 4px solid #007bff;
+}
+
+.etapa-2-card {
+    border-left: 4px solid #ffc107;
+}
+
+.etapa-3-card {
+    border-left: 4px solid #28a745;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .etapa-badge {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .etapa-number {
+        font-size: 1.5rem;
+    }
+    
+    .connector-line {
+        height: 40px;
+    }
+    
+    .connector-arrow {
+        width: 35px;
+        height: 35px;
+    }
+}
 </style>
 {% endblock %}
 
@@ -47,88 +132,344 @@
                 {% endfor %}
             {% endif %}
 
-            <div class="row">
-                {% if evaluaciones %}
-                    {% for evaluacion in evaluaciones %}
-                        <div class="col-md-6 col-lg-4 mb-4">
-                            <div class="card h-100 shadow-sm">
-                                <div class="card-header bg-primary text-white">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                <i class="bi bi-three-dots-vertical"></i>
-                                            </button>
-                                            <ul class="dropdown-menu">
-                                                <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
-                                                <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
-                                                <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
-                                                <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
-                                            </ul>
+            {% if evaluaciones %}
+            <!-- Etapa 1 - Clasificatoria -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="etapa-badge etapa-1 me-3">
+                            <span class="etapa-number">1</span>
+                        </div>
+                        <div>
+                            <h3 class="mb-1">Etapa 1 - Clasificatoria</h3>
+                            <p class="text-muted mb-0">Todos los participantes rinden esta etapa</p>
+                        </div>
+                    </div>
+                    
+                    {% with evaluaciones_etapa1=evaluaciones|dictsort:"etapa" %}
+                        {% for evaluacion in evaluaciones_etapa1 %}
+                            {% if evaluacion.etapa == 1 %}
+                                <div class="col-md-6 col-lg-4 mb-4">
+                                    <div class="card h-100 shadow-sm evaluacion-card etapa-1-card">
+                                        <div class="card-header bg-primary text-white">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
+                                                    <small class="text-light">Etapa 1 - Clasificatoria</small>
+                                                </div>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-calendar-event me-1"></i>
+                                                    <strong>Ventana de acceso:</strong>
+                                                </small>
+                                                <p class="mb-1">
+                                                    <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
+                                                    <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
+                                                </p>
+                                            </div>
+                                            <div class="mb-3">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-clock me-1"></i>
+                                                    <strong>Tiempo de evaluación:</strong>
+                                                </small>
+                                                <p class="mb-1">{{ evaluacion.duration_minutes }} minutos</p>
+                                            </div>
+                                            <div class="mb-3">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-question-circle me-1"></i>
+                                                    <strong>Preguntas:</strong>
+                                                </small>
+                                                <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
+                                                <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                                {% if evaluacion.preguntas.count == 0 %}
+                                                    <div class="mt-2">
+                                                        <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
+                                                            <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
+                                                        </a>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="mb-3">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-people me-1"></i>
+                                                    <strong>Estado:</strong>
+                                                </small>
+                                                {% if evaluacion.get_status == 'pending' %}
+                                                    <span class="badge bg-warning">Pendiente</span>
+                                                {% elif evaluacion.get_status == 'active' %}
+                                                    <span class="badge bg-success">Disponible</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Finalizada</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="card-footer bg-light">
+                                            <div class="d-flex justify-content-between">
+                                                <button class="btn btn-sm btn-outline-primary" onclick="gestionarParticipantes({{ evaluacion.id }}, '{{ evaluacion.title }}', {{ evaluacion.etapa }})">
+                                                    <i class="bi bi-people me-1"></i>Participantes
+                                                </button>
+                                                <a href="{% url 'quizzes:ranking_evaluacion' pk=evaluacion.id %}" class="btn btn-sm btn-outline-success">
+                                                    <i class="bi bi-trophy me-1"></i>Ranking
+                                                </a>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <small class="text-muted">
-                                            <i class="bi bi-calendar-event me-1"></i>
-                                            <strong>Ventana de acceso:</strong>
-                                        </small>
-                                        <p class="mb-1">
-                                            <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
-                                            <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
-                                        </p>
-                                    </div>
-                                    <div class="mb-3">
-                                        <small class="text-muted">
-                                            <i class="bi bi-clock me-1"></i>
-                                            <strong>Tiempo de evaluación:</strong>
-                                        </small>
-                                        <p class="mb-1">{{ evaluacion.duration_minutes }} minutos</p>
-                                    </div>
-                                    <div class="mb-3">
-                                        <small class="text-muted">
-                                            <i class="bi bi-question-circle me-1"></i>
-                                            <strong>Preguntas:</strong>
-                                        </small>
-                                        <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
-                                        {% if evaluacion.preguntas.count == 0 %}
-                                            <div class="mt-2">
-                                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
-                                                    <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
-                                                </a>
+                            {% endif %}
+                        {% endfor %}
+                    {% endwith %}
+                </div>
+            </div>
+
+            <!-- Separador entre etapas -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <hr class="etapa-separator">
+                </div>
+            </div>
+
+            <!-- Etapa 2 - Semifinal -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="etapa-badge etapa-2 me-3">
+                            <span class="etapa-number">2</span>
+                        </div>
+                        <div>
+                            <h3 class="mb-1">Etapa 2 - Semifinal</h3>
+                            <p class="text-muted mb-0">Solo los 15 mejores de la Etapa 1</p>
+                        </div>
+                    </div>
+                    
+                    {% for evaluacion in evaluaciones %}
+                        {% if evaluacion.etapa == 2 %}
+                            <div class="col-md-6 col-lg-4 mb-4">
+                                <div class="card h-100 shadow-sm evaluacion-card etapa-2-card">
+                                    <div class="card-header bg-warning text-dark">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
+                                                <small class="text-dark">Etapa 2 - Semifinal</small>
                                             </div>
-                                        {% endif %}
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                    <i class="bi bi-three-dots-vertical"></i>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
+                                                    {% if user.is_superuser %}
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
+                                                    {% endif %}
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
+                                                    {% if user.is_superuser %}
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
+                                                    {% endif %}
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="mb-3">
-                                        <small class="text-muted">
-                                            <i class="bi bi-people me-1"></i>
-                                            <strong>Estado:</strong>
-                                        </small>
-                                        {% if evaluacion.get_status == 'pending' %}
-                                            <span class="badge bg-warning">Pendiente</span>
-                                        {% elif evaluacion.get_status == 'active' %}
-                                            <span class="badge bg-success">Disponible</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Finalizada</span>
-                                        {% endif %}
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-calendar-event me-1"></i>
+                                                <strong>Ventana de acceso:</strong>
+                                            </small>
+                                            <p class="mb-1">
+                                                <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
+                                                <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
+                                            </p>
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-clock me-1"></i>
+                                                <strong>Tiempo de evaluación:</strong>
+                                            </small>
+                                            <p class="mb-1">{{ evaluacion.duration_minutes }} minutos</p>
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-question-circle me-1"></i>
+                                                <strong>Preguntas:</strong>
+                                            </small>
+                                            <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
+                                            <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                            {% if evaluacion.preguntas.count == 0 %}
+                                                <div class="mt-2">
+                                                    <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
+                                                        <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
+                                                    </a>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-people me-1"></i>
+                                                <strong>Estado:</strong>
+                                            </small>
+                                            {% if evaluacion.get_status == 'pending' %}
+                                                <span class="badge bg-warning">Pendiente</span>
+                                            {% elif evaluacion.get_status == 'active' %}
+                                                <span class="badge bg-success">Disponible</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Finalizada</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-info-circle me-2"></i>
+                                            <small>Los participantes se seleccionan automáticamente de la Etapa 1</small>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="card-footer bg-light">
-                                    <div class="d-flex justify-content-between">
-                                        <button class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye me-1"></i>Ver Detalles
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-success">
-                                            <i class="bi bi-graph-up me-1"></i>Resultados
-                                        </button>
+                                    <div class="card-footer bg-light">
+                                        <div class="d-flex justify-content-between">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="gestionarParticipantes({{ evaluacion.id }}, '{{ evaluacion.title }}', {{ evaluacion.etapa }})">
+                                                <i class="bi bi-people me-1"></i>Participantes
+                                            </button>
+                                            <a href="{% url 'quizzes:ranking_evaluacion' pk=evaluacion.id %}" class="btn btn-sm btn-outline-success">
+                                                <i class="bi bi-trophy me-1"></i>Ranking
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        {% endif %}
                     {% endfor %}
+                </div>
+            </div>
+
+            <!-- Separador entre etapas -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <hr class="etapa-separator">
+                </div>
+            </div>
+
+            <!-- Etapa 3 - Final -->
+            <div class="row mb-5">
+                <div class="col-12">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="etapa-badge etapa-3 me-3">
+                            <span class="etapa-number">3</span>
+                        </div>
+                        <div>
+                            <h3 class="mb-1">Etapa 3 - Final</h3>
+                            <p class="text-muted mb-0">Solo los 5 mejores de la Etapa 2</p>
+                        </div>
+                    </div>
+                    
+                    {% for evaluacion in evaluaciones %}
+                        {% if evaluacion.etapa == 3 %}
+                            <div class="col-md-6 col-lg-4 mb-4">
+                                <div class="card h-100 shadow-sm evaluacion-card etapa-3-card">
+                                    <div class="card-header bg-success text-white">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
+                                                <small class="text-light">Etapa 3 - Final</small>
+                                            </div>
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                    <i class="bi bi-three-dots-vertical"></i>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
+                                                    {% if user.is_superuser %}
+                                                        <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
+                                                    {% endif %}
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
+                                                    {% if user.is_superuser %}
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
+                                                    {% endif %}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-calendar-event me-1"></i>
+                                                <strong>Ventana de acceso:</strong>
+                                            </small>
+                                            <p class="mb-1">
+                                                <strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}<br>
+                                                <strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}
+                                            </p>
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-clock me-1"></i>
+                                                <strong>Tiempo de evaluación:</strong>
+                                            </small>
+                                            <p class="mb-1">{{ evaluacion.duration_minutes }} minutos</p>
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-question-circle me-1"></i>
+                                                <strong>Preguntas:</strong>
+                                            </small>
+                                            <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
+                                            <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                            {% if evaluacion.preguntas.count == 0 %}
+                                                <div class="mt-2">
+                                                    <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
+                                                        <i class="bi bi-plus-circle me-1"></i> Agregar Preguntas
+                                                    </a>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-people me-1"></i>
+                                                <strong>Estado:</strong>
+                                            </small>
+                                            {% if evaluacion.get_status == 'pending' %}
+                                                <span class="badge bg-warning">Pendiente</span>
+                                            {% elif evaluacion.get_status == 'active' %}
+                                                <span class="badge bg-success">Disponible</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Finalizada</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="alert alert-success">
+                                            <i class="bi bi-trophy me-2"></i>
+                                            <small>Los participantes se seleccionan automáticamente de la Etapa 2</small>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer bg-light">
+                                        <div class="d-flex justify-content-between">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="gestionarParticipantes({{ evaluacion.id }}, '{{ evaluacion.title }}', {{ evaluacion.etapa }})">
+                                                <i class="bi bi-people me-1"></i>Participantes
+                                            </button>
+                                            <a href="{% url 'quizzes:ranking_evaluacion' pk=evaluacion.id %}" class="btn btn-sm btn-outline-success">
+                                                <i class="bi bi-trophy me-1"></i>Ranking
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
                 {% else %}
                     <div class="col-12">
                         <div class="text-center py-5">
@@ -142,6 +483,104 @@
                         </div>
                     </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para gestionar participantes -->
+<div class="modal fade" id="gestionarParticipantesModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title mb-0">
+                    <i class="bi bi-people me-2"></i>
+                    Gestionar Participantes - <span id="evaluacionTitle"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-12">
+                        <!-- Toolbar con pestañas -->
+                        <ul class="nav nav-tabs" id="participantesTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="grupos-tab" data-bs-toggle="tab" data-bs-target="#grupos" type="button" role="tab">
+                                    <i class="bi bi-collection me-1"></i> Grupos
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="individuales-tab" data-bs-toggle="tab" data-bs-target="#individuales" type="button" role="tab">
+                                    <i class="bi bi-person me-1"></i> Participantes Individuales
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content mt-3" id="participantesTabsContent">
+                            <!-- Tab Grupos -->
+                            <div class="tab-pane fade show active" id="grupos" role="tabpanel">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Grupos de Participantes</h6>
+                                        <div>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="seleccionarTodosGrupos()">
+                                                <i class="bi bi-check-all me-1"></i>Seleccionar Todos
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deseleccionarTodosGrupos()">
+                                                <i class="bi bi-x-circle me-1"></i>Deseleccionar Todos
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <input type="text" class="form-control" id="buscarGrupos" placeholder="Buscar grupos...">
+                                        </div>
+                                        <div class="grupos-container" style="max-height: 400px; overflow-y: auto;">
+                                            <div id="gruposList">
+                                                <!-- Se llenará dinámicamente -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tab Participantes Individuales -->
+                            <div class="tab-pane fade" id="individuales" role="tabpanel">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Participantes Individuales</h6>
+                                        <div>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="seleccionarTodosIndividuales()">
+                                                <i class="bi bi-check-all me-1"></i>Seleccionar Todos
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deseleccionarTodosIndividuales()">
+                                                <i class="bi bi-x-circle me-1"></i>Deseleccionar Todos
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <input type="text" class="form-control" id="buscarIndividuales" placeholder="Buscar participantes...">
+                                        </div>
+                                        <div class="individuales-container" style="max-height: 400px; overflow-y: auto;">
+                                            <div id="individualesList">
+                                                <!-- Se llenará dinámicamente -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="guardarParticipantes()">
+                    <i class="bi bi-check-circle me-1"></i> Guardar Cambios
+                </button>
             </div>
         </div>
     </div>
@@ -169,26 +608,41 @@
                     <div class="card-body">
                         <form id="createQuizForm">
                             <div class="row">
-                                <div class="col-md-8">
+                                <div class="col-md-6">
                                     <div class="mb-3">
                                         <label for="quizTitle" class="form-label">
                                             <i class="bi bi-type me-1"></i>
                                             Título de la Evaluación <span class="text-danger">*</span>
                                         </label>
                                         <input type="text" class="form-control" id="quizTitle" 
-                                               placeholder="Ej: Evaluación de Matemáticas - Primer Parcial" required>
+                                               placeholder="Ingrese título de la evaluación" required>
                                         <div class="form-text">Nombre descriptivo de la evaluación</div>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="mb-3">
-                                        <label for="quizDuration" class="form-label">
-                                            <i class="bi bi-clock me-1"></i>
-                                            Duración (minutos) <span class="text-danger">*</span>
+                                        <label for="etapa" class="form-label">
+                                            <i class="bi bi-flag me-1"></i>
+                                            Etapa <span class="text-danger">*</span>
                                         </label>
-                                        <input type="number" class="form-control" id="quizDuration" 
-                                               min="1" max="480" placeholder="30" required>
-                                        <div class="form-text">Máximo 8 horas (480 min)</div>
+                                        <select class="form-select" id="etapa" name="etapa" required>
+                                            <option value="">Seleccionar etapa</option>
+                                            <option value="1">Etapa 1 - Clasificatoria</option>
+                                            <option value="2">Etapa 2 - Semifinal</option>
+                                            <option value="3">Etapa 3 - Final</option>
+                                        </select>
+                                        <div class="form-text">Etapa de la olimpiada</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="mb-3">
+                                        <label for="duration" class="form-label">
+                                            <i class="bi bi-clock me-1"></i>
+                                            Duración (min) <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="number" class="form-control" id="duration" name="duration" 
+                                               min="1" max="480" placeholder="Ingrese duración" value="60" required>
+                                        <div class="form-text">Duración de la evaluación en minutos</div>
                                     </div>
                                 </div>
                             </div>
@@ -196,45 +650,30 @@
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="mb-3">
-                                        <label for="quizStartDate" class="form-label">
-                                            <i class="bi bi-calendar-plus me-1"></i>
-                                            Fecha de Inicio <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="date" class="form-control" id="quizStartDate" required>
+                                        <label for="start_date" class="form-label">Fecha de inicio <span class="text-danger">*</span></label>
+                                        <input type="date" class="form-control" id="start_date" name="start_date" required>
+                                        <div class="form-text">Fecha cuando los estudiantes podrán iniciar una nueva evaluación</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="start_time" class="form-label">Hora de inicio <span class="text-danger">*</span></label>
+                                        <input type="time" class="form-control" id="start_time" name="start_time" required>
+                                        <div class="form-text">Hora cuando se abrirá el acceso para iniciar evaluaciones</div>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="mb-3">
-                                        <label for="quizStartTime" class="form-label">
-                                            <i class="bi bi-clock me-1"></i>
-                                            Hora de Inicio <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="time" class="form-control" id="quizStartTime" required>
+                                        <label for="end_date" class="form-label">Fecha de fin <span class="text-danger">*</span></label>
+                                        <input type="date" class="form-control" id="end_date" name="end_date" required>
+                                        <div class="form-text">Fecha cuando se cerrará el acceso para iniciar nuevas evaluaciones</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="end_time" class="form-label">Hora de fin <span class="text-danger">*</span></label>
+                                        <input type="time" class="form-control" id="end_time" name="end_time" required>
+                                        <div class="form-text">Hora cuando se cerrará el acceso para iniciar nuevas evaluaciones</div>
                                     </div>
                                 </div>
                             </div>
-
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="quizEndDate" class="form-label">
-                                            <i class="bi bi-calendar-x me-1"></i>
-                                            Fecha de Finalización <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="date" class="form-control" id="quizEndDate" required>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="quizEndTime" class="form-label">
-                                            <i class="bi bi-clock me-1"></i>
-                                            Hora de Finalización <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="time" class="form-control" id="quizEndTime" required>
-                                    </div>
-                                </div>
-                            </div>
-
+                            
                             <div class="mb-3">
                                 <label for="quizDescription" class="form-label">
                                     <i class="bi bi-text-paragraph me-1"></i>
@@ -243,6 +682,12 @@
                                 <textarea class="form-control" id="quizDescription" rows="3" 
                                           placeholder="Descripción detallada de la evaluación, temas a evaluar, instrucciones especiales..."></textarea>
                                 <div class="form-text">Información adicional sobre la evaluación</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="preguntas_a_mostrar" class="form-label">Preguntas a mostrar <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="preguntas_a_mostrar" name="preguntas_a_mostrar" min="1" max="100" value="10" required>
+                                <div class="form-text">Número de preguntas que se mostrarán al estudiante (selección aleatoria)</div>
                             </div>
 
                             <hr>
@@ -283,15 +728,17 @@
 window.createQuiz = function() {
     // Obtener datos del formulario
     const title = document.getElementById('quizTitle').value.trim();
-    const duration = document.getElementById('quizDuration').value;
-    const startDate = document.getElementById('quizStartDate').value;
-    const startTime = document.getElementById('quizStartTime').value;
-    const endDate = document.getElementById('quizEndDate').value;
-    const endTime = document.getElementById('quizEndTime').value;
+    const etapa = document.getElementById('etapa').value;
+    const duration = document.getElementById('duration').value;
+    const preguntas_a_mostrar = document.getElementById('preguntas_a_mostrar').value;
+    const startDate = document.getElementById('start_date').value;
+    const startTime = document.getElementById('start_time').value;
+    const endDate = document.getElementById('end_date').value;
+    const endTime = document.getElementById('end_time').value;
     const description = document.getElementById('quizDescription').value.trim();
 
     // Validación básica
-    if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
+    if (!title || !etapa || !duration || !startDate || !startTime || !endDate || !endTime) {
         Swal.fire({
             icon: 'error',
             title: 'Campos requeridos',
@@ -354,7 +801,9 @@ window.createQuiz = function() {
         },
         body: JSON.stringify({
             title: title,
+            etapa: etapa,
             duration: duration,
+            preguntas_a_mostrar: preguntas_a_mostrar,
             start_date: startDate,
             start_time: startTime,
             end_date: endDate,
@@ -432,7 +881,10 @@ function showToast(message, type = 'info') {
         icon: icon,
         title: message,
         timer: 1800,
-        showConfirmButton: false
+        showConfirmButton: false,
+        customClass: {
+            container: 'swal-over-modal'
+        }
     });
 }
 
@@ -444,18 +896,342 @@ document.addEventListener('DOMContentLoaded', function() {
             const today = new Date().toISOString().split('T')[0];
             
             // Establecer fecha actual
-            document.getElementById('quizStartDate').value = today;
-            document.getElementById('quizEndDate').value = today;
+            document.getElementById('start_date').value = today;
+            document.getElementById('end_date').value = today;
             
             // Dejar las horas vacías
-            document.getElementById('quizStartTime').value = '';
-            document.getElementById('quizEndTime').value = '';
+            document.getElementById('start_time').value = '';
+            document.getElementById('end_time').value = '';
             
             // Dejar la duración vacía
-            document.getElementById('quizDuration').value = '';
+            document.getElementById('duration').value = '60'; // Resetear duración
+            document.getElementById('preguntas_a_mostrar').value = '10'; // Resetear preguntas a mostrar
         });
     }
 });
+
+// Variables globales para el modal de participantes
+let currentEvaluacionId = null;
+let currentEtapa = null;
+let isSuperUser = {{ user.is_superuser|yesno:"true,false" }};
+
+// Función para gestionar participantes
+async function gestionarParticipantes(evaluacionId, evaluacionTitle, etapa) {
+    currentEvaluacionId = evaluacionId;
+    currentEtapa = etapa;
+    
+    // Actualizar título del modal
+    document.getElementById('evaluacionTitle').textContent = evaluacionTitle;
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('gestionarParticipantesModal'));
+    modal.show();
+    
+    // Cargar datos según la etapa
+    await cargarDatosParticipantes(evaluacionId, etapa);
+}
+
+// Función para cargar datos de participantes
+async function cargarDatosParticipantes(evaluacionId, etapa) {
+    try {
+        const response = await fetch(`/evaluacion/${evaluacionId}/participantes/`, {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Error al cargar datos');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Renderizar grupos
+            renderizarGrupos(data.grupos, data.grupos_asignados, etapa);
+            
+            // Renderizar participantes individuales
+            renderizarParticipantesIndividuales(data.participantes_individuales, data.participantes_asignados, etapa);
+            
+            // Configurar búsqueda
+            configurarBusqueda();
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'Error al cargar los datos',
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de conexión al cargar los datos',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+    }
+}
+
+// Función para renderizar grupos
+function renderizarGrupos(grupos, gruposAsignados, etapa) {
+    const gruposList = document.getElementById('gruposList');
+    gruposList.innerHTML = '';
+    
+    if (etapa === 1) {
+        // Para etapa 1: mostrar todos los grupos con opción de selección
+        grupos.forEach(grupo => {
+            const isSelected = gruposAsignados.some(g => g.id === grupo.id);
+            const div = document.createElement('div');
+            div.className = 'form-check mb-2';
+            div.innerHTML = `
+                <input class="form-check-input" type="checkbox" value="${grupo.id}" 
+                       id="grupo_${grupo.id}" ${isSelected ? 'checked' : ''}>
+                <label class="form-check-label" for="grupo_${grupo.id}">
+                    <strong>${grupo.name}</strong>
+                    <small class="text-muted">(${grupo.participantes_count} participantes)</small>
+                </label>
+            `;
+            gruposList.appendChild(div);
+        });
+    } else {
+        // Para etapas 2 y 3: mostrar solo información de grupos asignados
+        if (gruposAsignados.length > 0) {
+            gruposAsignados.forEach(grupo => {
+                const div = document.createElement('div');
+                div.className = 'alert alert-info mb-2';
+                div.innerHTML = `
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>${grupo.name}</strong> - ${grupo.participantes_count} participantes
+                `;
+                gruposList.appendChild(div);
+            });
+        } else {
+            const div = document.createElement('div');
+            div.className = 'alert alert-warning mb-2';
+            div.innerHTML = `
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                No hay grupos asignados para esta evaluación
+            `;
+            gruposList.appendChild(div);
+        }
+    }
+}
+
+// Función para renderizar participantes individuales
+function renderizarParticipantesIndividuales(participantes, participantesAsignados, etapa) {
+    const individualesList = document.getElementById('individualesList');
+    individualesList.innerHTML = '';
+    
+    if (etapa === 1) {
+        // Para etapa 1: mostrar participantes individuales con opción de selección
+        participantes.forEach(participante => {
+            const isSelected = participantesAsignados.some(p => p.id === participante.id);
+            const div = document.createElement('div');
+            div.className = 'form-check mb-2';
+            div.innerHTML = `
+                <input class="form-check-input" type="checkbox" value="${participante.id}" 
+                       id="participante_${participante.id}" ${isSelected ? 'checked' : ''}>
+                <label class="form-check-label" for="participante_${participante.id}">
+                    <strong>${participante.NombresCompletos}</strong>
+                    <small class="text-muted">(${participante.cedula})</small>
+                </label>
+            `;
+            individualesList.appendChild(div);
+        });
+    } else {
+        // Para etapas 2 y 3: mostrar participantes automáticos con opción de edición para superusuarios
+        if (participantes.length > 0) {
+            participantes.forEach(participante => {
+                const isSelected = participantesAsignados.some(p => p.id === participante.id);
+                const div = document.createElement('div');
+                
+                if (isSuperUser) {
+                    // Para superusuarios: mostrar con checkbox para poder editar
+                    div.className = 'form-check mb-2';
+                    div.innerHTML = `
+                        <input class="form-check-input" type="checkbox" value="${participante.id}" 
+                               id="participante_${participante.id}" ${isSelected ? 'checked' : ''}>
+                        <label class="form-check-label" for="participante_${participante.id}">
+                            <strong>${participante.NombresCompletos}</strong>
+                            <small class="text-muted">(${participante.cedula})</small>
+                            <span class="badge bg-success ms-2">Automático</span>
+                        </label>
+                    `;
+                } else {
+                    // Para otros usuarios: mostrar solo información
+                    div.className = 'alert alert-success mb-2';
+                    div.innerHTML = `
+                        <i class="bi bi-person-check me-2"></i>
+                        <strong>${participante.NombresCompletos}</strong> - ${participante.cedula}
+                        <span class="badge bg-success ms-2">Automático</span>
+                    `;
+                }
+                individualesList.appendChild(div);
+            });
+        } else {
+            const div = document.createElement('div');
+            div.className = 'alert alert-warning mb-2';
+            div.innerHTML = `
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                No hay participantes automáticos para esta evaluación
+            `;
+            individualesList.appendChild(div);
+        }
+    }
+}
+
+// Función para configurar búsqueda
+function configurarBusqueda() {
+    // Búsqueda en grupos
+    const buscarGrupos = document.getElementById('buscarGrupos');
+    buscarGrupos.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const checkboxes = document.querySelectorAll('#gruposList .form-check');
+        
+        checkboxes.forEach(checkbox => {
+            const label = checkbox.querySelector('label');
+            const text = label.textContent.toLowerCase();
+            checkbox.style.display = text.includes(searchTerm) ? 'block' : 'none';
+        });
+    });
+    
+    // Búsqueda en participantes individuales
+    const buscarIndividuales = document.getElementById('buscarIndividuales');
+    buscarIndividuales.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const checkboxes = document.querySelectorAll('#individualesList .form-check');
+        
+        checkboxes.forEach(checkbox => {
+            const label = checkbox.querySelector('label');
+            const text = label.textContent.toLowerCase();
+            checkbox.style.display = text.includes(searchTerm) ? 'block' : 'none';
+        });
+    });
+}
+
+// Funciones para seleccionar/deseleccionar todos los grupos
+function seleccionarTodosGrupos() {
+    const checkboxes = document.querySelectorAll('#gruposList .form-check-input:not([style*="display: none"])');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+}
+
+function deseleccionarTodosGrupos() {
+    const checkboxes = document.querySelectorAll('#gruposList .form-check-input:not([style*="display: none"])');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+}
+
+// Funciones para seleccionar/deseleccionar todos los participantes individuales
+function seleccionarTodosIndividuales() {
+    const checkboxes = document.querySelectorAll('#individualesList .form-check-input:not([style*="display: none"])');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+}
+
+function deseleccionarTodosIndividuales() {
+    const checkboxes = document.querySelectorAll('#individualesList .form-check-input:not([style*="display: none"])');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+}
+
+// Función para guardar participantes
+async function guardarParticipantes() {
+    // Verificar permisos para etapas avanzadas
+    if (currentEtapa !== 1 && !isSuperUser) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Acceso Restringido',
+            text: 'Solo los superusuarios pueden modificar participantes en etapas avanzadas.',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Obtener grupos seleccionados (solo para etapa 1)
+    let gruposSeleccionados = [];
+    if (currentEtapa === 1) {
+        gruposSeleccionados = Array.from(document.querySelectorAll('#gruposList .form-check-input:checked'))
+            .map(checkbox => checkbox.value);
+    }
+    
+    // Obtener participantes individuales seleccionados
+    const participantesSeleccionados = Array.from(document.querySelectorAll('#individualesList .form-check-input:checked'))
+        .map(checkbox => checkbox.value);
+    
+    // Mostrar loading
+    Swal.fire({
+        title: 'Guardando cambios...',
+        text: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+        customClass: {
+            container: 'swal-over-modal'
+        }
+    });
+    
+    try {
+        const response = await fetch(`/evaluacion/${currentEvaluacionId}/participantes/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                grupos: gruposSeleccionados,
+                participantes_individuales: participantesSeleccionados
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: '¡Guardado exitosamente!',
+                text: 'Los participantes han sido asignados correctamente',
+                timer: 1500,
+                showConfirmButton: false,
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            }).then(() => {
+                // Cerrar modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('gestionarParticipantesModal'));
+                modal.hide();
+                
+                // Recargar página para actualizar información
+                window.location.reload();
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'Error al guardar los cambios',
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de conexión al guardar los cambios',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+    }
+}
 
 // Función para eliminar evaluación
 function deleteEvaluacion(evaluacionId, evaluacionTitle) {
@@ -467,7 +1243,10 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
         confirmButtonColor: '#d33',
         cancelButtonColor: '#3085d6',
         confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            container: 'swal-over-modal'
+        }
     }).then((result) => {
         if (result.isConfirmed) {
             // Mostrar loading
@@ -477,6 +1256,9 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
                 allowOutsideClick: false,
                 didOpen: () => {
                     Swal.showLoading();
+                },
+                customClass: {
+                    container: 'swal-over-modal'
                 }
             });
             
@@ -496,7 +1278,10 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
                         title: '¡Eliminada!',
                         text: 'La evaluación ha sido eliminada exitosamente',
                         timer: 1500,
-                        showConfirmButton: false
+                        showConfirmButton: false,
+                        customClass: {
+                            container: 'swal-over-modal'
+                        }
                     }).then(() => {
                         // Recargar la página para actualizar la lista
                         window.location.reload();
@@ -505,7 +1290,10 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
                     Swal.fire({
                         icon: 'error',
                         title: 'Error',
-                        text: data.error || 'Error al eliminar la evaluación'
+                        text: data.error || 'Error al eliminar la evaluación',
+                        customClass: {
+                            container: 'swal-over-modal'
+                        }
                     });
                 }
             })
@@ -514,7 +1302,10 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: 'Error de conexión al eliminar la evaluación'
+                    text: 'Error de conexión al eliminar la evaluación',
+                    customClass: {
+                        container: 'swal-over-modal'
+                    }
                 });
             });
         }

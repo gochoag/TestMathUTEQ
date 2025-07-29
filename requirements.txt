@@ -1,3 +1,4 @@
 Django>=5.0
 python-decouple
 openpyxl>=3.1.5
+reportlab==4.0.7

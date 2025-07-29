@@ -20,11 +20,11 @@
                                 <svg width="200" height="200" viewBox="0 0 200 200">
                                     <circle cx="100" cy="100" r="80" fill="none" stroke="#e9ecef" stroke-width="12"/>
                                     <circle cx="100" cy="100" r="80" fill="none" stroke="#28a745" stroke-width="12" 
-                                            stroke-dasharray="{{ percentage|floatformat:0|add:"0" }} 100" 
+                                            stroke-dasharray="{{ resultado.get_puntaje_porcentaje|floatformat:0|add:"0" }} 100" 
                                             stroke-dashoffset="25" transform="rotate(-90 100 100)"/>
                                 </svg>
                                 <div class="position-absolute top-50 start-50 translate-middle text-center">
-                                    <h1 class="mb-0 fw-bold text-success">{{ percentage|floatformat:1 }}%</h1>
+                                    <h1 class="mb-0 fw-bold text-success">{{ resultado.get_puntaje_numerico }}</h1>
                                     <small class="text-muted">Puntuación</small>
                                 </div>
                             </div>
@@ -34,13 +34,13 @@
                     <div class="row text-center mb-4">
                         <div class="col-6">
                             <div class="border-end">
-                                <h3 class="text-success mb-1">{{ score }}</h3>
-                                <p class="text-muted mb-0">Correctas</p>
+                                <h3 class="text-success mb-1">{{ resultado.get_puntaje_numerico }}</h3>
+                                <p class="text-muted mb-0">Puntaje</p>
                             </div>
                         </div>
                         <div class="col-6">
-                            <h3 class="text-danger mb-1">{{ total_questions|add:"-"|add:score }}</h3>
-                            <p class="text-muted mb-0">Incorrectas</p>
+                            <h3 class="text-info mb-1">{{ resultado.tiempo_utilizado }} min</h3>
+                            <p class="text-muted mb-0">Tiempo</p>
                         </div>
                     </div>
                     
@@ -52,12 +52,19 @@
                     </div>
                     
                     <div class="mb-4">
-                        {% if percentage >= 80 %}
+                        <div class="alert alert-secondary">
+                            <i class="bi bi-clock me-2"></i>
+                            <strong>Tiempo utilizado:</strong> {{ resultado.get_tiempo_formateado }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        {% if resultado.get_puntaje_porcentaje >= 80 %}
                             <div class="alert alert-success">
                                 <i class="bi bi-emoji-smile me-2"></i>
                                 <strong>¡Excelente trabajo!</strong> Has obtenido una puntuación sobresaliente.
                             </div>
-                        {% elif percentage >= 60 %}
+                        {% elif resultado.get_puntaje_porcentaje >= 60 %}
                             <div class="alert alert-warning">
                                 <i class="bi bi-emoji-neutral me-2"></i>
                                 <strong>Buen trabajo.</strong> Has aprobado la evaluación.

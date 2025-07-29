@@ -505,6 +505,9 @@ async function saveQuestion() {
     // Obtener la opción correcta seleccionada
     const opcionCorrecta = document.querySelector('input[name="opcion_correcta"]:checked');
     
+    // Obtener los puntos
+    const puntos = document.getElementById('puntosPregunta').value;
+    
     // Validaciones
     if (!pregunta.trim()) {
         Swal.fire({
@@ -523,6 +526,19 @@ async function saveQuestion() {
             icon: 'error',
             title: 'Error',
             text: 'Debe seleccionar una opción correcta',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Validar puntos
+    if (!puntos || puntos < 1 || puntos > 10) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Los puntos deben estar entre 1 y 10',
             customClass: {
                 container: 'swal-over-modal'
             }
@@ -549,7 +565,8 @@ async function saveQuestion() {
     const data = {
         pregunta: pregunta,
         opciones: opciones,
-        opcion_correcta: opcionCorrecta.value
+        opcion_correcta: opcionCorrecta.value,
+        puntos: parseInt(puntos)
     };
     
     // Determinar URL según si es edición o creación
@@ -725,6 +742,12 @@ async function editPregunta(preguntaId) {
                 opcionCorrecta.checked = true;
             }
             
+            // Establecer los puntos
+            const puntosInput = document.getElementById('puntosPregunta');
+            if (puntosInput && data.data.puntos) {
+                puntosInput.value = data.data.puntos;
+            }
+            
             // Cambiar título del modal
             const modalTitle = document.querySelector('#modalPregunta .modal-title');
             if (modalTitle) {
@@ -809,6 +832,12 @@ function clearForm() {
         opcionCorrecta.checked = false;
     }
     
+    // Resetear puntos
+    const puntosInput = document.getElementById('puntosPregunta');
+    if (puntosInput) {
+        puntosInput.value = '1';
+    }
+    
     // Resetear variables
     currentPreguntaId = null;
     isEditing = false;
@@ -823,5 +852,54 @@ function clearForm() {
     const btnGuardar = document.getElementById('btnGuardarPregunta');
     if (btnGuardar) {
         btnGuardar.textContent = 'Guardar Pregunta';
+    }
+}
+
+// Función para actualizar puntos de una pregunta
+async function actualizarPuntos(preguntaId, puntos) {
+    try {
+        const response = await fetch(`/evaluacion/pregunta/${preguntaId}/puntos/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ puntos: puntos })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Mostrar notificación de éxito
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Puntos actualizados correctamente',
+                timer: 1500,
+                showConfirmButton: false,
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error,
+                customClass: {
+                    container: 'swal-over-modal'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de red o del servidor',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
     }
 } 

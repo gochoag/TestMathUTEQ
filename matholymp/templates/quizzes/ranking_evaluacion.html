@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ranking - {{ evaluacion.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-trophy me-2"></i>
+                        Ranking de Participantes
+                    </h2>
+                    <p class="text-muted mb-0">{{ evaluacion.title }} - {{ evaluacion.get_etapa_display }}</p>
+                </div>
+                <div>
+                    <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-1"></i> Volver
+                    </a>
+                    <button class="btn btn-primary" onclick="window.print()">
+                        <i class="bi bi-printer me-1"></i> Imprimir
+                    </button>
+                </div>
+            </div>
+
+            <!-- Información de la evaluación -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center">
+                            <i class="bi bi-people display-4"></i>
+                            <h4 class="mt-2">{{ total_participantes }}</h4>
+                            <p class="mb-0">Participantes</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center">
+                            <i class="bi bi-graph-up display-4"></i>
+                            <h4 class="mt-2">{{ promedio_puntaje }}%</h4>
+                            <p class="mb-0">Promedio</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body text-center">
+                            <i class="bi bi-clock display-4"></i>
+                            <h4 class="mt-2">{{ promedio_tiempo|floatformat:0 }}m</h4>
+                            <p class="mb-0">Tiempo Promedio</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body text-center">
+                            <i class="bi bi-flag display-4"></i>
+                            <h4 class="mt-2">{{ evaluacion.etapa }}</h4>
+                            <p class="mb-0">Etapa</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ganadores destacados -->
+            {% if ganadores %}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">
+                                <i class="bi bi-award me-2"></i>
+                                {% if evaluacion.etapa == 1 %}
+                                    Los 15 mejores pasan a la Etapa 2
+                                {% elif evaluacion.etapa == 2 %}
+                                    Los 5 mejores pasan a la Final
+                                {% elif evaluacion.etapa == 3 %}
+                                    Ganadores Finales
+                                {% endif %}
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for resultado in ganadores %}
+                                <div class="col-md-4 mb-3">
+                                    <div class="d-flex align-items-center p-3 border rounded">
+                                        <div class="me-3">
+                                            {% if forloop.counter == 1 %}
+                                                <i class="bi bi-trophy-fill text-warning" style="font-size: 2rem;"></i>
+                                            {% elif forloop.counter == 2 %}
+                                                <i class="bi bi-award-fill text-secondary" style="font-size: 2rem;"></i>
+                                            {% elif forloop.counter == 3 %}
+                                                <i class="bi bi-award-fill text-warning" style="font-size: 2rem;"></i>
+                                            {% else %}
+                                                <span class="badge bg-primary" style="font-size: 1.2rem;">{{ forloop.counter }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1">{{ resultado.participante.NombresCompletos }}</h6>
+                                            <small class="text-muted">{{ resultado.participante.cedula }}</small>
+                                            <div class="mt-1">
+                                                <span class="badge bg-success">{{ resultado.get_puntaje_numerico }}</span>
+                                                <span class="badge bg-info">{{ resultado.get_tiempo_formateado }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Tabla de ranking completo -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-ol me-2"></i>
+                        Ranking Completo
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if resultados %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Posición</th>
+                                    <th>Participante</th>
+                                    <th>Cédula</th>
+                                    <th>Puntaje</th>
+                                    <th>Tiempo</th>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for resultado in resultados %}
+                                <tr {% if forloop.counter <= 3 %}class="table-warning"{% endif %}>
+                                    <td>
+                                        {% if forloop.counter == 1 %}
+                                            <i class="bi bi-trophy-fill text-warning"></i>
+                                        {% elif forloop.counter == 2 %}
+                                            <i class="bi bi-award-fill text-secondary"></i>
+                                        {% elif forloop.counter == 3 %}
+                                            <i class="bi bi-award-fill text-warning"></i>
+                                        {% endif %}
+                                        <strong>{{ forloop.counter }}</strong>
+                                    </td>
+                                    <td>
+                                        <strong>{{ resultado.participante.NombresCompletos }}</strong>
+                                    </td>
+                                    <td>{{ resultado.participante.cedula }}</td>
+                                    <td>
+                                        <span class="badge bg-success fs-6">{{ resultado.get_puntaje_numerico }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ resultado.get_tiempo_formateado }}</span>
+                                    </td>
+                                    <td>{{ resultado.fecha_fin|date:"d/m/Y H:i" }}</td>
+                                    <td>
+                                        {% if forloop.counter <= 3 %}
+                                            <span class="badge bg-warning">Ganador</span>
+                                        {% elif evaluacion.etapa == 1 and forloop.counter <= 15 %}
+                                            <span class="badge bg-success">Clasificado</span>
+                                        {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
+                                            <span class="badge bg-success">Finalista</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Participante</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-inbox display-1 text-muted"></i>
+                        <h4 class="mt-3 text-muted">No hay resultados aún</h4>
+                        <p class="text-muted">Los resultados aparecerán aquí cuando los participantes completen la evaluación</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        .btn, .d-print-none {
+            display: none !important;
+        }
+        
+        .card {
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+        }
+        
+        .table {
+            border: 1px solid #000 !important;
+        }
+        
+        .table th, .table td {
+            border: 1px solid #000 !important;
+        }
+    }
+</style>
+{% endblock %} 

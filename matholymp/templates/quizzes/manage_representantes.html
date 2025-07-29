@@ -35,6 +35,7 @@
                                     <th>Dirección Colegio</th>
                                     <th>Nombre Representante</th>
                                     <th>Teléfono Rep.</th>
+                                    
                                     <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
@@ -45,10 +46,11 @@
                                     <td>{{ r.DireccionColegio }}</td>
                                     <td>{{ r.NombresRepresentante }}</td>
                                     <td>{{ r.TelefonoRepresentante }}</td>
-                                    <td class="text-center">
+                                    
+                                    <td class="text-center">  
                                         <button class="btn btn-info btn-sm"  data-bs-toggle="modal" data-bs-target="#viewRepresentanteModal{{ r.id }}">
                                             <i class="bi bi-eye"></i> Ver más
-                                        </button>
+                                        </button>  
                                         <button class="btn btn-primary btn-sm"  data-bs-toggle="modal" data-bs-target="#editRepresentanteModal{{ r.id }}">
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>

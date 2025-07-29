@@ -65,7 +65,33 @@
                                             </label>
                                             <input type="number" class="form-control" id="evaluacionDuration" 
                                                    value="{{ evaluacion.duration_minutes }}" min="1" max="480" required>
-                                            <div class="form-text">Máximo 8 horas (480 min)</div>
+                                            <div class="form-text">Tiempo que tendrá cada estudiante para completar su evaluación (independiente de la ventana de acceso)</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="evaluacionPreguntasMostrar" class="form-label">
+                                                <i class="bi bi-question-circle me-1"></i>
+                                                Preguntas a mostrar <span class="text-danger">*</span>
+                                            </label>
+                                            <input type="number" class="form-control" id="evaluacionPreguntasMostrar" 
+                                                   value="{{ evaluacion.preguntas_a_mostrar }}" min="1" max="100" required>
+                                            <div class="form-text">Número de preguntas que se mostrarán al estudiante (selección aleatoria)</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">
+                                                <i class="bi bi-info-circle me-1"></i>
+                                                Total de preguntas registradas
+                                            </label>
+                                            <div class="form-control-plaintext">
+                                                <span class="badge bg-primary fs-6">{{ evaluacion.preguntas.count }}</span>
+                                            </div>
+                                            <div class="form-text">Preguntas disponibles en el banco</div>
                                         </div>
                                     </div>
                                 </div>
@@ -79,6 +105,7 @@
                                             </label>
                                             <input type="date" class="form-control" id="evaluacionStartDate" 
                                                    value="{{ evaluacion.start_time|date:'Y-m-d' }}" required>
+                                            <div class="form-text">Fecha cuando los estudiantes podrán iniciar una nueva evaluación</div>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -89,6 +116,7 @@
                                             </label>
                                             <input type="time" class="form-control" id="evaluacionStartTime" 
                                                    value="{{ evaluacion.start_time|date:'H:i' }}" required>
+                                            <div class="form-text">Hora cuando se abrirá el acceso para iniciar evaluaciones</div>
                                         </div>
                                     </div>
                                 </div>
@@ -102,6 +130,7 @@
                                             </label>
                                             <input type="date" class="form-control" id="evaluacionEndDate" 
                                                    value="{{ evaluacion.end_time|date:'Y-m-d' }}" required>
+                                            <div class="form-text">Fecha cuando se cerrará el acceso para iniciar nuevas evaluaciones</div>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -112,6 +141,7 @@
                                             </label>
                                             <input type="time" class="form-control" id="evaluacionEndTime" 
                                                    value="{{ evaluacion.end_time|date:'H:i' }}" required>
+                                            <div class="form-text">Hora cuando se cerrará el acceso para iniciar nuevas evaluaciones</div>
                                         </div>
                                     </div>
                                 </div>
@@ -192,13 +222,14 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     // Obtener datos del formulario
     const title = document.getElementById('evaluacionTitle').value.trim();
     const duration = document.getElementById('evaluacionDuration').value;
+    const preguntasMostrar = document.getElementById('evaluacionPreguntasMostrar').value;
     const startDate = document.getElementById('evaluacionStartDate').value;
     const startTime = document.getElementById('evaluacionStartTime').value;
     const endDate = document.getElementById('evaluacionEndDate').value;
     const endTime = document.getElementById('evaluacionEndTime').value;
     
     // Validación básica
-    if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
+    if (!title || !duration || !preguntasMostrar || !startDate || !startTime || !endDate || !endTime) {
         Swal.fire({
             icon: 'error',
             title: 'Campos requeridos',
@@ -213,6 +244,16 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
             icon: 'error',
             title: 'Duración inválida',
             text: 'La duración debe estar entre 1 y 480 minutos.'
+        });
+        return;
+    }
+
+    // Validar preguntas a mostrar
+    if (preguntasMostrar < 1 || preguntasMostrar > 100) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Número de preguntas inválido',
+            text: 'El número de preguntas a mostrar debe estar entre 1 y 100.'
         });
         return;
     }
@@ -250,6 +291,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
         body: JSON.stringify({
             title: title,
             duration: duration,
+            preguntas_a_mostrar: preguntasMostrar,
             start_date: startDate,
             start_time: startTime,
             end_date: endDate,

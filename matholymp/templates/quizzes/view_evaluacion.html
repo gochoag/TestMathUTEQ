@@ -75,13 +75,35 @@
                                     </h6>
                                     <p><strong>Inicio:</strong> {{ evaluacion.start_time|date:"d/m/Y H:i" }}</p>
                                     <p><strong>Fin:</strong> {{ evaluacion.end_time|date:"d/m/Y H:i" }}</p>
+                                    <small class="text-muted">Período en que los estudiantes pueden iniciar una nueva evaluación</small>
                                 </div>
                                 <div class="col-md-6">
                                     <h6 class="text-muted">
                                         <i class="bi bi-clock me-1"></i>
-                                        Duración
+                                        Tiempo de Evaluación
                                     </h6>
                                     <p class="h6">{{ evaluacion.duration_minutes }} minutos</p>
+                                    <small class="text-muted">Tiempo que tiene cada estudiante para completar su evaluación (independiente de la ventana de acceso)</small>
+                                </div>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">
+                                        <i class="bi bi-question-circle me-1"></i>
+                                        Configuración de Preguntas
+                                    </h6>
+                                    <p><strong>Preguntas a mostrar:</strong> {{ evaluacion.preguntas_a_mostrar }}</p>
+                                    <p><strong>Total registradas:</strong> {{ evaluacion.preguntas.count }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">
+                                        <i class="bi bi-trophy me-1"></i>
+                                        Etapa
+                                    </h6>
+                                    <p class="h6">{{ evaluacion.get_etapa_display }}</p>
                                 </div>
                             </div>
                         </div>

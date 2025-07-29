@@ -21,6 +21,8 @@ from django.http import JsonResponse
 import os
 from django.conf import settings
 from .models import Pregunta, Opcion
+from .models import ResultadoEvaluacion
+from django.db.models import Avg
 
 
 # Función helper para verificar acceso total
@@ -83,40 +85,248 @@ def take_quiz(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Verificar que la evaluación esté disponible usando los nuevos métodos
-    if evaluacion.is_not_started():
-        messages.warning(request, 'Esta evaluación aún no ha comenzado.')
+    # Obtener el participante
+    participante = Participantes.objects.get(user=request.user)
+    
+    # Verificar que el participante esté autorizado para esta evaluación
+    participantes_autorizados = evaluacion.get_participantes_autorizados()
+    if participante not in participantes_autorizados:
+        messages.error(request, 'No estás autorizado para rendir esta evaluación.')
         return redirect('quizzes:quiz')
     
-    if evaluacion.is_finished():
-        messages.warning(request, 'Esta evaluación ya ha finalizado.')
+    # Verificar si ya completó la evaluación
+    resultado_existente = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        participante=participante
+    ).first()
+    
+    if resultado_existente and resultado_existente.completada:
+        messages.warning(request, 'Ya has completado esta evaluación.')
         return redirect('quizzes:quiz')
     
-    if not evaluacion.is_available():
-        messages.warning(request, 'Esta evaluación no está disponible en este momento.')
-        return redirect('quizzes:quiz')
+    # Verificar si hay un intento en progreso
+    continuar_evaluacion = False
+    if resultado_existente and not resultado_existente.completada:
+        # Calcular tiempo transcurrido desde el inicio
+        tiempo_transcurrido = (timezone.now() - resultado_existente.fecha_inicio).total_seconds()
+        tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+        tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
+        
+        # Si aún hay tiempo restante, puede continuar (sin importar la ventana de acceso)
+        if tiempo_restante > 0:
+            continuar_evaluacion = True
+            resultado_existente.tiempo_restante = int(tiempo_restante)
+            resultado_existente.ultima_actividad = timezone.now()
+            resultado_existente.save()
+        else:
+            # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas
+            respuestas_guardadas = resultado_existente.respuestas_guardadas or {}
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            
+            score = 0
+            puntos_obtenidos = 0
+            puntos_totales_respondidas = 0
+            for pregunta in preguntas_mostradas:
+                pregunta_key = f'pregunta_{pregunta.id}'
+                if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
+                    puntos_totales_respondidas += pregunta.puntos
+                    if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
+                        score += 1
+                        puntos_obtenidos += pregunta.puntos
+            
+            # Calcular porcentaje basado en puntos de las preguntas respondidas
+            percentage = (puntos_obtenidos / puntos_totales_respondidas) * 100 if puntos_totales_respondidas > 0 else 0
+            
+            resultado_existente.puntaje = percentage
+            resultado_existente.puntos_obtenidos = puntos_obtenidos
+            resultado_existente.puntos_totales = puntos_totales_respondidas
+            resultado_existente.tiempo_utilizado = evaluacion.duration_minutes
+            resultado_existente.fecha_fin = timezone.now()
+            resultado_existente.completada = True
+            resultado_existente.tiempo_restante = 0
+            resultado_existente.save()
+            
+            messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
+            return redirect('quizzes:quiz')
+    
+    # Si no hay intento en progreso, verificar ventana de acceso solo para nuevos ingresos
+    if not continuar_evaluacion:
+        if evaluacion.is_not_started():
+            messages.warning(request, 'Esta evaluación aún no ha comenzado.')
+            return redirect('quizzes:quiz')
+        
+        if evaluacion.is_finished():
+            messages.warning(request, 'Esta evaluación ya ha finalizado.')
+            return redirect('quizzes:quiz')
+        
+        if not evaluacion.is_available():
+            messages.warning(request, 'Esta evaluación no está disponible en este momento.')
+            return redirect('quizzes:quiz')
     
     if request.method == 'POST':
+        # Procesar envío de evaluación
         score = 0
-        total_questions = evaluacion.preguntas.count()
+        puntos_obtenidos = 0
+        puntos_totales = 0
+        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+        total_questions = len(preguntas_mostradas)
         
-        for pregunta in evaluacion.preguntas.all():
+        respuestas_finales = {}
+        for pregunta in preguntas_mostradas:
             selected = request.POST.get(f'pregunta_{pregunta.id}')
+            respuestas_finales[f'pregunta_{pregunta.id}'] = selected
+            puntos_totales += pregunta.puntos
             if selected and pregunta.opciones.filter(id=selected, is_correct=True).exists():
                 score += 1
+                puntos_obtenidos += pregunta.puntos
         
-        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
+        # Calcular porcentaje basado en puntos totales
+        percentage = (puntos_obtenidos / puntos_totales) * 100 if puntos_totales > 0 else 0
+        
+        # Calcular tiempo utilizado
+        tiempo_utilizado = 0
+        if resultado_existente:
+            tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+            tiempo_restante = int(request.POST.get('tiempo_restante', 0))
+            tiempo_utilizado = tiempo_total - tiempo_restante
+        
+        # Guardar resultado en la base de datos
+        if resultado_existente:
+            resultado_existente.puntaje = percentage
+            resultado_existente.puntos_obtenidos = puntos_obtenidos
+            resultado_existente.puntos_totales = puntos_totales
+            resultado_existente.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
+            resultado_existente.fecha_fin = timezone.now()
+            resultado_existente.completada = True
+            resultado_existente.respuestas_guardadas = respuestas_finales
+            resultado_existente.tiempo_restante = 0
+            resultado_existente.save()
+        else:
+            nuevo_resultado = ResultadoEvaluacion.objects.create(
+                evaluacion=evaluacion,
+                participante=participante,
+                puntaje=percentage,
+                puntos_obtenidos=puntos_obtenidos,
+                puntos_totales=puntos_totales,
+                tiempo_utilizado=tiempo_utilizado // 60,
+                fecha_fin=timezone.now(),
+                completada=True,
+                respuestas_guardadas=respuestas_finales,
+                tiempo_restante=0
+            )
         
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
+            'resultado': resultado_existente if resultado_existente else nuevo_resultado,
             'score': score,
             'total_questions': total_questions,
             'percentage': percentage
         })
     
-    return render(request, 'quizzes/take_quiz.html', {'evaluacion': evaluacion})
+    # Obtener preguntas para este estudiante específico
+    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+    
+    if not preguntas_mostradas:
+        messages.error(request, 'Esta evaluación no tiene preguntas configuradas.')
+        return redirect('quizzes:quiz')
+    
+    # Si no hay intento en progreso, crear uno nuevo
+    if not continuar_evaluacion:
+        tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+        resultado_existente = ResultadoEvaluacion.objects.create(
+            evaluacion=evaluacion,
+            participante=participante,
+            fecha_inicio=timezone.now(),
+            tiempo_restante=tiempo_total
+        )
+    
+    context = {
+        'evaluacion': evaluacion,
+        'preguntas': preguntas_mostradas,
+        'resultado': resultado_existente,
+        'tiempo_total': evaluacion.duration_minutes * 60,  # en segundos
+        'continuar_evaluacion': continuar_evaluacion
+    }
+    
+    return render(request, 'quizzes/take_quiz.html', context)
 
+@csrf_exempt
+@login_required
+def guardar_respuesta_automatica(request, pk):
+    """
+    Vista para guardado automático de respuestas
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'})
+    
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        
+        # Verificar que el participante esté autorizado
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        if participante not in participantes_autorizados:
+            return JsonResponse({'success': False, 'error': 'No autorizado'})
+        
+        # Obtener o crear resultado
+        resultado, created = ResultadoEvaluacion.objects.get_or_create(
+            evaluacion=evaluacion,
+            participante=participante,
+            defaults={
+                'fecha_inicio': timezone.now(),
+                'tiempo_restante': evaluacion.duration_minutes * 60
+            }
+        )
+        
+        # Actualizar respuestas guardadas
+        import json
+        data = json.loads(request.body.decode('utf-8'))
+        respuestas = data.get('respuestas', {})
+        tiempo_restante = data.get('tiempo_restante', evaluacion.duration_minutes * 60)
+        
+        resultado.respuestas_guardadas.update(respuestas)
+        resultado.tiempo_restante = tiempo_restante
+        resultado.ultima_actividad = timezone.now()
+        resultado.save()
+        
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
+@csrf_exempt
+@login_required
+def obtener_progreso_evaluacion(request, pk):
+    """
+    Vista para obtener progreso guardado de una evaluación
+    """
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        
+        resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=False
+        ).first()
+        
+        if resultado:
+            return JsonResponse({
+                'success': True,
+                'respuestas': resultado.respuestas_guardadas,
+                'tiempo_restante': resultado.tiempo_restante,
+                'ultima_actividad': resultado.ultima_actividad.isoformat()
+            })
+        else:
+            return JsonResponse({
+                'success': True,
+                'respuestas': {},
+                'tiempo_restante': evaluacion.duration_minutes * 60,
+                'ultima_actividad': None
+            })
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
 def dashboard(request):
@@ -775,23 +985,79 @@ def student_quizs(request):
     Vista para que los estudiantes vean las evaluaciones disponibles
     """
     # Verificar que sea estudiante
-    if Participantes.objects.filter(user=request.user).exists():
-        # Obtener evaluaciones disponibles usando los nuevos métodos del modelo
-        evaluaciones_disponibles = Evaluacion.objects.filter(
-            start_time__lte=timezone.now(),
-            end_time__gte=timezone.now()
-        ).order_by('start_time')
-        
-        context = {
-            'evaluaciones': evaluaciones_disponibles,
-            'role': 'student',
-            'current_time': timezone.now(),
-            'now': timezone.now()
-        }
-        return render(request, 'quizzes/quiz.html', context)
-    else:
+    if not Participantes.objects.filter(user=request.user).exists():
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
+    
+    participante = Participantes.objects.get(user=request.user)
+    
+    # Obtener todas las evaluaciones
+    todas_evaluaciones = Evaluacion.objects.all().order_by('etapa', 'start_time')
+    
+    # Filtrar evaluaciones autorizadas para este participante y agregar información de estado
+    evaluaciones_autorizadas = []
+    for evaluacion in todas_evaluaciones:
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        if participante in participantes_autorizados:
+            # Verificar si hay un intento en progreso con tiempo restante
+            resultado = evaluacion.resultados.filter(participante=participante).first()
+            puede_continuar = False
+            puede_iniciar = False
+            
+            if resultado and not resultado.completada:
+                # Calcular tiempo transcurrido desde el inicio
+                tiempo_transcurrido = (timezone.now() - resultado.fecha_inicio).total_seconds()
+                tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+                tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
+                
+                # Si aún hay tiempo restante, puede continuar (sin importar la ventana de acceso)
+                if tiempo_restante > 0:
+                    puede_continuar = True
+            elif not resultado:
+                # Si no hay intento previo, verificar ventana de acceso para nuevos ingresos
+                if evaluacion.is_available():
+                    puede_iniciar = True
+            
+            evaluaciones_autorizadas.append({
+                'evaluacion': evaluacion,
+                'resultado': resultado,
+                'puede_continuar': puede_continuar,
+                'puede_iniciar': puede_iniciar
+            })
+    
+    context = {
+        'evaluaciones': evaluaciones_autorizadas,
+        'role': 'student',
+        'current_time': timezone.now(),
+        'now': timezone.now(),
+        'participante': participante
+    }
+    return render(request, 'quizzes/quiz.html', context)
+
+@login_required
+def student_results(request):
+    """
+    Vista para que los estudiantes vean sus resultados
+    """
+    # Verificar que sea estudiante
+    if not Participantes.objects.filter(user=request.user).exists():
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    participante = Participantes.objects.get(user=request.user)
+    
+    # Obtener resultados del participante
+    resultados = ResultadoEvaluacion.objects.filter(
+        participante=participante,
+        completada=True
+    ).select_related('evaluacion').order_by('evaluacion__etapa', '-fecha_fin')
+    
+    context = {
+        'participante': participante,
+        'resultados': resultados,
+        'role': 'student'
+    }
+    return render(request, 'quizzes/student_results.html', context)
 
 @login_required
 def manage_questions(request, eval_id):
@@ -814,11 +1080,13 @@ def create_evaluacion(request):
         import json
         data = json.loads(request.body.decode('utf-8'))
         title = data.get('title')
+        etapa = data.get('etapa')
         start_date = data.get('start_date')
         start_time = data.get('start_time')
         end_date = data.get('end_date')
         end_time = data.get('end_time')
         duration = data.get('duration')
+        preguntas_a_mostrar = data.get('preguntas_a_mostrar', 10)
         description = data.get('description', '')
         
         from datetime import datetime
@@ -829,17 +1097,41 @@ def create_evaluacion(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': 'Formato de fecha/hora inválido.'}, status=400)
         
-        if not title or not duration or not start_date or not start_time or not end_date or not end_time:
+        if not title or not etapa or not duration or not start_date or not start_time or not end_date or not end_time:
             return JsonResponse({'success': False, 'error': 'Faltan campos obligatorios.'}, status=400)
+        
+        # Validar etapa
+        try:
+            etapa = int(etapa)
+            if etapa not in [1, 2, 3]:
+                return JsonResponse({'success': False, 'error': 'Etapa inválida.'}, status=400)
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Etapa debe ser un número.'}, status=400)
+        
+        # Validar preguntas a mostrar
+        try:
+            preguntas_a_mostrar = int(preguntas_a_mostrar)
+            if preguntas_a_mostrar < 1 or preguntas_a_mostrar > 100:
+                return JsonResponse({'success': False, 'error': 'Preguntas a mostrar debe estar entre 1 y 100.'}, status=400)
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'Preguntas a mostrar debe ser un número.'}, status=400)
         
         try:
             evaluacion = Evaluacion.objects.create(
                 title=title,
+                etapa=etapa,
                 start_time=start_dt,
                 end_time=end_dt,
-                duration_minutes=int(duration)
+                duration_minutes=int(duration),
+                preguntas_a_mostrar=preguntas_a_mostrar
             )
-            return JsonResponse({'success': True, 'id': evaluacion.id, 'title': evaluacion.title})
+            return JsonResponse({
+                'success': True, 
+                'id': evaluacion.id, 
+                'title': evaluacion.title,
+                'etapa': evaluacion.etapa,
+                'etapa_display': evaluacion.get_etapa_display()
+            })
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
     return JsonResponse({'success': False, 'error': 'Método no permitido.'}, status=405)
@@ -927,6 +1219,7 @@ def save_question(request, eval_id):
             pregunta_texto = data.get('pregunta', '').strip()
             opciones = data.get('opciones', [])
             opcion_correcta = data.get('opcion_correcta')
+            puntos = data.get('puntos', 1)
             
             # Validaciones
             if not pregunta_texto:
@@ -947,10 +1240,25 @@ def save_question(request, eval_id):
                     'error': 'Debe seleccionar una opción correcta válida'
                 }, status=400)
             
+            # Validar puntos
+            try:
+                puntos = int(puntos)
+                if puntos < 1 or puntos > 10:
+                    return JsonResponse({
+                        'success': False, 
+                        'error': 'Los puntos deben estar entre 1 y 10'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Los puntos deben ser un número válido'
+                }, status=400)
+            
             # Crear la pregunta
             pregunta = Pregunta.objects.create(
                 evaluacion=evaluacion,
-                text=pregunta_texto
+                text=pregunta_texto,
+                puntos=puntos
             )
             
             # Validar que todas las opciones tengan contenido
@@ -1049,7 +1357,8 @@ def get_question_data(request, pk):
                 'data': {
                     'pregunta': pregunta.text,
                     'opciones': [opcion.text for opcion in opciones],
-                    'opcion_correcta': opcion_correcta
+                    'opcion_correcta': opcion_correcta,
+                    'puntos': pregunta.puntos
                 }
             })
             
@@ -1080,6 +1389,7 @@ def update_question(request, pk):
             pregunta_texto = data.get('pregunta', '').strip()
             opciones = data.get('opciones', [])
             opcion_correcta = data.get('opcion_correcta')
+            puntos = data.get('puntos', 1)
             
             if not pregunta_texto:
                 return JsonResponse({
@@ -1093,6 +1403,20 @@ def update_question(request, pk):
                     'error': 'Debe seleccionar una opción correcta'
                 }, status=400)
             
+            # Validar puntos
+            try:
+                puntos = int(puntos)
+                if puntos < 1 or puntos > 10:
+                    return JsonResponse({
+                        'success': False, 
+                        'error': 'Los puntos deben estar entre 1 y 10'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Los puntos deben ser un número válido'
+                }, status=400)
+            
             # Validar que todas las opciones tengan contenido
             for i, opcion_texto in enumerate(opciones):
                 if not opcion_texto.strip():
@@ -1103,6 +1427,7 @@ def update_question(request, pk):
             
             # Actualizar la pregunta
             pregunta.text = pregunta_texto
+            pregunta.puntos = puntos
             pregunta.save()
             
             # Eliminar opciones existentes y crear nuevas
@@ -1185,6 +1510,7 @@ def edit_evaluacion(request, pk):
             end_date = data.get('end_date')
             end_time = data.get('end_time')
             duration = data.get('duration')
+            preguntas_a_mostrar = data.get('preguntas_a_mostrar', 10)
             
             if not all([title, start_date, start_time, end_date, end_time, duration]):
                 return JsonResponse({
@@ -1204,11 +1530,27 @@ def edit_evaluacion(request, pk):
                     'error': 'La fecha de inicio debe ser anterior a la fecha de finalización'
                 }, status=400)
             
+            # Validar preguntas a mostrar
+            try:
+                preguntas_a_mostrar = int(preguntas_a_mostrar)
+                if preguntas_a_mostrar < 1 or preguntas_a_mostrar > 100:
+                    return JsonResponse({
+                        'success': False, 
+                        'error': 'Preguntas a mostrar debe estar entre 1 y 100'
+                    }, status=400)
+            except ValueError:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Preguntas a mostrar debe ser un número'
+                }, status=400)
+            
             # Actualizar evaluación
             evaluacion.title = title
+            evaluacion.etapa = int(data.get('etapa', evaluacion.etapa))
             evaluacion.start_time = start_dt
             evaluacion.end_time = end_dt
             evaluacion.duration_minutes = int(duration)
+            evaluacion.preguntas_a_mostrar = preguntas_a_mostrar
             evaluacion.save()
             
             return JsonResponse({
@@ -1220,6 +1562,7 @@ def edit_evaluacion(request, pk):
                     'start_time': evaluacion.start_time.strftime("%d/%m/%Y %H:%M"),
                     'end_time': evaluacion.end_time.strftime("%d/%m/%Y %H:%M"),
                     'duration_minutes': evaluacion.duration_minutes,
+                    'preguntas_a_mostrar': evaluacion.preguntas_a_mostrar,
                     'status': evaluacion.get_status(),
                     'status_display': evaluacion.get_status_display()
                 }
@@ -1272,29 +1615,393 @@ def delete_evaluacion(request, pk):
     """
     Vista para eliminar una evaluación
     """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos (solo admins pueden eliminar)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
     if request.method == 'POST':
-        evaluacion = get_object_or_404(Evaluacion, pk=pk)
-        
-        # Verificar permisos (solo admins pueden eliminar)
-        if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
-            return JsonResponse({
-                'success': False, 
-                'error': 'No tienes permisos para eliminar evaluaciones'
-            }, status=403)
-        
         try:
-            # Eliminar la evaluación (esto también eliminará preguntas y opciones por CASCADE)
             evaluacion.delete()
-            
             return JsonResponse({
                 'success': True,
                 'message': 'Evaluación eliminada exitosamente'
             })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Error al eliminar la evaluación: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Método no permitido'
+    }, status=405)
+
+@login_required
+def ranking_evaluacion(request, pk):
+    """
+    Vista para mostrar el ranking de una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    # Obtener resultados ordenados por puntaje y tiempo
+    resultados = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        completada=True
+    ).select_related('participante').order_by('-puntos_obtenidos', 'tiempo_utilizado')
+    
+    # Calcular estadísticas
+    total_participantes = resultados.count()
+    promedio_puntaje = resultados.aggregate(Avg('puntaje'))['puntaje__avg'] or 0
+    promedio_tiempo = resultados.aggregate(Avg('tiempo_utilizado'))['tiempo_utilizado__avg'] or 0
+    
+    # Determinar ganadores según la etapa
+    ganadores = []
+    if evaluacion.etapa == 1 and total_participantes >= 15:
+        ganadores = resultados[:15]
+    elif evaluacion.etapa == 2 and total_participantes >= 5:
+        ganadores = resultados[:5]
+    elif evaluacion.etapa == 3 and total_participantes >= 3:
+        ganadores = resultados[:3]
+    
+    context = {
+        'evaluacion': evaluacion,
+        'resultados': resultados,
+        'total_participantes': total_participantes,
+        'promedio_puntaje': round(promedio_puntaje, 2),
+        'promedio_tiempo': round(promedio_tiempo, 2),
+        'ganadores': ganadores
+    }
+    
+    return render(request, 'quizzes/ranking_evaluacion.html', context)
+
+@csrf_exempt
+@login_required
+def gestionar_participantes_evaluacion(request, pk):
+    """
+    Vista para gestionar participantes de una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({
+            'success': False, 
+            'error': 'No tienes permisos para acceder a esta funcionalidad.'
+        }, status=403)
+    
+    if request.method == 'GET':
+        try:
+            # Obtener grupos con conteo de participantes
+            grupos = []
+            for grupo in GrupoParticipantes.objects.all():
+                grupos.append({
+                    'id': grupo.id,
+                    'name': grupo.name,
+                    'participantes_count': grupo.participantes.count()
+                })
+            
+            # Obtener participantes individuales (que no están en ningún grupo)
+            participantes_individuales = []
+            for participante in Participantes.objects.all():
+                if not participante.grupos.exists():
+                    participantes_individuales.append({
+                        'id': participante.id,
+                        'NombresCompletos': participante.NombresCompletos,
+                        'cedula': participante.cedula
+                    })
+            
+            # Para etapas 2 y 3, obtener participantes automáticos
+            if evaluacion.etapa == 2:
+                participantes_automaticos = evaluacion.get_participantes_etapa2()
+                # Agregar participantes automáticos a la lista de participantes individuales
+                for participante in participantes_automaticos:
+                    participantes_individuales.append({
+                        'id': participante.id,
+                        'NombresCompletos': participante.NombresCompletos,
+                        'cedula': participante.cedula
+                    })
+            elif evaluacion.etapa == 3:
+                participantes_automaticos = evaluacion.get_participantes_etapa3()
+                # Agregar participantes automáticos a la lista de participantes individuales
+                for participante in participantes_automaticos:
+                    participantes_individuales.append({
+                        'id': participante.id,
+                        'NombresCompletos': participante.NombresCompletos,
+                        'cedula': participante.cedula
+                    })
+            
+            # Para etapas 2 y 3, si no hay participantes asignados en BD, usar los automáticos
+            if evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.all():
+                if evaluacion.etapa == 2:
+                    participantes_automaticos = evaluacion.get_participantes_etapa2()
+                else:  # etapa 3
+                    participantes_automaticos = evaluacion.get_participantes_etapa3()
+                
+                participantes_asignados = []
+                for participante in participantes_automaticos:
+                    participantes_asignados.append({
+                        'id': participante.id,
+                        'NombresCompletos': participante.NombresCompletos,
+                        'cedula': participante.cedula
+                    })
+            
+            # Obtener grupos y participantes asignados actualmente
+            grupos_asignados = []
+            for grupo in evaluacion.grupos_participantes.all():
+                grupos_asignados.append({
+                    'id': grupo.id,
+                    'name': grupo.name,
+                    'participantes_count': grupo.participantes.count()
+                })
+            
+            participantes_asignados = []
+            for participante in evaluacion.participantes_individuales.all():
+                participantes_asignados.append({
+                    'id': participante.id,
+                    'NombresCompletos': participante.NombresCompletos,
+                    'cedula': participante.cedula
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'grupos': grupos,
+                'participantes_individuales': participantes_individuales,
+                'grupos_asignados': grupos_asignados,
+                'participantes_asignados': participantes_asignados,
+                'etapa': evaluacion.etapa
+            })
             
         except Exception as e:
             return JsonResponse({
+                'success': False,
+                'error': f'Error al cargar datos: {str(e)}'
+            }, status=500)
+    
+    elif request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body.decode('utf-8'))
+            
+            # Verificar permisos para etapas avanzadas
+            if evaluacion.etapa != 1 and not request.user.is_superuser:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Solo los superusuarios pueden modificar participantes en etapas avanzadas.'
+                }, status=403)
+            
+            grupos_ids = data.get('grupos', [])
+            participantes_individuales_ids = data.get('participantes_individuales', [])
+            
+            # Para etapa 1: actualizar grupos y participantes individuales
+            if evaluacion.etapa == 1:
+                # Actualizar grupos asignados
+                evaluacion.grupos_participantes.clear()
+                if grupos_ids:
+                    grupos = GrupoParticipantes.objects.filter(id__in=grupos_ids)
+                    evaluacion.grupos_participantes.add(*grupos)
+                
+                # Actualizar participantes individuales asignados
+                evaluacion.participantes_individuales.clear()
+                if participantes_individuales_ids:
+                    participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
+                    evaluacion.participantes_individuales.add(*participantes)
+            
+            # Para etapas 2 y 3: solo superusuarios pueden modificar participantes automáticos
+            elif evaluacion.etapa in [2, 3] and request.user.is_superuser:
+                # Obtener participantes automáticos según la etapa
+                if evaluacion.etapa == 2:
+                    participantes_automaticos = evaluacion.get_participantes_etapa2()
+                else:  # etapa 3
+                    participantes_automaticos = evaluacion.get_participantes_etapa3()
+                
+                # Limpiar participantes individuales actuales
+                evaluacion.participantes_individuales.clear()
+                
+                # Agregar solo los participantes seleccionados por el superusuario
+                if participantes_individuales_ids:
+                    participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
+                    evaluacion.participantes_individuales.add(*participantes)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Participantes asignados correctamente'
+            })
+            
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Error al guardar datos: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Método no permitido'
+    }, status=405)
+
+@login_required
+def exportar_resultado_pdf(request, pk):
+    """
+    Vista para exportar resultado de evaluación a PDF
+    """
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        
+        # Verificar que el participante tenga resultado para esta evaluación
+        resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=True
+        ).first()
+        
+        if not resultado:
+            messages.error(request, 'No tienes resultados para esta evaluación.')
+            return redirect('quizzes:student_results')
+        
+        # Generar PDF usando reportlab
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from io import BytesIO
+        from django.http import HttpResponse
+        
+        # Crear buffer para PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        story = []
+        
+        # Estilos
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=30,
+            alignment=1  # Centrado
+        )
+        
+        # Título
+        story.append(Paragraph(f"Resultado de Evaluación", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Información de la evaluación
+        story.append(Paragraph(f"<b>Evaluación:</b> {evaluacion.title}", styles['Normal']))
+        story.append(Paragraph(f"<b>Etapa:</b> {evaluacion.get_etapa_display()}", styles['Normal']))
+        story.append(Paragraph(f"<b>Participante:</b> {participante.NombresCompletos}", styles['Normal']))
+        story.append(Paragraph(f"<b>Cédula:</b> {participante.cedula}", styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Resultados
+        story.append(Paragraph("<b>Resultados:</b>", styles['Heading2']))
+        story.append(Spacer(1, 10))
+        
+        # Tabla de resultados
+        data = [
+            ['Métrica', 'Valor'],
+            ['Puntuación', f"{resultado.puntaje}%"],
+            ['Tiempo Utilizado', resultado.get_tiempo_formateado()],
+            ['Fecha de Completado', resultado.fecha_fin.strftime("%d/%m/%Y %H:%M")],
+        ]
+        
+        table = Table(data, colWidths=[2*inch, 3*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(table)
+        story.append(Spacer(1, 20))
+        
+        # Mensaje según puntuación
+        if resultado.puntaje >= 80:
+            mensaje = "¡Excelente trabajo! Has obtenido una puntuación sobresaliente."
+            color = colors.green
+        elif resultado.puntaje >= 60:
+            mensaje = "Buen trabajo. Has aprobado la evaluación."
+            color = colors.orange
+        else:
+            mensaje = "Necesitas mejorar. Te recomendamos repasar el material."
+            color = colors.red
+        
+        story.append(Paragraph(f"<b>Comentario:</b> {mensaje}", styles['Normal']))
+        
+        # Construir PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        # Crear respuesta HTTP
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="resultado_{evaluacion.title}_{participante.cedula}.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        messages.error(request, f'Error generando PDF: {str(e)}')
+        return redirect('quizzes:student_results')
+
+@csrf_exempt
+@login_required
+def actualizar_puntos_pregunta(request, pk):
+    """
+    Vista para actualizar los puntos de una pregunta individual
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            pregunta = get_object_or_404(Pregunta, pk=pk)
+            
+            puntos = data.get('puntos', 1)
+            
+            # Validar puntos
+            try:
+                puntos = int(puntos)
+                if puntos < 1 or puntos > 10:
+                    return JsonResponse({
+                        'success': False, 
+                        'error': 'Los puntos deben estar entre 1 y 10'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Los puntos deben ser un número válido'
+                }, status=400)
+            
+            # Actualizar puntos
+            pregunta.puntos = puntos
+            pregunta.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Puntos actualizados exitosamente',
+                'puntos': puntos
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
                 'success': False, 
-                'error': f'Error al eliminar la evaluación: {str(e)}'
+                'error': 'Datos JSON inválidos'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al actualizar puntos: {str(e)}'
             }, status=500)
     
     return JsonResponse({

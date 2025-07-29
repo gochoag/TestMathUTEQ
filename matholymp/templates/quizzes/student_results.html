@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Mis Resultados{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-trophy me-2"></i>
+                        Mis Resultados
+                    </h2>
+                    <p class="text-muted mb-0">{{ participante.NombresCompletos }}</p>
+                </div>
+                <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left me-1"></i> Volver a Evaluaciones
+                </a>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            {% if resultados %}
+                <div class="row">
+                    {% for resultado in resultados %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header text-center py-3">
+                                    <h5 class="mb-0">{{ resultado.evaluacion.title }}</h5>
+                                    <small class="text-muted">{{ resultado.evaluacion.get_etapa_display }}</small>
+                                </div>
+                                <div class="card-body text-center">
+                                    <div class="mb-3">
+                                        <div class="position-relative d-inline-block">
+                                            <div class="progress-circle" style="width: 120px; height: 120px;">
+                                                <svg width="120" height="120" viewBox="0 0 120 120">
+                                                    <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="8"/>
+                                                    <circle cx="60" cy="60" r="50" fill="none" 
+                                                            stroke="{% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}" 
+                                                            stroke-width="8" 
+                                                            stroke-dasharray="{{ resultado.puntaje|floatformat:0|add:'0' }} 100" 
+                                                            stroke-dashoffset="25" 
+                                                            transform="rotate(-90 60 60)"/>
+                                                </svg>
+                                                <div class="position-absolute top-50 start-50 translate-middle text-center">
+                                                    <h3 class="mb-0 fw-bold">{{ resultado.get_puntaje_numerico }}</h3>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row text-center mb-3">
+                                        <div class="col-6">
+                                            <h6 class="text-success mb-1">{{ resultado.get_puntaje_numerico }}</h6>
+                                            <small class="text-muted">Puntaje</small>
+                                        </div>
+                                        <div class="col-6">
+                                            <h6 class="text-info mb-1">{{ resultado.get_tiempo_formateado }}</h6>
+                                            <small class="text-muted">Tiempo</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar me-1"></i>
+                                            Completada: {{ resultado.fecha_fin|date:"d/m/Y H:i" }}
+                                        </small>
+                                    </div>
+                                    
+                                    {% if resultado.puntaje >= 80 %}
+                                        <div class="alert alert-success py-2">
+                                            <i class="bi bi-emoji-smile me-1"></i>
+                                            <small><strong>¡Excelente!</strong></small>
+                                        </div>
+                                    {% elif resultado.puntaje >= 60 %}
+                                        <div class="alert alert-warning py-2">
+                                            <i class="bi bi-emoji-neutral me-1"></i>
+                                            <small><strong>Buen trabajo</strong></small>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-danger py-2">
+                                            <i class="bi bi-emoji-frown me-1"></i>
+                                            <small><strong>Necesitas mejorar</strong></small>
+                                        </div>
+                                    {% endif %}
+                                    
+                                    <div class="mt-3">
+                                        <a href="{% url 'quizzes:exportar_resultado_pdf' resultado.evaluacion.pk %}" 
+                                           class="btn btn-outline-primary btn-sm w-100">
+                                            <i class="bi bi-file-pdf me-1"></i>
+                                            Exportar PDF
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-clipboard-x display-1 text-muted"></i>
+                    <h4 class="mt-3 text-muted">No tienes resultados aún</h4>
+                    <p class="text-muted">Completa algunas evaluaciones para ver tus resultados aquí</p>
+                    <a href="{% url 'quizzes:quiz' %}" class="btn btn-primary">
+                        <i class="bi bi-play-circle me-2"></i>
+                        Ver Evaluaciones
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.progress-circle {
+    position: relative;
+}
+
+.progress-circle svg {
+    transform: rotate(-90deg);
+}
+</style>
+{% endblock %}

@@ -28,17 +28,19 @@
                 <div class="card-body">
                     <form method="post" id="quizForm">
                         {% csrf_token %}
+                        <input type="hidden" id="tiempo_restante" name="tiempo_restante" value="{{ tiempo_total }}">
+                        
                         <div class="row">
                             <div class="col-lg-8">
                                 <!-- Preguntas -->
-                                {% for pregunta in evaluacion.preguntas.all %}
+                                {% for pregunta in preguntas %}
                                     <div class="question-container mb-4 p-4 border rounded" id="question-{{ forloop.counter }}">
                                         <div class="d-flex justify-content-between align-items-start mb-3">
                                             <h5 class="mb-0">
                                                 <span class="badge bg-primary me-2">{{ forloop.counter }}</span>
                                                 Pregunta {{ forloop.counter }}
                                             </h5>
-                                            <small class="text-muted">Pregunta {{ forloop.counter }} de {{ evaluacion.preguntas.count }}</small>
+                                            <small class="text-muted">Pregunta {{ forloop.counter }} de {{ preguntas|length }}</small>
                                         </div>
                                         
                                         <div class="question-text mb-4">
@@ -54,7 +56,9 @@
                                                            id="opcion_{{ opcion.id }}"
                                                            data-question="{{ forloop.parentloop.counter }}">
                                                     <label class="form-check-label w-100" for="opcion_{{ opcion.id }}">
-                                                        <span class="option-letter me-2">{{ forloop.counter|add:"64"|chr }}.</span>
+                                                        <span class="option-letter me-2">
+                                                            {% if forloop.counter == 1 %}A{% elif forloop.counter == 2 %}B{% elif forloop.counter == 3 %}C{% elif forloop.counter == 4 %}D{% elif forloop.counter == 5 %}E{% elif forloop.counter == 6 %}F{% else %}{{ forloop.counter }}{% endif %}.
+                                                        </span>
                                                         {{ opcion.text }}
                                                     </label>
                                                 </div>
@@ -77,7 +81,7 @@
                                         <div class="mb-3">
                                             <div class="d-flex justify-content-between mb-2">
                                                 <small class="text-muted">Progreso</small>
-                                                <small class="text-muted" id="progressText">0/{{ evaluacion.preguntas.count }}</small>
+                                                <small class="text-muted" id="progressText">0/{{ preguntas|length }}</small>
                                             </div>
                                             <div class="progress">
                                                 <div id="questionProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
@@ -87,7 +91,7 @@
                                         <div class="mb-3">
                                             <h6 class="mb-2">Preguntas</h6>
                                             <div class="row g-2" id="questionNav">
-                                                {% for pregunta in evaluacion.preguntas.all %}
+                                                {% for pregunta in preguntas %}
                                                     <div class="col-4">
                                                         <button type="button" 
                                                                 class="btn btn-outline-secondary btn-sm w-100 question-nav-btn" 
@@ -101,31 +105,23 @@
                                         </div>
                                         
                                         <div class="mb-3">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="legend-item me-3">
-                                                    <span class="badge bg-secondary me-1">1</span>
-                                                    <small>Sin responder</small>
-                                                </div>
+                                            <h6 class="mb-2">Estado</h6>
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <small class="text-muted">Respondidas</small>
+                                                <small class="text-success" id="answeredCount">0</small>
                                             </div>
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="legend-item me-3">
-                                                    <span class="badge bg-primary me-1">1</span>
-                                                    <small>Respondida</small>
-                                                </div>
-                                            </div>
-                                            <div class="d-flex align-items-center">
-                                                <div class="legend-item me-3">
-                                                    <span class="badge bg-warning me-1">1</span>
-                                                    <small>Actual</small>
-                                                </div>
+                                            <div class="d-flex justify-content-between mb-1">
+                                                <small class="text-muted">Sin responder</small>
+                                                <small class="text-warning" id="unansweredCount">{{ preguntas|length }}</small>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="card-footer">
-                                        <button type="submit" class="btn btn-success w-100" id="submitBtn">
-                                            <i class="bi bi-check-circle me-2"></i>
-                                            Finalizar Evaluación
-                                        </button>
+                                        
+                                        <div class="d-grid gap-2">
+                                            <button type="button" class="btn btn-success" onclick="confirmarEnvio()">
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                Finalizar Evaluación
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -138,208 +134,299 @@
 </div>
 
 <!-- Modal de confirmación -->
-<div class="modal fade" id="confirmSubmitModal" tabindex="-1">
+<div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title">
-                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>
-                    Confirmar envío
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Confirmar Envío
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>¿Estás seguro de que quieres finalizar la evaluación?</p>
-                <p class="text-muted">Esta acción no se puede deshacer.</p>
-                <div id="unansweredCount" class="alert alert-warning">
-                    <i class="bi bi-exclamation-circle me-2"></i>
-                    Tienes <span id="unansweredNumber">0</span> preguntas sin responder.
+                <p>¿Estás seguro de que deseas finalizar la evaluación?</p>
+                <div class="alert alert-info">
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Preguntas respondidas:</strong> <span id="modalAnsweredCount">0</span>
+                        </div>
+                        <div class="col-6">
+                            <strong>Sin responder:</strong> <span id="modalUnansweredCount">0</span>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <strong>Tiempo restante:</strong> <span id="modalTimeRemaining">--:--</span>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="submitQuiz()">
+                <button type="button" class="btn btn-warning" onclick="enviarEvaluacion()">
                     <i class="bi bi-check-circle me-2"></i>
-                    Sí, finalizar
+                    Sí, Finalizar
                 </button>
             </div>
         </div>
     </div>
 </div>
-
-<style>
-.question-container {
-    background-color: #f8f9fa;
-    transition: all 0.3s ease;
-}
-
-.question-container:hover {
-    background-color: #e9ecef;
-}
-
-.option-item {
-    transition: all 0.2s ease;
-    cursor: pointer;
-}
-
-.option-item:hover {
-    background-color: #f8f9fa;
-    border-color: #007bff !important;
-}
-
-.form-check-input:checked + .form-check-label {
-    font-weight: 600;
-    color: #007bff;
-}
-
-.option-item:has(.form-check-input:checked) {
-    background-color: #e3f2fd;
-    border-color: #007bff !important;
-}
-
-.question-nav-btn {
-    transition: all 0.2s ease;
-}
-
-.question-nav-btn:hover {
-    transform: scale(1.05);
-}
-
-.sticky-top {
-    z-index: 1020;
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-}
-</style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-let currentQuestion = 1;
-let totalQuestions = {{ evaluacion.preguntas.count }};
-let answeredQuestions = new Set();
-let startTime = new Date();
-let duration = {{ evaluacion.duration_minutes }} * 60; // en segundos
+// Variables globales
+let tiempoRestante = {{ tiempo_total }};
+let timerInterval;
+let guardadoInterval;
 
-// Inicializar
+// Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
-    showQuestion(1);
-    updateProgress();
-    startTimer();
-    
-    // Event listeners para navegación
-    document.querySelectorAll('.question-nav-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const questionNum = parseInt(this.dataset.question);
-            showQuestion(questionNum);
-        });
-    });
-    
-    // Event listeners para opciones
-    document.querySelectorAll('.form-check-input').forEach(input => {
-        input.addEventListener('change', function() {
-            const questionNum = parseInt(this.dataset.question);
-            answeredQuestions.add(questionNum);
-            updateProgress();
-            updateNavigation();
-        });
-    });
-    
-    // Event listener para el formulario
-    document.getElementById('quizForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        showConfirmModal();
-    });
+    inicializarEvaluacion();
+    configurarEventos();
+    iniciarTimer();
+    iniciarGuardadoAutomatico();
+    cargarProgresoGuardado();
 });
 
-function showQuestion(questionNum) {
-    // Ocultar todas las preguntas
+// Función de inicialización
+function inicializarEvaluacion() {
+    actualizarProgreso();
+    actualizarNavegacion();
+}
+
+// Configurar eventos
+function configurarEventos() {
+    // Eventos para respuestas
+    document.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            actualizarProgreso();
+            guardarRespuestaAutomatica();
+        });
+    });
+    
+    // Eventos para navegación
+    document.querySelectorAll('.question-nav-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const questionNum = this.getAttribute('data-question');
+            mostrarPregunta(questionNum);
+        });
+    });
+    
+    // Eventos de página
+    window.addEventListener('beforeunload', function(e) {
+        if (tiempoRestante > 0) {
+            guardarRespuestaAutomatica();
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+}
+
+// Función para iniciar timer
+function iniciarTimer() {
+    timerInterval = setInterval(function() {
+        tiempoRestante--;
+        
+        if (tiempoRestante <= 0) {
+            clearInterval(timerInterval);
+            tiempoRestante = 0;
+            enviarEvaluacionAutomaticamente();
+        }
+        
+        actualizarTimer();
+    }, 1000);
+    
+    actualizarTimer();
+}
+
+// Actualizar display del timer
+function actualizarTimer() {
+    const minutos = Math.floor(tiempoRestante / 60);
+    const segundos = tiempoRestante % 60;
+    const tiempoFormateado = `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
+    
+    document.getElementById('timer').textContent = tiempoFormateado;
+    document.getElementById('tiempo_restante').value = tiempoRestante;
+    
+    // Actualizar barra de progreso
+    const tiempoTotal = {{ tiempo_total }};
+    const porcentaje = (tiempoRestante / tiempoTotal) * 100;
+    const progressBar = document.getElementById('progressBar');
+    
+    progressBar.style.width = porcentaje + '%';
+    
+    // Cambiar color según tiempo restante
+    if (tiempoRestante <= 300) { // 5 minutos
+        progressBar.className = 'progress-bar bg-danger';
+    } else if (tiempoRestante <= 600) { // 10 minutos
+        progressBar.className = 'progress-bar bg-warning';
+    } else {
+        progressBar.className = 'progress-bar bg-success';
+    }
+}
+
+// Función para cargar progreso guardado automáticamente
+function cargarProgresoGuardado() {
+    {% if continuar_evaluacion and resultado.respuestas_guardadas %}
+        // Cargar respuestas guardadas automáticamente
+        const respuestasGuardadas = {{ resultado.respuestas_guardadas|safe }};
+        
+        Object.keys(respuestasGuardadas).forEach(preguntaKey => {
+            const opcionId = respuestasGuardadas[preguntaKey];
+            if (opcionId) {
+                const radio = document.getElementById(`opcion_${opcionId}`);
+                if (radio) {
+                    radio.checked = true;
+                }
+            }
+        });
+        
+        // Actualizar progreso después de cargar las respuestas
+        setTimeout(() => {
+            actualizarProgreso();
+            actualizarNavegacion();
+        }, 100);
+    {% endif %}
+}
+
+// Función para guardado automático
+function iniciarGuardadoAutomatico() {
+    guardadoInterval = setInterval(function() {
+        guardarRespuestaAutomatica();
+    }, 30000); // Guardar cada 30 segundos
+}
+
+// Guardar respuestas automáticamente
+function guardarRespuestaAutomatica() {
+    const respuestas = {};
+    document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+        respuestas[radio.name] = radio.value;
+    });
+    
+    fetch(`{% url 'quizzes:guardar_respuesta_automatica' evaluacion.pk %}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            respuestas: respuestas,
+            tiempo_restante: tiempoRestante
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Progreso guardado automáticamente');
+        }
+    })
+    .catch(error => {
+        console.error('Error guardando progreso:', error);
+    });
+}
+
+// Actualizar progreso
+function actualizarProgreso() {
+    const totalPreguntas = {{ preguntas|length }};
+    const respuestas = document.querySelectorAll('input[type="radio"]:checked');
+    const respondidas = respuestas.length;
+    const sinResponder = totalPreguntas - respondidas;
+    
+    // Actualizar contadores
+    document.getElementById('progressText').textContent = `${respondidas}/${totalPreguntas}`;
+    document.getElementById('answeredCount').textContent = respondidas;
+    document.getElementById('unansweredCount').textContent = sinResponder;
+    
+    // Actualizar barra de progreso
+    const porcentaje = (respondidas / totalPreguntas) * 100;
+    document.getElementById('questionProgress').style.width = porcentaje + '%';
+    
+    // Actualizar navegación
+    actualizarNavegacion();
+}
+
+// Actualizar navegación
+function actualizarNavegacion() {
+    document.querySelectorAll('.question-nav-btn').forEach(btn => {
+        const questionNum = btn.getAttribute('data-question');
+        const pregunta = document.getElementById(`question-${questionNum}`);
+        const respuestas = pregunta.querySelectorAll('input[type="radio"]:checked');
+        
+        if (respuestas.length > 0) {
+            btn.className = 'btn btn-success btn-sm w-100 question-nav-btn';
+        } else {
+            btn.className = 'btn btn-outline-secondary btn-sm w-100 question-nav-btn';
+        }
+    });
+}
+
+// Mostrar pregunta específica
+function mostrarPregunta(numero) {
     document.querySelectorAll('.question-container').forEach(container => {
         container.style.display = 'none';
     });
     
-    // Mostrar la pregunta actual
-    document.getElementById(`question-${questionNum}`).style.display = 'block';
-    
-    // Actualizar navegación
-    currentQuestion = questionNum;
-    updateNavigation();
-}
-
-function updateNavigation() {
-    document.querySelectorAll('.question-nav-btn').forEach(btn => {
-        const questionNum = parseInt(btn.dataset.question);
-        btn.className = 'btn btn-sm w-100 question-nav-btn';
-        
-        if (questionNum === currentQuestion) {
-            btn.classList.add('btn-warning');
-        } else if (answeredQuestions.has(questionNum)) {
-            btn.classList.add('btn-primary');
-        } else {
-            btn.classList.add('btn-outline-secondary');
-        }
-    });
-}
-
-function updateProgress() {
-    const progress = (answeredQuestions.size / totalQuestions) * 100;
-    document.getElementById('questionProgress').style.width = progress + '%';
-    document.getElementById('progressText').textContent = `${answeredQuestions.size}/${totalQuestions}`;
-}
-
-function startTimer() {
-    const timerElement = document.getElementById('timer');
-    const progressBar = document.getElementById('progressBar');
-    
-    const interval = setInterval(function() {
-        const now = new Date();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        const remaining = duration - elapsed;
-        
-        if (remaining <= 0) {
-            clearInterval(interval);
-            timerElement.textContent = '00:00';
-            progressBar.style.width = '0%';
-            progressBar.className = 'progress-bar bg-danger';
-            alert('¡Tiempo agotado! La evaluación se enviará automáticamente.');
-            submitQuiz();
-            return;
-        }
-        
-        const minutes = Math.floor(remaining / 60);
-        const seconds = remaining % 60;
-        timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        
-        const progressPercent = (remaining / duration) * 100;
-        progressBar.style.width = progressPercent + '%';
-        
-        if (remaining <= 300) { // 5 minutos restantes
-            progressBar.className = 'progress-bar bg-danger';
-        } else if (remaining <= 600) { // 10 minutos restantes
-            progressBar.className = 'progress-bar bg-warning';
-        }
-    }, 1000);
-}
-
-function showConfirmModal() {
-    const unanswered = totalQuestions - answeredQuestions.size;
-    document.getElementById('unansweredNumber').textContent = unanswered;
-    
-    if (unanswered > 0) {
-        document.getElementById('unansweredCount').style.display = 'block';
-    } else {
-        document.getElementById('unansweredCount').style.display = 'none';
+    const pregunta = document.getElementById(`question-${numero}`);
+    if (pregunta) {
+        pregunta.style.display = 'block';
+        pregunta.scrollIntoView({ behavior: 'smooth' });
     }
+}
+
+// Confirmar envío
+function confirmarEnvio() {
+    const totalPreguntas = {{ preguntas|length }};
+    const respuestas = document.querySelectorAll('input[type="radio"]:checked');
+    const respondidas = respuestas.length;
+    const sinResponder = totalPreguntas - respondidas;
     
-    const modal = new bootstrap.Modal(document.getElementById('confirmSubmitModal'));
+    const minutos = Math.floor(tiempoRestante / 60);
+    const segundos = tiempoRestante % 60;
+    const tiempoFormateado = `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
+    
+    document.getElementById('modalAnsweredCount').textContent = respondidas;
+    document.getElementById('modalUnansweredCount').textContent = sinResponder;
+    document.getElementById('modalTimeRemaining').textContent = tiempoFormateado;
+    
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     modal.show();
 }
 
-function submitQuiz() {
+// Enviar evaluación
+function enviarEvaluacion() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
+    modal.hide();
+    
     document.getElementById('quizForm').submit();
+}
+
+// Envío automático cuando se acaba el tiempo
+function enviarEvaluacionAutomaticamente() {
+    Swal.fire({
+        icon: 'warning',
+        title: '¡Tiempo Agotado!',
+        text: 'Se ha agotado el tiempo de la evaluación. Se enviará automáticamente.',
+        showConfirmButton: false,
+        timer: 2000
+    }).then(() => {
+        document.getElementById('quizForm').submit();
+    });
+}
+
+// Función para obtener CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
 }
 </script>
 {% endblock %} 

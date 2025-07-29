@@ -26,7 +26,8 @@
 
             <div class="row justify-content-center">
                 {% if evaluaciones %}
-                    {% for evaluacion in evaluaciones %}
+                    {% for evaluacion_data in evaluaciones %}
+                        {% with evaluacion=evaluacion_data.evaluacion resultado=evaluacion_data.resultado puede_continuar=evaluacion_data.puede_continuar puede_iniciar=evaluacion_data.puede_iniciar %}
                         <div class="col-md-6 col-lg-4 mb-4">
                             <div class="card h-100 shadow-sm border-0">
                                 <div class="card-header bg-gradient-primary text-white text-center py-4">
@@ -61,44 +62,117 @@
                                     </div>
 
                                     <div class="mb-3">
-                                        {% if evaluacion.get_status == 'pending' %}
-                                            <div class="alert alert-warning">
-                                                <i class="bi bi-hourglass-split me-2"></i>
-                                                La evaluación aún no ha comenzado
-                                            </div>
-                                        {% elif evaluacion.get_status == 'active' %}
-                                            <div class="alert alert-success">
-                                                <i class="bi bi-check-circle me-2"></i>
-                                                Evaluación disponible
-                                            </div>
+                                        {% if participante %}
+                                            {% if resultado and resultado.completada %}
+                                                <div class="alert alert-success">
+                                                    <i class="bi bi-check-circle me-2"></i>
+                                                    <strong>¡Completada!</strong> Puntuación: {{ resultado.get_puntaje_numerico }}
+                                                </div>
+                                            {% elif puede_continuar %}
+                                                <div class="alert alert-warning">
+                                                    <i class="bi bi-arrow-clockwise me-2"></i>
+                                                    <strong>Evaluación en progreso</strong> - Puedes continuar
+                                                </div>
+                                            {% elif puede_iniciar %}
+                                                <div class="alert alert-primary">
+                                                    <i class="bi bi-play-circle me-2"></i>
+                                                    Evaluación disponible para rendir
+                                                </div>
+                                            {% else %}
+                                                {% if evaluacion.get_status == 'pending' %}
+                                                    <div class="alert alert-warning">
+                                                        <i class="bi bi-hourglass-split me-2"></i>
+                                                        La evaluación aún no ha comenzado
+                                                    </div>
+                                                {% elif evaluacion.get_status == 'finished' %}
+                                                    <div class="alert alert-secondary">
+                                                        <i class="bi bi-x-circle me-2"></i>
+                                                        Ventana de acceso cerrada
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-secondary">
+                                                        <i class="bi bi-x-circle me-2"></i>
+                                                        Evaluación no disponible
+                                                    </div>
+                                                {% endif %}
+                                            {% endif %}
                                         {% else %}
-                                            <div class="alert alert-secondary">
-                                                <i class="bi bi-x-circle me-2"></i>
-                                                Evaluación finalizada
-                                            </div>
+                                            {% if evaluacion.get_status == 'active' %}
+                                                <div class="alert alert-success">
+                                                    <i class="bi bi-check-circle me-2"></i>
+                                                    Evaluación disponible
+                                                </div>
+                                            {% elif evaluacion.get_status == 'pending' %}
+                                                <div class="alert alert-warning">
+                                                    <i class="bi bi-hourglass-split me-2"></i>
+                                                    La evaluación aún no ha comenzado
+                                                </div>
+                                            {% else %}
+                                                <div class="alert alert-secondary">
+                                                    <i class="bi bi-x-circle me-2"></i>
+                                                    Evaluación finalizada
+                                                </div>
+                                            {% endif %}
                                         {% endif %}
                                     </div>
                                 </div>
                                 <div class="card-footer bg-light text-center">
-                                    {% if evaluacion.get_status == 'active' %}
-                                        <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
-                                            <i class="bi bi-play-circle me-2"></i>
-                                            Iniciar Evaluación
-                                        </a>
-                                    {% elif evaluacion.get_status == 'pending' %}
-                                        <button class="btn btn-secondary btn-lg w-100" disabled>
-                                            <i class="bi bi-clock me-2"></i>
-                                            Próximamente
-                                        </button>
+                                    {% if participante %}
+                                        {% if resultado and resultado.completada %}
+                                            <button class="btn btn-success btn-lg w-100" disabled>
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                Ya Completada
+                                            </button>
+                                        {% elif puede_continuar %}
+                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-warning btn-lg w-100">
+                                                <i class="bi bi-arrow-clockwise me-2"></i>
+                                                Continuar Evaluación
+                                            </a>
+                                        {% elif puede_iniciar %}
+                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
+                                                <i class="bi bi-play-circle me-2"></i>
+                                                Iniciar Evaluación
+                                            </a>
+                                        {% else %}
+                                            {% if evaluacion.get_status == 'pending' %}
+                                                <button class="btn btn-secondary btn-lg w-100" disabled>
+                                                    <i class="bi bi-clock me-2"></i>
+                                                    Próximamente
+                                                </button>
+                                            {% elif evaluacion.get_status == 'finished' %}
+                                                <button class="btn btn-outline-secondary btn-lg w-100" disabled>
+                                                    <i class="bi bi-x-circle me-2"></i>
+                                                    Ventana Cerrada
+                                                </button>
+                                            {% else %}
+                                                <button class="btn btn-outline-secondary btn-lg w-100" disabled>
+                                                    <i class="bi bi-x-circle me-2"></i>
+                                                    No Disponible
+                                                </button>
+                                            {% endif %}
+                                        {% endif %}
                                     {% else %}
-                                        <button class="btn btn-outline-secondary btn-lg w-100" disabled>
-                                            <i class="bi bi-x-circle me-2"></i>
-                                            Finalizada
-                                        </button>
+                                        {% if evaluacion.get_status == 'active' %}
+                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
+                                                <i class="bi bi-play-circle me-2"></i>
+                                                Iniciar Evaluación
+                                            </a>
+                                        {% elif evaluacion.get_status == 'pending' %}
+                                            <button class="btn btn-secondary btn-lg w-100" disabled>
+                                                <i class="bi bi-clock me-2"></i>
+                                                Próximamente
+                                            </button>
+                                        {% else %}
+                                            <button class="btn btn-outline-secondary btn-lg w-100" disabled>
+                                                <i class="bi bi-x-circle me-2"></i>
+                                                Finalizada
+                                            </button>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </div>
                         </div>
+                        {% endwith %}
                     {% endfor %}
                 {% else %}
                     <div class="col-12">

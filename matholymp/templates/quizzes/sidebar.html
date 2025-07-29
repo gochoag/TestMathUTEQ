@@ -42,6 +42,13 @@
         <i class="bi bi-clipboard-check"></i> <span class="sidebar-link-text">Evaluaciones</span>
       </a>
     </li>
+    {% if user.participantes %}
+    <li class="nav-item">
+      <a class="nav-link {% if request.resolver_match.url_name == 'student_results' %}active{% endif %}" href="{% url 'quizzes:student_results' %}" onclick="hideSidebarOnMobile()">
+        <i class="bi bi-trophy"></i> <span class="sidebar-link-text">Mis Resultados</span>
+      </a>
+    </li>
+    {% endif %}
   </ul>
   <div class="sidebar-user px-3 position-relative">
     <div class="dropdown w-100">
