@@ -1,6 +1,6 @@
 # Plataforma para Olimpiadas de Matemáticas
 
-Este proyecto es un boceto inicial de una plataforma web construida con Django y Bootstrap para administrar olimpiadas de matemáticas.
+Este proyecto para olimpiadas de matemáticas.
 
 ## Características básicas
 
@@ -8,7 +8,6 @@ Este proyecto es un boceto inicial de una plataforma web construida con Django y
 - Creación de cuestionarios con preguntas y opciones de respuesta.
 - Resolución de cuestionarios en línea.
 
-El proyecto está incompleto y sirve únicamente como punto de partida.
 
 ## Requisitos
 
