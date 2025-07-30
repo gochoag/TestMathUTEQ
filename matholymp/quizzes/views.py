@@ -389,7 +389,6 @@ def manage_participants(request):
         
         # Crear el participante
         participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
-        #send_credentials_email(NombresCompletos, cedula, password, email, rol='Participante')
         return redirect('quizzes:manage_participants')
 
     # Editar participante
@@ -478,7 +477,6 @@ def manage_admins(request):
         password = get_random_string(length=8)
         new_user = User.objects.create_user(username=username, password=password, first_name=first_name, last_name=last_name, email=email)
         admin_profile = AdminProfile.objects.create(user=new_user, created_by=user, password=password)
-        #send_credentials_email(first_name, username, password, email, rol='Administrador')
         return redirect('quizzes:manage_admins')
 
     # Editar admin
@@ -2006,3 +2004,280 @@ def actualizar_puntos_pregunta(request, pk):
         'success': False, 
         'error': 'Método no permitido'
     }, status=405)
+
+@login_required
+def send_participants_email(request, grupo_id):
+    """
+    Envía un correo al representante con la lista de participantes del grupo
+    """
+    if not can_manage_representantes(request.user):
+        messages.error(request, 'No tienes permisos para acceder a esta sección.')
+        return redirect('quizzes:dashboard')
+    
+    try:
+        grupo = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').get(id=grupo_id)
+        
+        if not grupo.representante:
+            messages.error(request, 'Este grupo no tiene un representante asignado.')
+            return redirect('quizzes:manage_grupos')
+        
+        if not grupo.participantes.exists():
+            messages.error(request, 'Este grupo no tiene participantes asignados.')
+            return redirect('quizzes:manage_grupos')
+        
+        # Crear tabla HTML con los datos de los participantes
+        participantes_html = """
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">
+            <thead>
+                <tr style="background-color: #f2f2f2;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Cédula</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Nombres Completos</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Email</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Teléfono</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Edad</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Usuario</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Contraseña</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+        
+        for participante in grupo.participantes.all():
+            # Si no tiene contraseña temporal, generar una nueva
+            if not participante.password_temporal:
+                nueva_password = get_random_string(length=6)
+                participante.password_temporal = nueva_password
+                participante.save()
+                # Actualizar también la contraseña del usuario
+                participante.user.set_password(nueva_password)
+                participante.user.save()
+            else:
+                nueva_password = participante.password_temporal
+            
+            participantes_html += f"""
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.cedula}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.NombresCompletos}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.email}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.phone or 'No registrado'}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.edad or 'No registrado'}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.user.username}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{nueva_password}</td>
+                </tr>
+            """
+        
+        participantes_html += """
+            </tbody>
+        </table>
+        """
+        
+        # Crear el mensaje del correo
+        subject = f'Lista de Participantes - Grupo: {grupo.name}'
+        
+        # Mensaje en texto plano
+        plain_message = f"""
+Estimado/a {grupo.representante.NombresRepresentante},
+
+Adjunto encontrará la lista completa de participantes asignados al grupo "{grupo.name}".
+
+Total de participantes: {grupo.participantes.count()}
+
+IMPORTANTE: Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.
+Los participantes pueden acceder a la plataforma usando su cédula como usuario y la contraseña que aparece en la tabla.
+
+Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.
+
+Saludos cordiales,
+El equipo de Olymp
+        """
+        
+        # Mensaje HTML
+        html_message = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                .header {{ background-color: #f8f9fa; padding: 20px; border-radius: 5px; }}
+                .info {{ background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+                .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>Lista de Participantes - Grupo: {grupo.name}</h2>
+            </div>
+            
+            <p>Estimado/a <strong>{grupo.representante.NombresRepresentante}</strong>,</p>
+            
+            <p>Adjunto encontrará la lista completa de participantes asignados al grupo <strong>"{grupo.name}"</strong>:</p>
+            
+            {participantes_html}
+            
+            <div class="info">
+                <h3>Información importante:</h3>
+                <ul>
+                    <li><strong>Total de participantes:</strong> {grupo.participantes.count()}</li>
+                    <li><strong>IMPORTANTE:</strong> Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.</li>
+                    <li>Los participantes pueden acceder a la plataforma usando su <strong>cédula como usuario</strong> y la <strong>contraseña que aparece en la tabla</strong>.</li>
+                    <li>Estas son las contraseñas que los participantes deben usar para acceder al sistema.</li>
+                </ul>
+            </div>
+            
+            <p>Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.</p>
+            
+            <div class="footer">
+                <p><strong>Saludos cordiales,</strong><br>
+                El equipo de Olymp</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Enviar el correo
+        send_mail(
+            subject,
+            plain_message,
+            settings.EMAIL_HOST_USER,
+            [grupo.representante.CorreoRepresentante],
+            fail_silently=False,
+            html_message=html_message
+        )
+        
+        messages.success(request, f'Correo enviado exitosamente al representante {grupo.representante.NombresRepresentante}.')
+        
+    except GrupoParticipantes.DoesNotExist:
+        messages.error(request, 'El grupo especificado no existe.')
+    except Exception as e:
+        messages.error(request, f'Error al enviar el correo: {str(e)}')
+    
+    return redirect('quizzes:manage_grupos')
+
+@login_required
+def send_credentials_email(request, user_type, user_id):
+    """Enviar correo con credenciales a un participante o administrador"""
+    try:
+        if user_type == 'participante':
+            user_obj = Participantes.objects.get(id=user_id)
+            nombre = user_obj.NombresCompletos
+            email = user_obj.email
+            username = user_obj.user.username
+            
+            # Si no tiene contraseña temporal, generar una nueva
+            if not user_obj.password_temporal:
+                nueva_password = get_random_string(length=6)
+                user_obj.password_temporal = nueva_password
+                user_obj.save()
+                # Actualizar también la contraseña del usuario
+                user_obj.user.set_password(nueva_password)
+                user_obj.user.save()
+            else:
+                nueva_password = user_obj.password_temporal
+            
+            subject = f'Credenciales de Acceso - Sistema Olymp'
+            system_name = 'Sistema Olymp'
+            
+        elif user_type == 'admin':
+            user_obj = AdminProfile.objects.get(id=user_id)
+            nombre = user_obj.user.get_full_name()
+            email = user_obj.user.email
+            username = user_obj.user.username
+            
+            # Si no tiene contraseña, generar una nueva
+            if not user_obj.password:
+                nueva_password = get_random_string(length=8)
+                user_obj.password = nueva_password
+                user_obj.save()
+                # Actualizar también la contraseña del usuario
+                user_obj.user.set_password(nueva_password)
+                user_obj.user.save()
+            else:
+                nueva_password = user_obj.password
+            
+            subject = f'Credenciales de Acceso - Panel de Administración Olymp'
+            system_name = 'Panel de Administración Olymp'
+            
+        else:
+            messages.error(request, 'Tipo de usuario no válido.')
+            return redirect('quizzes:dashboard')
+        
+        # Mensaje en texto plano
+        plain_message = f"""
+Estimado/a {nombre},
+
+Sus credenciales de acceso al {system_name} son las siguientes:
+
+Usuario: {username}
+Contraseña: {nueva_password}
+
+Puede acceder al sistema usando estas credenciales.
+
+Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos.
+
+Saludos cordiales,
+El equipo de Olymp
+        """
+        
+        # Mensaje HTML
+        html_message = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                .header {{ background-color: #f8f9fa; padding: 20px; border-radius: 5px; }}
+                .credentials {{ background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+                .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>Credenciales de Acceso - {system_name}</h2>
+            </div>
+            
+            <p>Estimado/a <strong>{nombre}</strong>,</p>
+            
+            <p>Sus credenciales de acceso al {system_name} son las siguientes:</p>
+            
+            <div class="credentials">
+                <h3>Credenciales de Acceso:</h3>
+                <ul>
+                    <li><strong>Usuario:</strong> {username}</li>
+                    <li><strong>Contraseña:</strong> {nueva_password}</li>
+                </ul>
+            </div>
+            
+            <p>Puede acceder al sistema usando estas credenciales.</p>
+            
+            <p>Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos.</p>
+            
+            <div class="footer">
+                <p><strong>Saludos cordiales,</strong><br>
+                El equipo de Olymp</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Enviar el correo
+        send_mail(
+            subject,
+            plain_message,
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
+            html_message=html_message
+        )
+        
+        # Mensaje de éxito según el tipo de usuario
+        if user_type == 'participante':
+            messages.success(request, f'Correo enviado exitosamente al participante {nombre}.')
+            return redirect('quizzes:manage_participants')
+        else:
+            messages.success(request, f'Correo enviado exitosamente al administrador {nombre}.')
+            return redirect('quizzes:manage_admins')
+        
+    except (Participantes.DoesNotExist, AdminProfile.DoesNotExist):
+        messages.error(request, 'El usuario especificado no existe.')
+        return redirect('quizzes:dashboard')
+    except Exception as e:
+        messages.error(request, f'Error al enviar el correo: {str(e)}')
+        return redirect('quizzes:dashboard')

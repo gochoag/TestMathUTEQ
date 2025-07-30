@@ -55,6 +55,11 @@
                                         <button class="btn btn-danger btn-sm" onclick="confirmDeleteGrupo('{{ grupo.id }}', '{{ grupo.name }}')">
                                             <i class="bi bi-trash3-fill"></i> Eliminar
                                         </button>
+                                        {% if grupo.representante and grupo.participantes.exists %}
+                                        <button class="btn btn-success btn-sm" onclick="confirmSendEmail('{{ grupo.id }}', '{{ grupo.name }}', '{{ grupo.representante.NombresRepresentante }}')" title="Enviar correo al representante">
+                                            <i class="bi bi-envelope"></i> Enviar correo
+                                        </button>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% empty %}
@@ -323,6 +328,22 @@ function confirmDeleteGrupo(id, nombre) {
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = '?delete_id=' + id;
+        }
+    });
+}
+
+function confirmSendEmail(id, nombreGrupo, nombreRepresentante) {
+    Swal.fire({
+        title: '¿Enviar correo?',
+        html: `¿Estás seguro de que quieres enviar un correo al representante <strong>${nombreRepresentante}</strong> con la lista de participantes del grupo <strong>${nombreGrupo}</strong>?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, enviar',
+        cancelButtonText: 'Cancelar',
+        reverseButtons: false
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '{% url "quizzes:send_participants_email" 0 %}'.replace('0', id);
         }
     });
 }

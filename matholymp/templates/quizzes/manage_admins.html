@@ -46,15 +46,17 @@
                                     <td>{{ admin.user.email }}</td>
                                     <td>{{ admin.password }}</td>
                                     <td class="text-center">
+                                        <button class="btn btn-success btn-sm" onclick="confirmSendCredentials('{{ admin.id }}', '{{ admin.user.get_full_name }}')" title="Enviar credenciales por correo">
+                                            <i class="bi bi-envelope"></i> Enviar correo
+                                        </button>
                                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editAdminModal{{ admin.id }}">
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>
-                                    </td>
-                                    <td class="text-center">
                                         <button class="btn btn-danger btn-sm" onclick="confirmDeleteAdmin('{{ admin.id }}', '{{ admin.user.get_full_name }}')">
                                             <i class="bi bi-trash3-fill"></i> Eliminar
                                         </button>
                                     </td>
+                                   
                                 </tr>
                                 {% empty %}
                                 <tr>
@@ -155,4 +157,40 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmDeleteAdmin(id, nombre) {
+    Swal.fire({
+        title: '¿Eliminar administrador?',
+        html: `¿Estás seguro de que quieres eliminar al administrador <strong>${nombre}</strong>?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        reverseButtons: false
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '?delete_id=' + id;
+        }
+    });
+}
+
+function confirmSendCredentials(id, nombre) {
+    Swal.fire({
+        title: '¿Enviar credenciales?',
+        html: `¿Estás seguro de que quieres enviar las credenciales de acceso por correo al administrador <strong>${nombre}</strong>?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, enviar',
+        cancelButtonText: 'Cancelar',
+        reverseButtons: false
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '{% url "quizzes:send_credentials_email" "admin" 0 %}'.replace('0', id);
+        }
+    });
+}
+</script>
 {% endblock %}

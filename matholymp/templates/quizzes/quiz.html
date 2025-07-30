@@ -28,7 +28,7 @@
                 {% if evaluaciones %}
                     {% for evaluacion_data in evaluaciones %}
                         {% with evaluacion=evaluacion_data.evaluacion resultado=evaluacion_data.resultado puede_continuar=evaluacion_data.puede_continuar puede_iniciar=evaluacion_data.puede_iniciar %}
-                        <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2 mb-4">
+                        <div class="col-12 col-md-6 col-lg-4 mb-4">
                             <div class="card h-100 shadow-sm border-0">
                                 <div class="card-header bg-gradient-primary text-white text-center py-4">
                                     <i class="bi bi-clipboard-check display-4 mb-3"></i>
@@ -231,7 +231,7 @@
     margin-right: -10px;
 }
 
-.col-sm-6, .col-md-4, .col-lg-3, .col-xl-2 {
+.col-12, .col-md-6, .col-lg-4 {
     padding-left: 10px;
     padding-right: 10px;
 }

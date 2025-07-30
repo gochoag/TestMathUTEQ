@@ -59,6 +59,7 @@ class Participantes(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=10, blank=True, validators=[validate_phone])
     edad = models.IntegerField(null=True, blank=True)
+    password_temporal = models.CharField(max_length=50, blank=True, help_text='Contraseña temporal para mostrar en correos')
 
     def __str__(self):
         return f"{self.NombresCompletos} ({self.cedula})"
@@ -67,7 +68,15 @@ class Participantes(models.Model):
     def create_participant(cedula, NombresCompletos, email, phone=None, edad=None):
         password = get_random_string(length=6)
         user = User.objects.create_user(username=cedula, password=password, first_name=NombresCompletos, email=email)
-        participante = Participantes.objects.create(user=user, cedula=cedula, NombresCompletos=NombresCompletos, email=email, phone=phone or "", edad=edad)
+        participante = Participantes.objects.create(
+            user=user, 
+            cedula=cedula, 
+            NombresCompletos=NombresCompletos, 
+            email=email, 
+            phone=phone or "", 
+            edad=edad,
+            password_temporal=password  # Guardar la contraseña temporal
+        )
         # Aquí se puede agregar lógica para enviar el correo con la contraseña
         return participante, password
 
