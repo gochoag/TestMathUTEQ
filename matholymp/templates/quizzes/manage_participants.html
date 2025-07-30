@@ -74,6 +74,7 @@
                                     <th>Email</th>
                                     <th>Teléfono</th>
                                     <th>Edad</th>
+                                    <th>Contraseña</th>
                                     <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
@@ -85,6 +86,7 @@
                                     <td>{{ p.email }}</td>
                                     <td>{{ p.phone }}</td>
                                     <td>{{ p.edad }}</td>
+                                    <td>{{ p.password_temporal }}</td>
                                     <td class="text-center">
                                         <button class="btn btn-success btn-sm" onclick="confirmSendCredentials('{{ p.id }}', '{{ p.NombresCompletos }}')" title="Enviar credenciales por correo">
                                             <i class="bi bi-envelope"></i> Enviar correo

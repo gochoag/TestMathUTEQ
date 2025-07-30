@@ -1,0 +1,44 @@
+/* Fixes para SweetAlert2 - Asegurar que aparezca por encima de modales */
+
+/* Forzar z-index alto para SweetAlert2 */
+.swal2-container {
+    z-index: 99999 !important;
+}
+
+.swal2-popup {
+    z-index: 100000 !important;
+}
+
+/* Clases específicas para SweetAlert2 sobre modales */
+.swal2-container-over-modal {
+    z-index: 99999 !important;
+}
+
+.swal2-popup-over-modal {
+    z-index: 100000 !important;
+}
+
+/* Asegurar que esté por encima de cualquier modal de Bootstrap */
+.modal-open .swal2-container {
+    z-index: 99999 !important;
+}
+
+.modal-open .swal2-popup {
+    z-index: 100000 !important;
+}
+
+/* Forzar posición y z-index */
+body .swal2-container {
+    z-index: 99999 !important;
+    position: fixed !important;
+}
+
+body .swal2-popup {
+    z-index: 100000 !important;
+    position: relative !important;
+}
+
+/* Asegurar que el backdrop de SweetAlert2 también esté por encima */
+.swal2-backdrop-show {
+    z-index: 99998 !important;
+} 

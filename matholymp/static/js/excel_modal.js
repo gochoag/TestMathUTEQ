@@ -202,7 +202,11 @@ function saveParticipants() {
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Sí, guardar',
-        cancelButtonText: 'Cancelar'
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            container: 'swal2-container-over-modal',
+            popup: 'swal2-popup-over-modal'
+        }
     }).then((result) => {
         if (result.isConfirmed) {
             const formData = new FormData();
@@ -237,7 +241,11 @@ function saveParticipants() {
                         icon: 'success',
                         title: 'Participantes guardados',
                         html: `Se guardaron <strong>${data.created_count}</strong> participantes exitosamente.` + errorHtml,
-                        confirmButtonText: 'Aceptar'
+                        confirmButtonText: 'Aceptar',
+                        customClass: {
+                            container: 'swal2-container-over-modal',
+                            popup: 'swal2-popup-over-modal'
+                        }
                     }).then(() => {
                         location.reload();
                     });
@@ -246,7 +254,11 @@ function saveParticipants() {
                     Swal.fire({
                         icon: 'error',
                         title: 'Error al guardar',
-                        text: data.error
+                        text: data.error,
+                        customClass: {
+                            container: 'swal2-container-over-modal',
+                            popup: 'swal2-popup-over-modal'
+                        }
                     });
                 }
             })
@@ -255,7 +267,11 @@ function saveParticipants() {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error de red',
-                    text: 'No se pudo guardar los participantes. Por favor intenta de nuevo.'
+                    text: 'No se pudo guardar los participantes. Por favor intenta de nuevo.',
+                    customClass: {
+                        container: 'swal2-container-over-modal',
+                        popup: 'swal2-popup-over-modal'
+                    }
                 });
             });
         }
