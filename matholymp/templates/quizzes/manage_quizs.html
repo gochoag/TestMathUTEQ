@@ -318,12 +318,12 @@
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
-                                                    {% if user.is_superuser %}
+                                                    {% if has_full_access %}
                                                         <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
                                                     {% endif %}
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                    {% if user.is_superuser %}
+                                                    {% if has_full_access %}
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
                                                     {% endif %}
@@ -437,12 +437,12 @@
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
-                                                    {% if user.is_superuser %}
+                                                    {% if has_full_access %}
                                                         <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
                                                     {% endif %}
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                    {% if user.is_superuser %}
+                                                    {% if has_full_access %}
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
                                                     {% endif %}
@@ -596,10 +596,10 @@
                                     <div class="card-header d-flex justify-content-between align-items-center">
                                         <h6 class="mb-0">Participantes Individuales</h6>
                                         <div>
-                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="seleccionarTodosIndividuales()">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" id="btnSeleccionarTodosIndividuales" onclick="seleccionarTodosIndividuales()">
                                                 <i class="bi bi-check-all me-1"></i>Seleccionar Todos
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deseleccionarTodosIndividuales()">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDeseleccionarTodosIndividuales" onclick="deseleccionarTodosIndividuales()">
                                                 <i class="bi bi-x-circle me-1"></i>Deseleccionar Todos
                                             </button>
                                         </div>
@@ -624,7 +624,7 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="bi bi-x-circle me-1"></i> Cancelar
                 </button>
-                <button type="button" class="btn btn-primary" onclick="guardarParticipantes()">
+                <button type="button" class="btn btn-primary" id="btnGuardarParticipantes" onclick="guardarParticipantes()">
                     <i class="bi bi-check-circle me-1"></i> Guardar Cambios
                 </button>
             </div>
@@ -959,7 +959,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Variables globales para el modal de participantes
 let currentEvaluacionId = null;
 let currentEtapa = null;
-let isSuperUser = {{ user.is_superuser|yesno:"true,false" }};
+let isSuperUser = {{ has_full_access|yesno:"true,false" }};
 
 // Función para gestionar participantes
 async function gestionarParticipantes(evaluacionId, evaluacionTitle, etapa) {
@@ -1002,6 +1002,48 @@ async function cargarDatosParticipantes(evaluacionId, etapa) {
             
             // Configurar búsqueda
             configurarBusqueda();
+            
+            // Configurar permisos del botón de guardar para etapas 2 y 3
+            const btnGuardar = document.getElementById('btnGuardarParticipantes');
+            if (etapa !== 1 && !isSuperUser) {
+                btnGuardar.disabled = true;
+                btnGuardar.innerHTML = '<i class="bi bi-lock me-1"></i> Solo Superusuarios';
+                btnGuardar.className = 'btn btn-secondary';
+                btnGuardar.title = 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas';
+            } else {
+                btnGuardar.disabled = false;
+                btnGuardar.innerHTML = '<i class="bi bi-check-circle me-1"></i> Guardar Cambios';
+                btnGuardar.className = 'btn btn-primary';
+                btnGuardar.title = '';
+            }
+            
+            // Configurar permisos de los botones de selección para etapas 2 y 3
+            const btnSeleccionarTodos = document.getElementById('btnSeleccionarTodosIndividuales');
+            const btnDeseleccionarTodos = document.getElementById('btnDeseleccionarTodosIndividuales');
+            
+            if (etapa !== 1 && !isSuperUser) {
+                if (btnSeleccionarTodos) {
+                    btnSeleccionarTodos.disabled = true;
+                    btnSeleccionarTodos.className = 'btn btn-sm btn-outline-secondary disabled';
+                    btnSeleccionarTodos.title = 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas';
+                }
+                if (btnDeseleccionarTodos) {
+                    btnDeseleccionarTodos.disabled = true;
+                    btnDeseleccionarTodos.className = 'btn btn-sm btn-outline-secondary disabled';
+                    btnDeseleccionarTodos.title = 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas';
+                }
+            } else {
+                if (btnSeleccionarTodos) {
+                    btnSeleccionarTodos.disabled = false;
+                    btnSeleccionarTodos.className = 'btn btn-sm btn-outline-primary';
+                    btnSeleccionarTodos.title = '';
+                }
+                if (btnDeseleccionarTodos) {
+                    btnDeseleccionarTodos.disabled = false;
+                    btnDeseleccionarTodos.className = 'btn btn-sm btn-outline-secondary';
+                    btnDeseleccionarTodos.title = '';
+                }
+            }
         } else {
             Swal.fire({
                 icon: 'error',
@@ -1152,12 +1194,17 @@ function configurarBusqueda() {
     const buscarIndividuales = document.getElementById('buscarIndividuales');
     buscarIndividuales.addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase();
-        const checkboxes = document.querySelectorAll('#individualesList .form-check');
+        const items = document.querySelectorAll('#individualesList .form-check, #individualesList .alert');
         
-        checkboxes.forEach(checkbox => {
-            const label = checkbox.querySelector('label');
-            const text = label.textContent.toLowerCase();
-            checkbox.style.display = text.includes(searchTerm) ? 'block' : 'none';
+        items.forEach(item => {
+            let text = '';
+            if (item.classList.contains('form-check')) {
+                const label = item.querySelector('label');
+                text = label ? label.textContent.toLowerCase() : '';
+            } else if (item.classList.contains('alert')) {
+                text = item.textContent.toLowerCase();
+            }
+            item.style.display = text.includes(searchTerm) ? 'block' : 'none';
         });
     });
 }
@@ -1191,7 +1238,7 @@ async function guardarParticipantes() {
         Swal.fire({
             icon: 'warning',
             title: 'Acceso Restringido',
-            text: 'Solo los superusuarios pueden modificar participantes en etapas avanzadas.',
+            text: 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas.',
             customClass: {
                 container: 'swal-over-modal'
             }

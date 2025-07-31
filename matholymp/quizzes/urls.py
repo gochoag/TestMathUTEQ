@@ -44,4 +44,5 @@ urlpatterns = [
     path('procesar-excel-participantes/', views.process_excel_participants, name='process_excel_participants'),
     path('guardar-excel-participantes/', views.save_excel_participants, name='save_excel_participants'),
     path('upload-image/', views.upload_image, name='upload_image'),
+    path('perfil/', views.profile_view, name='profile'),
 ]

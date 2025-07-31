@@ -1,0 +1,157 @@
+/* Correcciones específicas para problemas de alineación de imágenes en CKEditor */
+
+/* Reset de estilos problemáticos para imágenes en spans */
+.pregunta-text span img,
+.opcion-text span img,
+.cke_editable span img {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+    display: inline !important;
+}
+
+/* Corrección para spans que contienen imágenes */
+.pregunta-text span:has(img),
+.opcion-text span:has(img),
+.cke_editable span:has(img) {
+    vertical-align: middle !important;
+    position: static !important;
+    top: auto !important;
+    display: inline !important;
+    line-height: normal !important;
+}
+
+/* Fallback para navegadores que no soportan :has() */
+.pregunta-text span,
+.opcion-text span,
+.cke_editable span {
+    vertical-align: middle !important;
+    position: static !important;
+    top: auto !important;
+    display: inline !important;
+}
+
+/* Corrección específica para imágenes de fórmulas matemáticas */
+.pregunta-text img[src*="formula"],
+.opcion-text img[src*="formula"],
+.cke_editable img[src*="formula"] {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 2px !important;
+    display: inline-block !important;
+}
+
+/* Corrección para cualquier elemento que pueda contener imágenes */
+.pregunta-text * img,
+.opcion-text * img,
+.cke_editable * img {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+}
+
+/* Estilos específicos para imágenes alineadas correctamente */
+.pregunta-text img,
+.opcion-text img,
+.cke_editable img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin: 5px 0;
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+}
+
+/* Corrección para elementos con display inline-block que pueden causar problemas */
+.pregunta-text span,
+.opcion-text span,
+.cke_editable span {
+    display: inline !important;
+    vertical-align: middle !important;
+    position: static !important;
+    top: auto !important;
+}
+
+/* Estilos para asegurar que las imágenes de fórmulas se vean correctamente */
+.pregunta-text img[alt*="formula"],
+.opcion-text img[alt*="formula"],
+.cke_editable img[alt*="formula"] {
+    vertical-align: middle !important;
+    margin: 0 3px !important;
+}
+
+/* Corrección para elementos con position relative o absolute */
+.pregunta-text span[style*="position"],
+.opcion-text span[style*="position"],
+.cke_editable span[style*="position"] {
+    position: static !important;
+    top: auto !important;
+}
+
+/* Corrección para elementos con top definido */
+.pregunta-text span[style*="top"],
+.opcion-text span[style*="top"],
+.cke_editable span[style*="top"] {
+    top: auto !important;
+}
+
+/* Mejoras adicionales para alineación vertical */
+.pregunta-text,
+.opcion-text,
+.cke_editable {
+    line-height: 1.6 !important;
+}
+
+/* Ajuste específico para imágenes pequeñas (fórmulas) */
+.pregunta-text img[height*="20"],
+.pregunta-text img[height*="25"],
+.pregunta-text img[height*="30"],
+.opcion-text img[height*="20"],
+.opcion-text img[height*="25"],
+.opcion-text img[height*="30"],
+.cke_editable img[height*="20"],
+.cke_editable img[height*="25"],
+.cke_editable img[height*="30"] {
+    vertical-align: middle !important;
+    margin: 0 2px !important;
+    padding: 1px 0 !important;
+}
+
+/* Ajuste para imágenes con altura específica */
+.pregunta-text img[style*="height"],
+.opcion-text img[style*="height"],
+.cke_editable img[style*="height"] {
+    vertical-align: middle !important;
+    margin: 0 2px !important;
+}
+
+/* Corrección para elementos padre que pueden afectar la alineación */
+.pregunta-text p,
+.opcion-text p,
+.cke_editable p {
+    line-height: 1.6 !important;
+    margin: 0.5rem 0 !important;
+}
+
+/* Ajuste para elementos div que contienen imágenes */
+.pregunta-text div,
+.opcion-text div,
+.cke_editable div {
+    line-height: 1.6 !important;
+}
+
+/* Media query para dispositivos móviles */
+@media (max-width: 768px) {
+    .pregunta-text img,
+    .opcion-text img,
+    .cke_editable img {
+        max-width: 100%;
+        height: auto;
+        margin: 3px 0;
+    }
+} 

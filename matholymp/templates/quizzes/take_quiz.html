@@ -48,6 +48,7 @@
                                         </div>
                                         
                                         <div class="options-container">
+                                            <p class="text-muted mb-3"><strong>Selecciona una alternativa:</strong></p>
                                             {% for opcion in pregunta.opciones.all %}
                                                 <div class="form-check option-item mb-3 p-3 border rounded">
                                                     <input class="form-check-input" type="radio" 
@@ -56,10 +57,7 @@
                                                            id="opcion_{{ opcion.id }}"
                                                            data-question="{{ forloop.parentloop.counter }}">
                                                     <label class="form-check-label w-100" for="opcion_{{ opcion.id }}">
-                                                        <span class="option-letter me-2">
-                                                            {% if forloop.counter == 1 %}A{% elif forloop.counter == 2 %}B{% elif forloop.counter == 3 %}C{% elif forloop.counter == 4 %}D{% elif forloop.counter == 5 %}E{% elif forloop.counter == 6 %}F{% else %}{{ forloop.counter }}{% endif %}.
-                                                        </span>
-                                                        {{ opcion.text }}
+                                                        {{ opcion.text|safe }}
                                                     </label>
                                                 </div>
                                             {% endfor %}
@@ -172,6 +170,53 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+/* Alinear imágenes con el texto en los enunciados */
+.question-text img {
+    vertical-align: middle;
+    display: inline-block;
+}
+
+.question-text span img {
+    vertical-align: baseline;
+}
+
+/* Asegurar que las imágenes dentro de span se alineen correctamente */
+.question-text span {
+    display: inline;
+    vertical-align: baseline;
+}
+
+/* Ocultar sidebar durante la evaluación */
+body.evaluacion-activa .sidebar {
+    display: none !important;
+}
+
+body.evaluacion-activa #main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 1rem !important;
+}
+
+body.evaluacion-activa .btn-sidebar-toggle {
+    display: none !important;
+}
+
+/* Asegurar que el contenido ocupe toda la pantalla */
+body.evaluacion-activa .container-fluid {
+    max-width: 100% !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+}
+
+/* Ocultar el botón de toggle en el header */
+body.evaluacion-activa #sidebarToggleBtnHeader {
+    display: none !important;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 // Variables globales
@@ -181,6 +226,9 @@ let guardadoInterval;
 
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
+    // Activar modo evaluación (ocultar sidebar)
+    activarModoEvaluacion();
+    
     inicializarEvaluacion();
     configurarEventos();
     iniciarTimer();
@@ -192,6 +240,16 @@ document.addEventListener('DOMContentLoaded', function() {
 function inicializarEvaluacion() {
     actualizarProgreso();
     actualizarNavegacion();
+}
+
+// Activar modo evaluación (ocultar sidebar)
+function activarModoEvaluacion() {
+    document.body.classList.add('evaluacion-activa');
+}
+
+// Desactivar modo evaluación (mostrar sidebar)
+function desactivarModoEvaluacion() {
+    document.body.classList.remove('evaluacion-activa');
 }
 
 // Configurar eventos
@@ -219,6 +277,11 @@ function configurarEventos() {
             e.preventDefault();
             e.returnValue = '';
         }
+    });
+    
+    // Desactivar modo evaluación si el usuario navega fuera de la evaluación
+    window.addEventListener('unload', function() {
+        desactivarModoEvaluacion();
     });
 }
 
@@ -397,6 +460,9 @@ function enviarEvaluacion() {
     const modal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
     modal.hide();
     
+    // Desactivar modo evaluación antes de enviar
+    desactivarModoEvaluacion();
+    
     document.getElementById('quizForm').submit();
 }
 
@@ -409,6 +475,8 @@ function enviarEvaluacionAutomaticamente() {
         showConfirmButton: false,
         timer: 2000
     }).then(() => {
+        // Desactivar modo evaluación antes de enviar automáticamente
+        desactivarModoEvaluacion();
         document.getElementById('quizForm').submit();
     });
 }

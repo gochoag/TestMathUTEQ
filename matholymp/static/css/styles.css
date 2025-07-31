@@ -75,7 +75,9 @@
     align-items: center;
     justify-content: flex-start;
     flex-shrink: 0;
-    background: inherit;     
+    background: inherit;
+    width: 100%;
+    position: relative;
 }
 .sidebar-user .dropdown-toggle {
     padding: 0.5rem 0;
@@ -86,6 +88,7 @@
     display: flex;
     align-items: center;
     gap: 0.2rem;
+    width: 100%;
 }
 .sidebar-user .dropdown-toggle:after {
     margin-left: 0.2rem;
@@ -95,10 +98,20 @@
     color: #222;
     display: inline-block !important;
     opacity: 1 !important;
-    width: auto !important;
+    max-width: 150px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-wrap: break-word;
 }
 .sidebar-user .dropdown-menu {
     min-width: 180px;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 0.5rem;
+    z-index: 1050;
 }
 .sidebar-user img, .sidebar-user i.bi-person-circle {
     width: 36px;

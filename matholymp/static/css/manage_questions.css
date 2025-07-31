@@ -49,6 +49,50 @@
     display: inline;
 }
 
+/* Corrección para imágenes envueltas en spans que se desplazan hacia abajo */
+.pregunta-text span img,
+.opcion-text span img {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+}
+
+/* Corrección específica para spans que contienen imágenes */
+.pregunta-text span:has(img),
+.opcion-text span:has(img) {
+    vertical-align: middle !important;
+    position: static !important;
+    top: auto !important;
+    display: inline !important;
+}
+
+/* Fallback para navegadores que no soportan :has() */
+.pregunta-text span img,
+.opcion-text span img {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+}
+
+/* Estilos adicionales para corregir problemas de alineación de imágenes */
+.pregunta-text * img,
+.opcion-text * img {
+    vertical-align: middle !important;
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+}
+
+/* Corrección para cualquier span que pueda contener imágenes */
+.pregunta-text span,
+.opcion-text span {
+    vertical-align: middle !important;
+    position: static !important;
+    top: auto !important;
+}
+
 /* CSS para que SweetAlert2 aparezca por encima del modal */
 .swal2-container {
     z-index: 9999 !important;

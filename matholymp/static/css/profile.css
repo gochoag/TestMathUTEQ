@@ -1,0 +1,311 @@
+/* Estilos personalizados para la página de perfil */
+
+.profile-container {
+    background: #ffffff;
+    min-height: 100vh;
+    padding: 2rem 0;
+}
+
+.profile-card {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.profile-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.profile-card .card-header {
+    border-radius: 15px 15px 0 0 !important;
+    border: none;
+    padding: 1.5rem;
+}
+
+.avatar-preview {
+    position: relative;
+    display: inline-block;
+}
+
+.avatar-preview img {
+    border: 4px solid #ffffff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.avatar-preview img:hover {
+    transform: scale(1.05);
+}
+
+.avatar-preview .bg-light {
+    border: 4px solid #ffffff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    background-color: #f8f9fa !important;
+}
+
+.form-control {
+    border-radius: 10px;
+    border: 2px solid #dee2e6;
+    padding: 0.75rem 1rem;
+    transition: all 0.3s ease;
+    background-color: #ffffff;
+    color: #495057;
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    background-color: #ffffff;
+    color: #495057;
+}
+
+.form-control::placeholder {
+    color: #6c757d;
+}
+
+.form-label {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.btn {
+    border-radius: 10px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #e0a800 0%, #d39e00 100%);
+    color: #212529;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 193, 7, 0.4);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+    color: #ffffff;
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+}
+
+.card-header.bg-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+    color: #ffffff !important;
+}
+
+.card-header.bg-secondary {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
+    color: #ffffff !important;
+}
+
+.card-header.bg-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+    color: #212529 !important;
+}
+
+/* Animaciones */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.profile-card {
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.profile-card:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.profile-card:nth-child(3) {
+    animation-delay: 0.2s;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .profile-container {
+        padding: 1rem 0;
+    }
+    
+    .profile-card {
+        margin-bottom: 1.5rem;
+    }
+    
+    .avatar-preview img,
+    .avatar-preview .bg-light {
+        width: 120px !important;
+        height: 120px !important;
+    }
+}
+
+/* Estilos para el modal */
+.modal-content {
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    background-color: #ffffff;
+}
+
+.modal-header {
+    border-radius: 15px 15px 0 0;
+    border-bottom: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+}
+
+.modal-footer {
+    border-radius: 0 0 15px 15px;
+    border-top: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+}
+
+/* Estilos para mensajes de validación */
+.form-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.text-muted {
+    color: #6c757d !important;
+}
+
+/* Estilos para el breadcrumb */
+.breadcrumb {
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+.breadcrumb-item a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.breadcrumb-item a:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+    color: #6c757d;
+}
+
+/* Estilos para el título */
+.h3 {
+    color: #2c3e50;
+    font-weight: 700;
+}
+
+/* Estilos para iconos */
+.bi {
+    vertical-align: middle;
+}
+
+/* Estilos para el estado de carga */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Estilos adicionales para mejorar visibilidad */
+.card-body {
+    background-color: #ffffff;
+    color: #2c3e50;
+}
+
+.modal-title {
+    color: #2c3e50;
+}
+
+.modal-body {
+    color: #2c3e50;
+}
+
+/* Estilos para inputs deshabilitados */
+.form-control:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    opacity: 0.7;
+}
+
+/* Estilos para el botón de cerrar modal */
+.btn-close {
+    filter: none;
+}
+
+/* Estilos para el avatar placeholder */
+.bi-person-fill {
+    color: #6c757d !important;
+}
+
+/* Estilos para mejorar contraste en textos pequeños */
+.small {
+    color: #495057 !important;
+}
+
+/* Estilos para el estado activo de los botones */
+.btn:active {
+    transform: translateY(0);
+}
+
+/* Estilos para el hover de los enlaces */
+a:hover {
+    color: #0056b3;
+} 

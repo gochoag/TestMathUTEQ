@@ -603,7 +603,11 @@ async function saveQuestion() {
             });
             
             // Recargar la página para mostrar la nueva pregunta
-            setTimeout(() => window.location.reload(), 2000);
+            setTimeout(() => {
+                window.location.reload();
+                // Corregir imágenes después de recargar
+                setTimeout(corregirAlineacionImagenesMejorada, 100);
+            }, 2000);
         } else {
             Swal.fire({
                 icon: 'error',
@@ -764,6 +768,9 @@ async function editPregunta(preguntaId) {
             const modal = new bootstrap.Modal(document.getElementById('modalPregunta'));
             modal.show();
             
+            // Corregir imágenes después de abrir el modal
+            setTimeout(corregirAlineacionImagenesMejorada, 200);
+            
         } else {
             Swal.fire({
                 icon: 'error',
@@ -858,7 +865,7 @@ function clearForm() {
 // Función para actualizar puntos de una pregunta
 async function actualizarPuntos(preguntaId, puntos) {
     try {
-        const response = await fetch(`/evaluacion/pregunta/${preguntaId}/puntos/`, {
+        const response = await fetch(`/pregunta/${preguntaId}/puntos/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -902,4 +909,150 @@ async function actualizarPuntos(preguntaId, puntos) {
             }
         });
     }
+}
+
+// Función para corregir la alineación de imágenes en spans
+function corregirAlineacionImagenes() {
+    // Buscar todas las imágenes dentro de spans en preguntas y opciones
+    const imagenesEnSpans = document.querySelectorAll('.pregunta-text span img, .opcion-text span img');
+    
+    imagenesEnSpans.forEach(img => {
+        // Aplicar estilos directamente para corregir la alineación
+        img.style.verticalAlign = 'middle';
+        img.style.position = 'relative';
+        img.style.top = '0';
+        img.style.margin = '0';
+        
+        // También corregir el span padre si existe
+        const spanPadre = img.closest('span');
+        if (spanPadre) {
+            spanPadre.style.verticalAlign = 'middle';
+            spanPadre.style.position = 'static';
+            spanPadre.style.top = 'auto';
+            spanPadre.style.display = 'inline';
+        }
+    });
+    
+    // Buscar spans que puedan tener estilos problemáticos
+    const spansProblematicos = document.querySelectorAll('.pregunta-text span, .opcion-text span');
+    
+    spansProblematicos.forEach(span => {
+        // Verificar si el span tiene estilos que puedan causar problemas
+        const computedStyle = window.getComputedStyle(span);
+        if (computedStyle.verticalAlign !== 'middle' || 
+            computedStyle.position !== 'static' || 
+            computedStyle.top !== 'auto') {
+            
+            span.style.verticalAlign = 'middle';
+            span.style.position = 'static';
+            span.style.top = 'auto';
+            span.style.display = 'inline';
+        }
+    });
+}
+
+// Función mejorada para corregir la alineación de imágenes
+function corregirAlineacionImagenesMejorada() {
+    // Buscar todas las imágenes en el contenido de preguntas y opciones
+    const todasLasImagenes = document.querySelectorAll('.pregunta-text img, .opcion-text img, .cke_editable img');
+    
+    todasLasImagenes.forEach(img => {
+        // Aplicar estilos base para todas las imágenes
+        img.style.verticalAlign = 'middle';
+        img.style.position = 'relative';
+        img.style.top = '0';
+        img.style.margin = '0';
+        img.style.display = 'inline';
+        
+        // Buscar y corregir elementos padre problemáticos
+        let elementoPadre = img.parentElement;
+        while (elementoPadre && (elementoPadre.tagName === 'SPAN' || elementoPadre.tagName === 'DIV')) {
+            const computedStyle = window.getComputedStyle(elementoPadre);
+            
+            // Corregir estilos problemáticos
+            if (computedStyle.verticalAlign !== 'middle') {
+                elementoPadre.style.verticalAlign = 'middle';
+            }
+            if (computedStyle.position !== 'static') {
+                elementoPadre.style.position = 'static';
+            }
+            if (computedStyle.top !== 'auto') {
+                elementoPadre.style.top = 'auto';
+            }
+            if (computedStyle.display === 'inline-block') {
+                elementoPadre.style.display = 'inline';
+            }
+            
+            elementoPadre = elementoPadre.parentElement;
+        }
+    });
+    
+    // Corregir específicamente spans problemáticos
+    const spansProblematicos = document.querySelectorAll('.pregunta-text span, .opcion-text span, .cke_editable span');
+    
+    spansProblematicos.forEach(span => {
+        const computedStyle = window.getComputedStyle(span);
+        
+        // Lista de propiedades problemáticas
+        const propiedadesProblematicas = {
+            'vertical-align': 'middle',
+            'position': 'static',
+            'top': 'auto',
+            'display': 'inline'
+        };
+        
+        // Aplicar correcciones solo si es necesario
+        Object.entries(propiedadesProblematicas).forEach(([propiedad, valor]) => {
+            if (computedStyle[propiedad] !== valor) {
+                span.style[propiedad] = valor;
+            }
+        });
+    });
+}
+
+// Ejecutar la corrección cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    // Ejecutar corrección inicial
+    corregirAlineacionImagenesMejorada();
+    
+    // Ejecutar corrección después de un pequeño delay para asegurar que todo esté cargado
+    setTimeout(corregirAlineacionImagenesMejorada, 100);
+    
+    // Ejecutar corrección cuando se cargue la ventana completamente
+    window.addEventListener('load', corregirAlineacionImagenesMejorada);
+    
+    // Observar cambios en el DOM para corregir imágenes dinámicamente
+    const observer = new MutationObserver(function(mutations) {
+        let necesitaCorreccion = false;
+        
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                mutation.addedNodes.forEach(function(node) {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.querySelector && node.querySelector('img')) {
+                            necesitaCorreccion = true;
+                        }
+                    }
+                });
+            }
+        });
+        
+        if (necesitaCorreccion) {
+            setTimeout(corregirAlineacionImagenesMejorada, 50);
+        }
+    });
+    
+    // Observar cambios en el contenido de preguntas y opciones
+    const contenedores = document.querySelectorAll('.pregunta-text, .opcion-text, .cke_editable');
+    contenedores.forEach(contenedor => {
+        observer.observe(contenedor, {
+            childList: true,
+            subtree: true
+        });
+    });
+});
+
+// Función para corregir imágenes después de recargar contenido dinámicamente
+function corregirImagenesDespuesDeCarga() {
+    setTimeout(corregirAlineacionImagenesMejorada, 50);
 } 

@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, UserProfile
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -119,27 +119,37 @@ def take_quiz(request, pk):
             resultado_existente.ultima_actividad = timezone.now()
             resultado_existente.save()
         else:
-            # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas
+            # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas con nuevo sistema
             respuestas_guardadas = resultado_existente.respuestas_guardadas or {}
             preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
             
             score = 0
             puntos_obtenidos = 0
-            puntos_totales_respondidas = 0
+            total_questions = len(preguntas_mostradas)
+            
             for pregunta in preguntas_mostradas:
                 pregunta_key = f'pregunta_{pregunta.id}'
                 if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
-                    puntos_totales_respondidas += pregunta.puntos
+                    # Nuevo sistema de puntuación:
+                    # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
                     if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
                         score += 1
-                        puntos_obtenidos += pregunta.puntos
+                        puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                    else:
+                        puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
+                # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
             
-            # Calcular porcentaje basado en puntos de las preguntas respondidas
-            percentage = (puntos_obtenidos / puntos_totales_respondidas) * 100 if puntos_totales_respondidas > 0 else 0
+            # Ponderar a escala de 10 puntos
+            puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
+            # Asegurar que el puntaje no sea negativo
+            puntaje_ponderado = max(0, puntaje_ponderado)
+            
+            # Calcular porcentaje basado en puntaje ponderado
+            percentage = (puntaje_ponderado / 10) * 100
             
             resultado_existente.puntaje = percentage
-            resultado_existente.puntos_obtenidos = puntos_obtenidos
-            resultado_existente.puntos_totales = puntos_totales_respondidas
+            resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
+            resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
             resultado_existente.tiempo_utilizado = evaluacion.duration_minutes
             resultado_existente.fecha_fin = timezone.now()
             resultado_existente.completada = True
@@ -164,7 +174,7 @@ def take_quiz(request, pk):
             return redirect('quizzes:quiz')
     
     if request.method == 'POST':
-        # Procesar envío de evaluación
+        # Procesar envío de evaluación con nuevo sistema de puntuación
         score = 0
         puntos_obtenidos = 0
         puntos_totales = 0
@@ -175,13 +185,24 @@ def take_quiz(request, pk):
         for pregunta in preguntas_mostradas:
             selected = request.POST.get(f'pregunta_{pregunta.id}')
             respuestas_finales[f'pregunta_{pregunta.id}'] = selected
-            puntos_totales += pregunta.puntos
-            if selected and pregunta.opciones.filter(id=selected, is_correct=True).exists():
-                score += 1
-                puntos_obtenidos += pregunta.puntos
+            
+            # Nuevo sistema de puntuación:
+            # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
+            if selected:
+                if pregunta.opciones.filter(id=selected, is_correct=True).exists():
+                    score += 1
+                    puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                else:
+                    puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
+            # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
         
-        # Calcular porcentaje basado en puntos totales
-        percentage = (puntos_obtenidos / puntos_totales) * 100 if puntos_totales > 0 else 0
+        # Ponderar a escala de 10 puntos
+        puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
+        # Asegurar que el puntaje no sea negativo
+        puntaje_ponderado = max(0, puntaje_ponderado)
+        
+        # Calcular porcentaje basado en puntos totales (mantener compatibilidad)
+        percentage = (puntaje_ponderado / 10) * 100
         
         # Calcular tiempo utilizado
         tiempo_utilizado = 0
@@ -190,11 +211,11 @@ def take_quiz(request, pk):
             tiempo_restante = int(request.POST.get('tiempo_restante', 0))
             tiempo_utilizado = tiempo_total - tiempo_restante
         
-        # Guardar resultado en la base de datos
+        # Guardar resultado en la base de datos con nuevo sistema de puntuación
         if resultado_existente:
             resultado_existente.puntaje = percentage
-            resultado_existente.puntos_obtenidos = puntos_obtenidos
-            resultado_existente.puntos_totales = puntos_totales
+            resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
+            resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
             resultado_existente.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
             resultado_existente.fecha_fin = timezone.now()
             resultado_existente.completada = True
@@ -206,8 +227,8 @@ def take_quiz(request, pk):
                 evaluacion=evaluacion,
                 participante=participante,
                 puntaje=percentage,
-                puntos_obtenidos=puntos_obtenidos,
-                puntos_totales=puntos_totales,
+                puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
+                puntos_totales=10,  # Puntos totales siempre son 10
                 tiempo_utilizado=tiempo_utilizado // 60,
                 fecha_fin=timezone.now(),
                 completada=True,
@@ -961,16 +982,20 @@ def manage_quizs(request):
     # Determinar el tipo específico de admin para el contexto
     if is_superuser:
         admin_type = 'superuser'
+        has_full_access = True
     elif is_admin:
         admin_profile = AdminProfile.objects.get(user=user)
         admin_type = 'admin_full' if admin_profile.acceso_total else 'admin_limited'
+        has_full_access = admin_profile.acceso_total
     else:
         admin_type = 'unknown'
+        has_full_access = False
     
     context = {
         'evaluaciones': evaluaciones,
         'role': 'admin',
         'admin_type': admin_type,
+        'has_full_access': has_full_access,
         'now': timezone.now(),
         'user': user
     }
@@ -1492,10 +1517,15 @@ def edit_evaluacion(request, pk):
     """
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
     
-    # Verificar permisos (solo admins pueden editar)
+    # Verificar permisos básicos (solo admins pueden editar)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
+    
+    # Para etapas 2 y 3, solo superusuarios y admins con acceso total pueden editar
+    if evaluacion.etapa in [2, 3] and not has_full_access(request.user):
+        messages.error(request, 'Solo los superusuarios y administradores con acceso total pueden editar evaluaciones de etapas avanzadas.')
+        return redirect('quizzes:manage_quizs')
     
     if request.method == 'POST':
         try:
@@ -1613,10 +1643,17 @@ def delete_evaluacion(request, pk):
     """
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
     
-    # Verificar permisos (solo admins pueden eliminar)
+    # Verificar permisos básicos (solo admins pueden eliminar)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
+    
+    # Para etapas 2 y 3, solo superusuarios y admins con acceso total pueden eliminar
+    if evaluacion.etapa in [2, 3] and not has_full_access(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'Solo los superusuarios y administradores con acceso total pueden eliminar evaluaciones de etapas avanzadas.'
+        }, status=403)
     
     if request.method == 'POST':
         try:
@@ -1705,50 +1742,70 @@ def gestionar_participantes_evaluacion(request, pk):
                     'participantes_count': grupo.participantes.count()
                 })
             
-            # Obtener participantes individuales (que no están en ningún grupo)
+            # Obtener participantes individuales según la etapa y permisos del usuario
             participantes_individuales = []
-            for participante in Participantes.objects.all():
-                if not participante.grupos.exists():
-                    participantes_individuales.append({
-                        'id': participante.id,
-                        'NombresCompletos': participante.NombresCompletos,
-                        'cedula': participante.cedula
-                    })
             
-            # Para etapas 2 y 3, obtener participantes automáticos
-            if evaluacion.etapa == 2:
-                participantes_automaticos = evaluacion.get_participantes_etapa2()
-                # Agregar participantes automáticos a la lista de participantes individuales
-                for participante in participantes_automaticos:
-                    participantes_individuales.append({
-                        'id': participante.id,
-                        'NombresCompletos': participante.NombresCompletos,
-                        'cedula': participante.cedula
-                    })
+            if evaluacion.etapa == 1:
+                # Para etapa 1: todos los participantes individuales
+                for participante in Participantes.objects.all():
+                    if not participante.grupos.exists():
+                        participantes_individuales.append({
+                            'id': participante.id,
+                            'NombresCompletos': participante.NombresCompletos,
+                            'cedula': participante.cedula
+                        })
+            elif evaluacion.etapa == 2:
+                # Para etapa 2: comportamiento diferente según permisos
+                if has_full_access(request.user):
+                    # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    for participante in Participantes.objects.all():
+                        if not participante.grupos.exists():
+                            participantes_individuales.append({
+                                'id': participante.id,
+                                'NombresCompletos': participante.NombresCompletos,
+                                'cedula': participante.cedula
+                            })
+                else:
+                    # Admin sin acceso total: ven solo los participantes asignados actualmente
+                    # Si no hay participantes asignados, mostrar los automáticos
+                    if evaluacion.participantes_individuales.exists():
+                        participantes_actuales = evaluacion.participantes_individuales.all()
+                    else:
+                        participantes_actuales = evaluacion.get_participantes_etapa2()
+                    
+                    for participante in participantes_actuales:
+                        participantes_individuales.append({
+                            'id': participante.id,
+                            'NombresCompletos': participante.NombresCompletos,
+                            'cedula': participante.cedula
+                        })
             elif evaluacion.etapa == 3:
-                participantes_automaticos = evaluacion.get_participantes_etapa3()
-                # Agregar participantes automáticos a la lista de participantes individuales
-                for participante in participantes_automaticos:
-                    participantes_individuales.append({
-                        'id': participante.id,
-                        'NombresCompletos': participante.NombresCompletos,
-                        'cedula': participante.cedula
-                    })
+                # Para etapa 3: comportamiento diferente según permisos
+                if has_full_access(request.user):
+                    # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    for participante in Participantes.objects.all():
+                        if not participante.grupos.exists():
+                            participantes_individuales.append({
+                                'id': participante.id,
+                                'NombresCompletos': participante.NombresCompletos,
+                                'cedula': participante.cedula
+                            })
+                else:
+                    # Admin sin acceso total: ven solo los participantes asignados actualmente
+                    # Si no hay participantes asignados, mostrar los automáticos
+                    if evaluacion.participantes_individuales.exists():
+                        participantes_actuales = evaluacion.participantes_individuales.all()
+                    else:
+                        participantes_actuales = evaluacion.get_participantes_etapa3()
+                    
+                    for participante in participantes_actuales:
+                        participantes_individuales.append({
+                            'id': participante.id,
+                            'NombresCompletos': participante.NombresCompletos,
+                            'cedula': participante.cedula
+                        })
             
-            # Para etapas 2 y 3, si no hay participantes asignados en BD, usar los automáticos
-            if evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.all():
-                if evaluacion.etapa == 2:
-                    participantes_automaticos = evaluacion.get_participantes_etapa2()
-                else:  # etapa 3
-                    participantes_automaticos = evaluacion.get_participantes_etapa3()
-                
-                participantes_asignados = []
-                for participante in participantes_automaticos:
-                    participantes_asignados.append({
-                        'id': participante.id,
-                        'NombresCompletos': participante.NombresCompletos,
-                        'cedula': participante.cedula
-                    })
+
             
             # Obtener grupos y participantes asignados actualmente
             grupos_asignados = []
@@ -1788,10 +1845,10 @@ def gestionar_participantes_evaluacion(request, pk):
             data = json.loads(request.body.decode('utf-8'))
             
             # Verificar permisos para etapas avanzadas
-            if evaluacion.etapa != 1 and not request.user.is_superuser:
+            if evaluacion.etapa != 1 and not has_full_access(request.user):
                 return JsonResponse({
                     'success': False,
-                    'error': 'Solo los superusuarios pueden modificar participantes en etapas avanzadas.'
+                    'error': 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas.'
                 }, status=403)
             
             grupos_ids = data.get('grupos', [])
@@ -1811,18 +1868,12 @@ def gestionar_participantes_evaluacion(request, pk):
                     participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
                     evaluacion.participantes_individuales.add(*participantes)
             
-            # Para etapas 2 y 3: solo superusuarios pueden modificar participantes automáticos
-            elif evaluacion.etapa in [2, 3] and request.user.is_superuser:
-                # Obtener participantes automáticos según la etapa
-                if evaluacion.etapa == 2:
-                    participantes_automaticos = evaluacion.get_participantes_etapa2()
-                else:  # etapa 3
-                    participantes_automaticos = evaluacion.get_participantes_etapa3()
-                
+            # Para etapas 2 y 3: solo superusuarios y admins con acceso total pueden modificar
+            elif evaluacion.etapa in [2, 3] and has_full_access(request.user):
                 # Limpiar participantes individuales actuales
                 evaluacion.participantes_individuales.clear()
                 
-                # Agregar solo los participantes seleccionados por el superusuario
+                # Agregar solo los participantes seleccionados por el usuario autorizado
                 if participantes_individuales_ids:
                     participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
                     evaluacion.participantes_individuales.add(*participantes)
@@ -2281,3 +2332,96 @@ El equipo de Olymp
     except Exception as e:
         messages.error(request, f'Error al enviar el correo: {str(e)}')
         return redirect('quizzes:dashboard')
+
+
+@login_required
+def profile_view(request):
+    """Vista para mostrar y editar el perfil del usuario"""
+    # Obtener o crear el perfil del usuario
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+    
+    if request.method == 'POST':
+        # Procesar el formulario de actualización de perfil
+        if 'update_profile' in request.POST:
+            # Actualizar información básica
+            first_name = request.POST.get('first_name', '').strip()
+            last_name = request.POST.get('last_name', '').strip()
+            email = request.POST.get('email', '').strip()
+            phone = request.POST.get('phone', '').strip()
+            bio = request.POST.get('bio', '').strip()
+            
+            # Validar email único
+            if email != request.user.email:
+                if User.objects.filter(email=email).exclude(id=request.user.id).exists():
+                    messages.error(request, 'El correo electrónico ya está en uso.')
+                    return redirect('quizzes:profile')
+            
+            # Actualizar usuario
+            request.user.first_name = first_name
+            request.user.last_name = last_name
+            request.user.email = email
+            request.user.save()
+            
+            # Actualizar perfil
+            profile.phone = phone
+            profile.bio = bio
+            
+            # Procesar nueva foto si se subió
+            if 'avatar' in request.FILES:
+                # Eliminar foto anterior si existe
+                if profile.avatar:
+                    try:
+                        os.remove(profile.avatar.path)
+                    except:
+                        pass
+                
+                profile.avatar = request.FILES['avatar']
+            
+            profile.save()
+            
+            # Si se actualizó el avatar, devolver información para actualizar el sidebar
+            if 'avatar' in request.FILES:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Perfil actualizado exitosamente.',
+                    'avatar_url': profile.avatar.url if profile.avatar else None
+                })
+            
+            messages.success(request, 'Perfil actualizado exitosamente.')
+            return redirect('quizzes:profile')
+        
+        # Procesar cambio de contraseña
+        elif 'change_password' in request.POST:
+            current_password = request.POST.get('current_password')
+            new_password = request.POST.get('new_password')
+            confirm_password = request.POST.get('confirm_password')
+            
+            # Validar contraseña actual
+            if not request.user.check_password(current_password):
+                messages.error(request, 'La contraseña actual es incorrecta.')
+                return redirect('quizzes:profile')
+            
+            # Validar que las nuevas contraseñas coincidan
+            if new_password != confirm_password:
+                messages.error(request, 'Las nuevas contraseñas no coinciden.')
+                return redirect('quizzes:profile')
+            
+            # Validar longitud mínima
+            if len(new_password) < 8:
+                messages.error(request, 'La nueva contraseña debe tener al menos 8 caracteres.')
+                return redirect('quizzes:profile')
+            
+            # Cambiar contraseña
+            request.user.set_password(new_password)
+            request.user.save()
+            
+            # Re-autenticar al usuario
+            login(request, request.user)
+            messages.success(request, 'Contraseña cambiada exitosamente.')
+            return redirect('quizzes:profile')
+    
+    context = {
+        'profile': profile,
+        'user': request.user,
+    }
+    return render(request, 'quizzes/profile.html', context)

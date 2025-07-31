@@ -41,6 +41,22 @@ class GrupoParticipantes(models.Model):
     def __str__(self):
         return self.name
 
+# Modelo para el perfil de usuario
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    avatar = models.ImageField(upload_to='fotos/perfil/', null=True, blank=True, help_text='Foto de perfil del usuario')
+    phone = models.CharField(max_length=10, blank=True, validators=[validate_phone], help_text='Teléfono del usuario')
+    bio = models.TextField(max_length=500, blank=True, help_text='Biografía o descripción del usuario')
+    fecha_actualizacion = models.DateTimeField(auto_now=True, help_text='Fecha de última actualización del perfil')
+
+    def __str__(self):
+        return f"Perfil de {self.user.get_full_name() or self.user.username}"
+
+    def get_avatar_url(self):
+        if self.avatar:
+            return self.avatar.url
+        return None
+
 # Modelo para distinguir a los administradores (no superuser)
 class AdminProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -299,8 +315,8 @@ class ResultadoEvaluacion(models.Model):
     ultima_actividad = models.DateTimeField(auto_now=True, help_text='Última actividad del estudiante')
     
     # Nuevos campos para puntaje numérico
-    puntos_obtenidos = models.PositiveIntegerField(default=0, help_text='Puntos obtenidos por el estudiante')
-    puntos_totales = models.PositiveIntegerField(default=0, help_text='Puntos totales de la evaluación')
+    puntos_obtenidos = models.DecimalField(max_digits=5, decimal_places=3, default=0, help_text='Puntos obtenidos por el estudiante (ponderado sobre 10)')
+    puntos_totales = models.PositiveIntegerField(default=10, help_text='Puntos totales de la evaluación (siempre 10)')
     
     class Meta:
         unique_together = ['evaluacion', 'participante']
@@ -341,10 +357,11 @@ class ResultadoEvaluacion(models.Model):
         return None
     
     def get_puntaje_numerico(self):
-        """Retorna el puntaje en formato numérico (ej: 8/10)"""
+        """Retorna el puntaje ponderado en formato numérico (ej: 8.500/10)"""
         if self.puntos_totales > 0:
-            return f"{self.puntos_obtenidos}/{self.puntos_totales}"
-        return "0/0"
+            # Formatear con 3 decimales para mostrar el puntaje ponderado
+            return f"{self.puntos_obtenidos:.3f}/{self.puntos_totales}"
+        return "0.000/0"
     
     def get_puntaje_porcentaje(self):
         """Retorna el puntaje como porcentaje"""
