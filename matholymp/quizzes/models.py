@@ -5,6 +5,8 @@ from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 import re
+import os
+from datetime import datetime
 
 # Validadores personalizados
 def validate_cedula(value):
@@ -18,6 +20,26 @@ def validate_phone(value):
     if value and not re.match(r'^\d{10}$', value):
         raise ValidationError('El teléfono debe tener exactamente 10 dígitos numéricos.')
     return value
+
+def upload_to_avatar(instance, filename):
+    """
+    Genera un nombre único para las imágenes de avatar basado en el username del usuario
+    y la fecha/hora de subida para evitar conflictos
+    """
+    # Obtener la extensión del archivo original
+    ext = filename.split('.')[-1]
+    
+    # Obtener el username del usuario
+    username = instance.user.username if instance.user else 'usuario'
+    
+    # Generar timestamp único
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Crear nombre único: username_timestamp.ext
+    new_filename = f"{username}_{timestamp}.{ext}"
+    
+    # Retornar la ruta completa
+    return os.path.join('fotos', 'perfil', new_filename)
 
 # Nuevo modelo para representantes
 class Representante(models.Model):
@@ -44,7 +66,7 @@ class GrupoParticipantes(models.Model):
 # Modelo para el perfil de usuario
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    avatar = models.ImageField(upload_to='fotos/perfil/', null=True, blank=True, help_text='Foto de perfil del usuario')
+    avatar = models.ImageField(upload_to=upload_to_avatar, null=True, blank=True, help_text='Foto de perfil del usuario')
     phone = models.CharField(max_length=10, blank=True, validators=[validate_phone], help_text='Teléfono del usuario')
     bio = models.TextField(max_length=500, blank=True, help_text='Biografía o descripción del usuario')
     fecha_actualizacion = models.DateTimeField(auto_now=True, help_text='Fecha de última actualización del perfil')
@@ -368,4 +390,150 @@ class ResultadoEvaluacion(models.Model):
         if self.puntos_totales > 0:
             return (self.puntos_obtenidos / self.puntos_totales) * 100
         return 0
+
+# Modelo para el monitoreo en tiempo real de evaluaciones
+class MonitoreoEvaluacion(models.Model):
+    ESTADO_CHOICES = [
+        ('activo', 'Activo'),
+        ('finalizado', 'Finalizado'),
+        ('suspendido', 'Suspendido'),
+    ]
+    
+    evaluacion = models.ForeignKey(Evaluacion, on_delete=models.CASCADE, related_name='monitoreos')
+    participante = models.ForeignKey(Participantes, on_delete=models.CASCADE, related_name='monitoreos')
+    resultado = models.OneToOneField(ResultadoEvaluacion, on_delete=models.CASCADE, related_name='monitoreo', null=True, blank=True)
+    
+    # Estado del monitoreo
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='activo')
+    
+    # Información de actividad
+    ultima_actividad = models.DateTimeField(auto_now=True)
+    tiempo_activo = models.PositiveIntegerField(default=0, help_text='Tiempo activo en segundos')
+    tiempo_inactivo = models.PositiveIntegerField(default=0, help_text='Tiempo inactivo en segundos')
+    
+    # Información de navegación
+    pagina_actual = models.PositiveIntegerField(default=1, help_text='Página actual del estudiante')
+    preguntas_respondidas = models.PositiveIntegerField(default=0, help_text='Número de preguntas respondidas')
+    preguntas_revisadas = models.PositiveIntegerField(default=0, help_text='Número de preguntas revisadas')
+    
+    # Alertas y irregularidades
+    alertas_detectadas = models.JSONField(default=list, blank=True, help_text='Lista de alertas detectadas')
+    irregularidades = models.TextField(blank=True, help_text='Descripción de irregularidades detectadas')
+    
+    # Control administrativo
+    finalizado_por_admin = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='evaluaciones_finalizadas',
+        help_text='Administrador que finalizó la evaluación'
+    )
+    motivo_finalizacion = models.TextField(blank=True, help_text='Motivo de la finalización administrativa')
+    fecha_finalizacion_admin = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    fecha_inicio_monitoreo = models.DateTimeField(auto_now_add=True)
+    fecha_ultima_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['evaluacion', 'participante']
+        ordering = ['-fecha_ultima_actualizacion']
+        verbose_name = 'Monitoreo de Evaluación'
+        verbose_name_plural = 'Monitoreos de Evaluaciones'
+    
+    def __str__(self):
+        return f"Monitoreo: {self.participante.NombresCompletos} - {self.evaluacion.title}"
+    
+    def get_tiempo_total_activo(self):
+        """Retorna el tiempo total activo en formato legible"""
+        horas = self.tiempo_activo // 3600
+        minutos = (self.tiempo_activo % 3600) // 60
+        segundos = self.tiempo_activo % 60
+        
+        if horas > 0:
+            return f"{horas}h {minutos}m {segundos}s"
+        elif minutos > 0:
+            return f"{minutos}m {segundos}s"
+        else:
+            return f"{segundos}s"
+    
+    def get_tiempo_total_inactivo(self):
+        """Retorna el tiempo total inactivo en formato legible"""
+        horas = self.tiempo_inactivo // 3600
+        minutos = (self.tiempo_inactivo % 3600) // 60
+        segundos = self.tiempo_inactivo % 60
+        
+        if horas > 0:
+            return f"{horas}h {minutos}m {segundos}s"
+        elif minutos > 0:
+            return f"{minutos}m {segundos}s"
+        else:
+            return f"{segundos}s"
+    
+    def get_porcentaje_avance(self):
+        """Retorna el porcentaje de avance basado en preguntas respondidas"""
+        if self.preguntas_revisadas > 0:
+            return (self.preguntas_respondidas / self.preguntas_revisadas) * 100
+        return 0
+    
+    def agregar_alerta(self, tipo_alerta, descripcion, severidad='baja'):
+        """Agrega una nueva alerta al monitoreo"""
+        alerta = {
+            'tipo': tipo_alerta,
+            'descripcion': descripcion,
+            'severidad': severidad,
+            'timestamp': timezone.now().isoformat()
+        }
+        self.alertas_detectadas.append(alerta)
+        self.save()
+    
+    def finalizar_por_admin(self, admin_user, motivo):
+        """Finaliza la evaluación por decisión administrativa"""
+        self.estado = 'finalizado'
+        self.finalizado_por_admin = admin_user
+        self.motivo_finalizacion = motivo
+        self.fecha_finalizacion_admin = timezone.now()
+        
+        # Obtener o crear el resultado de evaluación
+        if not self.resultado:
+            self.resultado, created = ResultadoEvaluacion.objects.get_or_create(
+                evaluacion=self.evaluacion,
+                participante=self.participante,
+                defaults={
+                    'puntaje': 0,
+                    'puntos_obtenidos': 0,
+                    'puntos_totales': 10,
+                    'tiempo_utilizado': 0,
+                    'completada': True,
+                    'fecha_fin': timezone.now(),
+                    'tiempo_restante': 0
+                }
+            )
+        else:
+            # Si ya existe un resultado, asignar nota de 0 por finalización administrativa
+            self.resultado.puntaje = 0
+            self.resultado.puntos_obtenidos = 0
+            self.resultado.puntos_totales = 10
+            self.resultado.completada = True
+            self.resultado.fecha_fin = timezone.now()
+            self.resultado.tiempo_restante = 0
+            self.resultado.save()
+        
+        self.save()
+    
+    def esta_activo(self):
+        """Verifica si el estudiante está activo (última actividad en los últimos 5 minutos)"""
+        tiempo_limite = timezone.now() - timezone.timedelta(minutes=5)
+        return self.ultima_actividad > tiempo_limite
+    
+    def get_estado_display_color(self):
+        """Retorna el color CSS para el estado"""
+        if self.estado == 'activo':
+            return 'success' if self.esta_activo() else 'warning'
+        elif self.estado == 'finalizado':
+            return 'secondary'
+        elif self.estado == 'suspendido':
+            return 'danger'
+        return 'info'
 

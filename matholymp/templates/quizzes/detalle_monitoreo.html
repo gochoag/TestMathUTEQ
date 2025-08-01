@@ -1,0 +1,518 @@
+{% extends 'base.html' %}
+{% block sidebar %}
+    {% include 'quizzes/sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header del detalle -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h2 class="mb-0">
+                                <i class="bi bi-info-circle-fill"></i>
+                                Detalle del Monitoreo
+                            </h2>
+                            <p class="mb-0 mt-2">
+                                <strong>{{ evaluacion.title }}</strong> - {{ evaluacion.get_etapa_display }}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <a href="{% url 'quizzes:monitoreo_evaluacion' evaluacion.id %}" class="btn btn-light">
+                                <i class="bi bi-arrow-left"></i>
+                                Volver al Monitoreo
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Información del participante -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-person-fill"></i>
+                        Información del Participante
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tr>
+                            <td><strong>Nombre:</strong></td>
+                            <td>{{ participante.NombresCompletos }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cédula:</strong></td>
+                            <td>{{ participante.cedula }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td>{{ participante.email }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Teléfono:</strong></td>
+                            <td>{{ participante.phone|default:"No registrado" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Edad:</strong></td>
+                            <td>{{ participante.edad|default:"No registrada" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-clipboard-data"></i>
+                        Estado de la Evaluación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h4 class="text-{{ monitoreo.get_estado_display_color }}">
+                                    <i class="bi bi-circle-fill"></i>
+                                    {{ monitoreo.get_estado_display }}
+                                </h4>
+                                <small class="text-muted">Estado Actual</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h4 class="text-{% if monitoreo.esta_activo %}success{% else %}warning{% endif %}">
+                                    <i class="bi bi-{% if monitoreo.esta_activo %}wifi{% else %}wifi-off{% endif %}"></i>
+                                    {% if monitoreo.esta_activo %}Activo{% else %}Inactivo{% endif %}
+                                </h4>
+                                <small class="text-muted">Conexión</small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Página Actual:</strong> {{ monitoreo.pagina_actual }}
+                        </div>
+                        <div class="col-6">
+                            <strong>Progreso:</strong> {{ monitoreo.get_porcentaje_avance|floatformat:1 }}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas detalladas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ monitoreo.preguntas_respondidas }}</h3>
+                    <p class="mb-0">Preguntas Respondidas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ monitoreo.preguntas_revisadas }}</h3>
+                    <p class="mb-0">Preguntas Revisadas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ monitoreo.get_tiempo_total_activo }}</h3>
+                    <p class="mb-0">Tiempo Activo</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ monitoreo.get_tiempo_total_inactivo }}</h3>
+                    <p class="mb-0">Tiempo Inactivo</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Información temporal -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-clock"></i>
+                        Información Temporal
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tr>
+                            <td><strong>Inicio del Monitoreo:</strong></td>
+                            <td>{{ monitoreo.fecha_inicio_monitoreo|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Última Actividad:</strong></td>
+                            <td>{{ monitoreo.ultima_actividad|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Última Actualización:</strong></td>
+                            <td>{{ monitoreo.fecha_ultima_actualizacion|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        {% if monitoreo.fecha_finalizacion_admin %}
+                        <tr>
+                            <td><strong>Finalizado por Admin:</strong></td>
+                            <td>{{ monitoreo.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}</td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Alertas ({{ monitoreo.alertas_detectadas|length }})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if monitoreo.alertas_detectadas %}
+                        <div class="list-group list-group-flush">
+                            {% for alerta in monitoreo.alertas_detectadas %}
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">
+                                        <span class="badge bg-{% if alerta.severidad == 'alta' %}danger{% elif alerta.severidad == 'media' %}warning{% else %}info{% endif %}">
+                                            {{ alerta.tipo|title }}
+                                        </span>
+                                        {{ alerta.descripcion }}
+                                    </h6>
+                                    <small class="text-muted">
+                                        {{ alerta.timestamp|slice:":19"|date:"H:i:s" }}
+                                    </small>
+                                </div>
+                                <small class="text-muted">Severidad: {{ alerta.severidad|title }}</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No hay alertas registradas.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Información de finalización administrativa -->
+    {% if monitoreo.finalizado_por_admin %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-stop-circle"></i>
+                        Finalización Administrativa
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Finalizado por:</strong> {{ monitoreo.finalizado_por_admin.get_full_name|default:monitoreo.finalizado_por_admin.username }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Fecha:</strong> {{ monitoreo.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-12">
+                            <strong>Motivo:</strong>
+                            <p class="mt-2">{{ monitoreo.motivo_finalizacion }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Irregularidades -->
+    {% if monitoreo.irregularidades %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Irregularidades Detectadas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">{{ monitoreo.irregularidades }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Resultado de la evaluación -->
+    {% if resultado.completada %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-check-circle"></i>
+                        Resultado de la Evaluación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-success">{{ resultado.get_puntaje_numerico }}</h4>
+                                <small class="text-muted">Puntaje</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-info">{{ resultado.get_tiempo_formateado }}</h4>
+                                <small class="text-muted">Tiempo Utilizado</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-warning">{{ resultado.get_puntaje_porcentaje|floatformat:1 }}%</h4>
+                                <small class="text-muted">Porcentaje</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h4 class="text-primary">{{ resultado.get_posicion_ranking|default:"N/A" }}</h4>
+                                <small class="text-muted">Posición</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Acciones administrativas -->
+    {% if monitoreo.estado == 'activo' %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-gear"></i>
+                        Acciones Administrativas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-warning" onclick="agregarAlertaManual()">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Agregar Alerta
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="finalizarEvaluacionManual()">
+                            <i class="bi bi-stop-circle"></i>
+                            Finalizar Evaluación
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal para agregar alerta manual -->
+<div class="modal fade" id="modalAlertaManual" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Agregar Alerta Manual
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="tipo-alerta-manual" class="form-label">Tipo de Alerta:</label>
+                    <select class="form-select" id="tipo-alerta-manual">
+                        <option value="comportamiento">Comportamiento Sospechoso</option>
+                        <option value="tecnico">Problema Técnico</option>
+                        <option value="conexion">Problema de Conexión</option>
+                        <option value="inactividad">Inactividad Prolongada</option>
+                        <option value="otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="severidad-alerta-manual" class="form-label">Severidad:</label>
+                    <select class="form-select" id="severidad-alerta-manual">
+                        <option value="baja">Baja</option>
+                        <option value="media">Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="descripcion-alerta-manual" class="form-label">Descripción:</label>
+                    <textarea class="form-control" id="descripcion-alerta-manual" rows="3" placeholder="Describa la alerta..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" id="btn-confirmar-alerta-manual">
+                    <i class="bi bi-plus-circle"></i>
+                    Agregar Alerta
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para finalizar evaluación manual -->
+<div class="modal fade" id="modalFinalizarManual" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Finalizar Evaluación
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>¿Estás seguro de que deseas finalizar la evaluación de {{ participante.NombresCompletos }}?</strong></p>
+                <p class="text-muted">Esta acción no se puede deshacer.</p>
+                <div class="mb-3">
+                    <label for="motivo-finalizacion-manual" class="form-label">Motivo de la finalización:</label>
+                    <textarea class="form-control" id="motivo-finalizacion-manual" rows="3" placeholder="Describa el motivo de la finalización..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btn-confirmar-finalizar-manual">
+                    <i class="bi bi-stop-circle"></i>
+                    Finalizar Evaluación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let monitoreoId = {{ monitoreo.id }};
+let evaluacionId = {{ evaluacion.id }};
+
+function agregarAlertaManual() {
+    document.getElementById('tipo-alerta-manual').value = 'comportamiento';
+    document.getElementById('severidad-alerta-manual').value = 'media';
+    document.getElementById('descripcion-alerta-manual').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalAlertaManual'));
+    modal.show();
+}
+
+function finalizarEvaluacionManual() {
+    document.getElementById('motivo-finalizacion-manual').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalFinalizarManual'));
+    modal.show();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Confirmar alerta manual
+    document.getElementById('btn-confirmar-alerta-manual').addEventListener('click', function() {
+        const tipoAlerta = document.getElementById('tipo-alerta-manual').value;
+        const severidad = document.getElementById('severidad-alerta-manual').value;
+        const descripcion = document.getElementById('descripcion-alerta-manual').value;
+        
+        if (!descripcion.trim()) {
+            alert('Por favor, ingrese una descripción para la alerta.');
+            return;
+        }
+        
+        fetch(`/quizzes/monitoreo/${monitoreoId}/alerta/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                tipo_alerta: tipoAlerta,
+                severidad: severidad,
+                descripcion: descripcion
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalAlertaManual')).hide();
+                location.reload(); // Recargar para mostrar la nueva alerta
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al agregar la alerta');
+        });
+    });
+    
+    // Confirmar finalización manual
+    document.getElementById('btn-confirmar-finalizar-manual').addEventListener('click', function() {
+        const motivo = document.getElementById('motivo-finalizacion-manual').value;
+        if (!motivo.trim()) {
+            alert('Por favor, ingrese un motivo para la finalización.');
+            return;
+        }
+        
+        fetch(`/evaluacion/${evaluacionId}/monitoreo/finalizar/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                monitoreo_id: monitoreoId,
+                motivo: motivo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalFinalizarManual')).hide();
+                location.reload(); // Recargar para mostrar el nuevo estado
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al finalizar la evaluación');
+        });
+    });
+});
+</script>
+{% endblock %} 

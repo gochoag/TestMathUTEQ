@@ -1,0 +1,476 @@
+{% extends 'base.html' %}
+{% block sidebar %}
+    {% include 'quizzes/sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header del monitoreo -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h2 class="mb-0">
+                                <i class="bi bi-eye-fill"></i>
+                                Monitoreo en Tiempo Real
+                            </h2>
+                            <p class="mb-0 mt-2">
+                                <strong>{{ evaluacion.title }}</strong> - {{ evaluacion.get_etapa_display }}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div class="d-flex justify-content-end align-items-center">
+                                <div class="me-3">
+                                    <small>Última actualización:</small><br>
+                                    <span id="last-update">Cargando...</span>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                                    <label class="form-check-label" for="auto-refresh">
+                                        Auto-refresh
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas generales -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ participantes_activos }}</h3>
+                    <p class="mb-0">Activos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ participantes_pendientes }}</h3>
+                    <p class="mb-0">Pendientes</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ participantes_finalizados }}</h3>
+                    <p class="mb-0">Finalizados</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ total_participantes }}</h3>
+                    <p class="mb-0">Total</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de monitoreo -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-people-fill"></i>
+                        Participantes en Evaluación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="tabla-monitoreo">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Participante</th>
+                                    <th>Estado</th>
+                                    <th>Página</th>
+                                    <th>Progreso/Puntaje</th>
+                                    <th>Tiempo Activo</th>
+                                    <th>Última Actividad</th>
+                                    <th>Alertas</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-monitoreo">
+                                <!-- Los datos se cargarán dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para finalizar evaluación -->
+<div class="modal fade" id="modalFinalizar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Finalizar Evaluación
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>¿Estás seguro de que deseas finalizar la evaluación de <span id="participante-nombre"></span>?</strong></p>
+                <p class="text-muted">Esta acción no se puede deshacer.</p>
+                <div class="mb-3">
+                    <label for="motivo-finalizacion" class="form-label">Motivo de la finalización:</label>
+                    <textarea class="form-control" id="motivo-finalizacion" rows="3" placeholder="Describa el motivo de la finalización..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btn-confirmar-finalizar">
+                    <i class="bi bi-stop-circle"></i>
+                    Finalizar Evaluación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar alerta -->
+<div class="modal fade" id="modalAlerta" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Agregar Alerta
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="tipo-alerta" class="form-label">Tipo de Alerta:</label>
+                    <select class="form-select" id="tipo-alerta">
+                        <option value="comportamiento">Comportamiento Sospechoso</option>
+                        <option value="tecnico">Problema Técnico</option>
+                        <option value="conexion">Problema de Conexión</option>
+                        <option value="inactividad">Inactividad Prolongada</option>
+                        <option value="otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="severidad-alerta" class="form-label">Severidad:</label>
+                    <select class="form-select" id="severidad-alerta">
+                        <option value="baja">Baja</option>
+                        <option value="media">Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="descripcion-alerta" class="form-label">Descripción:</label>
+                    <textarea class="form-control" id="descripcion-alerta" rows="3" placeholder="Describa la alerta..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" id="btn-confirmar-alerta">
+                    <i class="bi bi-plus-circle"></i>
+                    Agregar Alerta
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para ver detalles -->
+<div class="modal fade" id="modalDetalles" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-info-circle"></i>
+                    Detalles del Monitoreo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalles-contenido">
+                <!-- Los detalles se cargarán dinámicamente -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let evaluacionId = {{ evaluacion.id }};
+let autoRefreshInterval;
+let currentMonitoreoId = null;
+
+// Función para formatear tiempo
+function formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${secs}s`;
+    } else {
+        return `${secs}s`;
+    }
+}
+
+// Función para obtener el color del estado
+function getEstadoColor(estaActivo, estado) {
+    if (estado === 'finalizado') return 'secondary';
+    if (estado === 'suspendido') return 'danger';
+    return estaActivo ? 'success' : 'warning';
+}
+
+// Función para obtener el texto del estado
+function getEstadoText(estaActivo, estado) {
+    if (estado === 'finalizado') return 'Finalizado';
+    if (estado === 'suspendido') return 'Suspendido';
+    return estaActivo ? 'Activo' : 'Inactivo';
+}
+
+// Función para cargar los datos del monitoreo
+function cargarMonitoreo() {
+    fetch(`/evaluacion/${evaluacionId}/monitoreo/estado/`)
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('tbody-monitoreo');
+            tbody.innerHTML = '';
+            
+            data.monitoreos.forEach(monitoreo => {
+                const row = document.createElement('tr');
+                
+                // Determinar el contenido de la columna de progreso/puntaje
+                let progresoPuntajeContent = '';
+                if (monitoreo.estado === 'finalizado' && monitoreo.tiene_resultado_completado) {
+                    // Mostrar puntaje para evaluaciones finalizadas
+                    const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
+                                        monitoreo.puntaje >= 5 ? 'warning' : 'danger';
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
+                            <small class="text-muted">${monitoreo.puntaje}%</small>
+                        </div>
+                    `;
+                } else {
+                    // Mostrar progreso para evaluaciones activas
+                    progresoPuntajeContent = `
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${monitoreo.porcentaje_avance}%" 
+                                 aria-valuenow="${monitoreo.porcentaje_avance}" 
+                                 aria-valuemin="0" aria-valuemax="100">
+                                ${monitoreo.porcentaje_avance}%
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            ${monitoreo.preguntas_respondidas} respondidas / ${monitoreo.preguntas_revisadas} revisadas
+                        </small>
+                    `;
+                }
+                
+                row.innerHTML = `
+                    <td>
+                        <strong>${monitoreo.participante_nombre}</strong><br>
+                        <small class="text-muted">${monitoreo.participante_cedula}</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado)}">
+                            ${getEstadoText(monitoreo.esta_activo, monitoreo.estado)}
+                        </span>
+                    </td>
+                    <td>${monitoreo.estado === 'finalizado' ? '-' : monitoreo.pagina_actual}</td>
+                    <td>${progresoPuntajeContent}</td>
+                    <td>${monitoreo.tiempo_activo}</td>
+                    <td>
+                        <span class="text-${monitoreo.esta_activo ? 'success' : 'warning'}">
+                            ${new Date(monitoreo.ultima_actividad).toLocaleTimeString()}
+                        </span>
+                    </td>
+                    <td>
+                        ${monitoreo.alertas_count > 0 ? 
+                            `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
+                            '<span class="badge bg-success">0</span>'
+                        }
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-info" 
+                                    onclick="verDetalles(${monitoreo.id})" 
+                                    title="Ver detalles">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            ${monitoreo.estado !== 'finalizado' ? `
+                                <button type="button" class="btn btn-outline-warning" 
+                                        onclick="agregarAlerta(${monitoreo.id})" 
+                                        title="Agregar alerta">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" 
+                                         onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
+                                         title="Finalizar evaluación">
+                                    <i class="bi bi-stop-circle"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Actualizar timestamp
+            document.getElementById('last-update').textContent = 
+                new Date(data.timestamp).toLocaleTimeString();
+        })
+        .catch(error => {
+            console.error('Error al cargar monitoreo:', error);
+        });
+}
+
+// Función para finalizar evaluación
+function finalizarEvaluacion(monitoreoId, participanteNombre) {
+    currentMonitoreoId = monitoreoId;
+    document.getElementById('participante-nombre').textContent = participanteNombre;
+    document.getElementById('motivo-finalizacion').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalFinalizar'));
+    modal.show();
+}
+
+// Función para agregar alerta
+function agregarAlerta(monitoreoId) {
+    currentMonitoreoId = monitoreoId;
+    document.getElementById('tipo-alerta').value = 'comportamiento';
+    document.getElementById('severidad-alerta').value = 'media';
+    document.getElementById('descripcion-alerta').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalAlerta'));
+    modal.show();
+}
+
+// Función para ver detalles
+function verDetalles(monitoreoId) {
+    window.open(`/monitoreo/${monitoreoId}/detalle/`, '_blank');
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar datos iniciales
+    cargarMonitoreo();
+    
+    // Configurar auto-refresh
+    const autoRefreshCheckbox = document.getElementById('auto-refresh');
+    
+    function toggleAutoRefresh() {
+        if (autoRefreshCheckbox.checked) {
+            autoRefreshInterval = setInterval(cargarMonitoreo, 5000); // 5 segundos
+        } else {
+            clearInterval(autoRefreshInterval);
+        }
+    }
+    
+    autoRefreshCheckbox.addEventListener('change', toggleAutoRefresh);
+    toggleAutoRefresh(); // Iniciar auto-refresh
+    
+    // Confirmar finalización
+    document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
+        const motivo = document.getElementById('motivo-finalizacion').value;
+        if (!motivo.trim()) {
+            alert('Por favor, ingrese un motivo para la finalización.');
+            return;
+        }
+        
+        fetch(`/evaluacion/${evaluacionId}/monitoreo/finalizar/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                monitoreo_id: currentMonitoreoId,
+                motivo: motivo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalFinalizar')).hide();
+                cargarMonitoreo();
+                // Mostrar notificación de éxito
+                if (typeof showToast === 'function') {
+                    showToast('Éxito', data.message, 'success');
+                }
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al finalizar la evaluación');
+        });
+    });
+    
+    // Confirmar alerta
+    document.getElementById('btn-confirmar-alerta').addEventListener('click', function() {
+        const tipoAlerta = document.getElementById('tipo-alerta').value;
+        const severidad = document.getElementById('severidad-alerta').value;
+        const descripcion = document.getElementById('descripcion-alerta').value;
+        
+        if (!descripcion.trim()) {
+            alert('Por favor, ingrese una descripción para la alerta.');
+            return;
+        }
+        
+        fetch(`/monitoreo/${currentMonitoreoId}/alerta/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                tipo_alerta: tipoAlerta,
+                severidad: severidad,
+                descripcion: descripcion
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalAlerta')).hide();
+                cargarMonitoreo();
+                // Mostrar notificación de éxito
+                if (typeof showToast === 'function') {
+                    showToast('Éxito', data.message, 'success');
+                }
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al agregar la alerta');
+        });
+    });
+});
+
+// Función para mostrar toast (si no existe)
+function showToast(title, message, type) {
+    // Implementación básica si no existe la función showToast
+    console.log(`${title}: ${message}`);
+}
+</script>
+{% endblock %} 

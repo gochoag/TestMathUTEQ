@@ -1,8 +1,8 @@
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, UserProfile
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, UserProfile, MonitoreoEvaluacion
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -24,6 +24,18 @@ from django.conf import settings
 from .models import Pregunta, Opcion
 from .models import ResultadoEvaluacion
 from django.db.models import Avg
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+from io import BytesIO
+try:
+    from PIL import Image as PILImage
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 
 # Función helper para verificar acceso total
@@ -124,60 +136,80 @@ def take_quiz(request, pk):
         messages.warning(request, 'Ya has completado esta evaluación.')
         return redirect('quizzes:quiz')
     
+    # Verificar si la evaluación fue finalizada administrativamente
+    monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        participante=participante,
+        estado='finalizado'
+    ).first()
+    
+    if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
+        messages.error(request, f'Tu evaluación fue finalizada administrativamente. Motivo: {monitoreo_existente.motivo_finalizacion}')
+        return redirect('quizzes:quiz')
+    
     # Verificar si hay un intento en progreso
     continuar_evaluacion = False
     if resultado_existente and not resultado_existente.completada:
-        # Calcular tiempo transcurrido desde el inicio
-        tiempo_transcurrido = (timezone.now() - resultado_existente.fecha_inicio).total_seconds()
-        tiempo_total = evaluacion.duration_minutes * 60  # en segundos
-        tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
+        # Usar el tiempo_restante guardado en lugar de recalcular
+        tiempo_restante_guardado = resultado_existente.tiempo_restante or 0
         
-        # Si aún hay tiempo restante, puede continuar (sin importar la ventana de acceso)
-        if tiempo_restante > 0:
+        # Si hay tiempo restante guardado, usar ese valor
+        if tiempo_restante_guardado > 0:
             continuar_evaluacion = True
-            resultado_existente.tiempo_restante = int(tiempo_restante)
+            # Actualizar última actividad
             resultado_existente.ultima_actividad = timezone.now()
             resultado_existente.save()
         else:
-            # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas con nuevo sistema
-            respuestas_guardadas = resultado_existente.respuestas_guardadas or {}
-            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            # Si no hay tiempo restante guardado, calcular basado en fecha_inicio
+            tiempo_transcurrido = (timezone.now() - resultado_existente.fecha_inicio).total_seconds()
+            tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+            tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
             
-            score = 0
-            puntos_obtenidos = 0
-            total_questions = len(preguntas_mostradas)
-            
-            for pregunta in preguntas_mostradas:
-                pregunta_key = f'pregunta_{pregunta.id}'
-                if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
-                    # Nuevo sistema de puntuación:
-                    # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
-                    if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
-                        score += 1
-                        puntos_obtenidos += 1  # +1 punto por respuesta correcta
-                    else:
-                        puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
-                # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
-            
-            # Ponderar a escala de 10 puntos
-            puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
-            # Asegurar que el puntaje no sea negativo
-            puntaje_ponderado = max(0, puntaje_ponderado)
-            
-            # Calcular porcentaje basado en puntaje ponderado
-            percentage = (puntaje_ponderado / 10) * 100
-            
-            resultado_existente.puntaje = percentage
-            resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
-            resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
-            resultado_existente.tiempo_utilizado = evaluacion.duration_minutes
-            resultado_existente.fecha_fin = timezone.now()
-            resultado_existente.completada = True
-            resultado_existente.tiempo_restante = 0
-            resultado_existente.save()
-            
-            messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
-            return redirect('quizzes:quiz')
+            if tiempo_restante > 0:
+                continuar_evaluacion = True
+                resultado_existente.tiempo_restante = int(tiempo_restante)
+                resultado_existente.ultima_actividad = timezone.now()
+                resultado_existente.save()
+            else:
+                # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas con nuevo sistema
+                respuestas_guardadas = resultado_existente.respuestas_guardadas or {}
+                preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                
+                score = 0
+                puntos_obtenidos = 0
+                total_questions = len(preguntas_mostradas)
+                
+                for pregunta in preguntas_mostradas:
+                    pregunta_key = f'pregunta_{pregunta.id}'
+                    if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
+                        # Nuevo sistema de puntuación:
+                        # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
+                        if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
+                            score += 1
+                            puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                        else:
+                            puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
+                    # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
+                
+                # Ponderar a escala de 10 puntos
+                puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
+                # Asegurar que el puntaje no sea negativo
+                puntaje_ponderado = max(0, puntaje_ponderado)
+                
+                # Calcular porcentaje basado en puntaje ponderado
+                percentage = (puntaje_ponderado / 10) * 100
+                
+                resultado_existente.puntaje = percentage
+                resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
+                resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
+                resultado_existente.tiempo_utilizado = evaluacion.duration_minutes
+                resultado_existente.fecha_fin = timezone.now()
+                resultado_existente.completada = True
+                resultado_existente.tiempo_restante = 0
+                resultado_existente.save()
+                
+                messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
+                return redirect('quizzes:quiz')
     
     # Si no hay intento en progreso, verificar ventana de acceso solo para nuevos ingresos
     if not continuar_evaluacion:
@@ -192,6 +224,20 @@ def take_quiz(request, pk):
         if not evaluacion.is_available():
             messages.warning(request, 'Esta evaluación no está disponible en este momento.')
             return redirect('quizzes:quiz')
+        
+        # Crear o actualizar el monitoreo para este estudiante
+        try:
+            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+                evaluacion=evaluacion,
+                participante=participante,
+                defaults={'resultado': resultado_existente} if resultado_existente else {}
+            )
+            if not created and resultado_existente and not monitoreo.resultado:
+                monitoreo.resultado = resultado_existente
+                monitoreo.save()
+        except Exception as e:
+            # Si hay error al crear el monitoreo, continuar sin él
+            pass
     
     if request.method == 'POST':
         # Procesar envío de evaluación con nuevo sistema de puntuación
@@ -303,6 +349,10 @@ def take_quiz(request, pk):
                 evaluacion=evaluacion,
                 participante=participante
             )
+            # Si el resultado existente no tiene tiempo_restante, asignarle el tiempo total
+            if not resultado_existente.tiempo_restante:
+                resultado_existente.tiempo_restante = tiempo_total
+                resultado_existente.save()
             messages.warning(request, 'Ya tienes un intento en progreso para esta evaluación.')
     
     context = {
@@ -333,6 +383,20 @@ def guardar_respuesta_automatica(request, pk):
         if participante not in participantes_autorizados:
             return JsonResponse({'success': False, 'error': 'No autorizado'})
         
+        # Verificar si la evaluación fue finalizada administrativamente
+        monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            estado='finalizado'
+        ).first()
+        
+        if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Evaluación finalizada administrativamente',
+                'redirect': True
+            })
+        
         # Obtener o crear resultado
         resultado, created = ResultadoEvaluacion.objects.get_or_create(
             evaluacion=evaluacion,
@@ -342,6 +406,11 @@ def guardar_respuesta_automatica(request, pk):
                 'tiempo_restante': evaluacion.duration_minutes * 60
             }
         )
+        
+        # Si no se creó nuevo y no tiene tiempo_restante, asignarlo
+        if not created and not resultado.tiempo_restante:
+            resultado.tiempo_restante = evaluacion.duration_minutes * 60
+            resultado.save()
         
         # Actualizar respuestas guardadas
         import json
@@ -354,10 +423,66 @@ def guardar_respuesta_automatica(request, pk):
         resultado.ultima_actividad = timezone.now()
         resultado.save()
         
+        # Actualizar monitoreo
+        try:
+            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+                evaluacion=evaluacion,
+                participante=participante,
+                defaults={'resultado': resultado}
+            )
+            
+            # Si no se creó nuevo, actualizar el resultado si es necesario
+            if not created and not monitoreo.resultado:
+                monitoreo.resultado = resultado
+                monitoreo.save()
+            
+            # Calcular estadísticas del monitoreo
+            preguntas_respondidas = len([r for r in respuestas.values() if r])
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            total_preguntas = len(preguntas_mostradas)
+            
+            # Actualizar datos del monitoreo
+            monitoreo.preguntas_respondidas = preguntas_respondidas
+            monitoreo.preguntas_revisadas = total_preguntas
+            monitoreo.tiempo_activo += 30  # Asumir 30 segundos de actividad por guardado
+            monitoreo.save()
+        except Exception as e:
+            # Si hay error al actualizar el monitoreo, continuar sin él
+            pass
+        
         return JsonResponse({'success': True})
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@login_required
+def verificar_estado_evaluacion(request, pk):
+    """
+    Endpoint para verificar si la evaluación fue finalizada administrativamente
+    """
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        
+        # Verificar si la evaluación fue finalizada administrativamente
+        monitoreo = MonitoreoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            estado='finalizado'
+        ).first()
+        
+        if monitoreo and monitoreo.finalizado_por_admin:
+            return JsonResponse({
+                'finalizada_admin': True,
+                'motivo': monitoreo.motivo_finalizacion,
+                'admin': monitoreo.finalizado_por_admin.get_full_name() or monitoreo.finalizado_por_admin.username
+            })
+        
+        return JsonResponse({'finalizada_admin': False})
+        
+    except Exception as e:
+        return JsonResponse({'finalizada_admin': False, 'error': str(e)})
 
 @csrf_exempt
 @login_required
@@ -457,6 +582,16 @@ def manage_participants(request):
             messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
             return redirect('quizzes:manage_participants')
         
+        # Convertir edad vacía a None
+        if edad == '':
+            edad = None
+        elif edad:
+            try:
+                edad = int(edad)
+            except ValueError:
+                messages.error(request, "La edad debe ser un número válido.")
+                return redirect('quizzes:manage_participants')
+        
         # Crear el participante
         participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
         messages.success(request, f"Participante {NombresCompletos} creado correctamente.")
@@ -491,6 +626,16 @@ def manage_participants(request):
         if cedula != participante.cedula:  # Solo verificar si la cédula cambió
             if User.objects.filter(username=cedula).exclude(id=user_obj.id).exists():
                 messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
+                return redirect('quizzes:manage_participants')
+        
+        # Convertir edad vacía a None
+        if edad == '':
+            edad = None
+        elif edad:
+            try:
+                edad = int(edad)
+            except ValueError:
+                messages.error(request, "La edad debe ser un número válido.")
                 return redirect('quizzes:manage_participants')
         
         user_obj.username = cedula  # Actualiza el username a la cédula
@@ -1830,8 +1975,21 @@ def gestionar_participantes_evaluacion(request, pk):
                 # Para etapa 2: comportamiento diferente según permisos
                 if has_full_access(request.user):
                     # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
+                    participantes_automaticos = evaluacion.get_participantes_etapa2()
+                    participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
+                    
+                    # Primero agregar los participantes automáticos
+                    for participante in participantes_automaticos:
+                        participantes_individuales.append({
+                            'id': participante.id,
+                            'NombresCompletos': participante.NombresCompletos,
+                            'cedula': participante.cedula
+                        })
+                    
+                    # Luego agregar el resto de participantes individuales
                     for participante in Participantes.objects.all():
-                        if not participante.grupos.exists():
+                        if not participante.grupos.exists() and participante.id not in participantes_automaticos_ids:
                             participantes_individuales.append({
                                 'id': participante.id,
                                 'NombresCompletos': participante.NombresCompletos,
@@ -1855,8 +2013,21 @@ def gestionar_participantes_evaluacion(request, pk):
                 # Para etapa 3: comportamiento diferente según permisos
                 if has_full_access(request.user):
                     # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
+                    participantes_automaticos = evaluacion.get_participantes_etapa3()
+                    participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
+                    
+                    # Primero agregar los participantes automáticos
+                    for participante in participantes_automaticos:
+                        participantes_individuales.append({
+                            'id': participante.id,
+                            'NombresCompletos': participante.NombresCompletos,
+                            'cedula': participante.cedula
+                        })
+                    
+                    # Luego agregar el resto de participantes individuales
                     for participante in Participantes.objects.all():
-                        if not participante.grupos.exists():
+                        if not participante.grupos.exists() and participante.id not in participantes_automaticos_ids:
                             participantes_individuales.append({
                                 'id': participante.id,
                                 'NombresCompletos': participante.NombresCompletos,
@@ -1895,6 +2066,20 @@ def gestionar_participantes_evaluacion(request, pk):
                     'NombresCompletos': participante.NombresCompletos,
                     'cedula': participante.cedula
                 })
+            
+            # Para superusuarios en etapas 2 y 3, incluir participantes automáticos si no hay asignados manualmente
+            if has_full_access(request.user) and evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.exists():
+                if evaluacion.etapa == 2:
+                    participantes_automaticos = evaluacion.get_participantes_etapa2()
+                else:  # etapa 3
+                    participantes_automaticos = evaluacion.get_participantes_etapa3()
+                
+                for participante in participantes_automaticos:
+                    participantes_asignados.append({
+                        'id': participante.id,
+                        'NombresCompletos': participante.NombresCompletos,
+                        'cedula': participante.cedula
+                    })
             
             return JsonResponse({
                 'success': True,
@@ -2666,4 +2851,491 @@ def profile_view(request):
         'phone_value': phone_value,
     }
     return render(request, 'quizzes/profile.html', context)
+
+
+@login_required
+def exportar_ranking_pdf(request, pk):
+    """
+    Genera un PDF del ranking de una evaluación específica con diseño moderno
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Obtener resultados ordenados por puntaje descendente
+    resultados = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion
+    ).select_related('participante').order_by('-puntaje', 'tiempo_utilizado')
+    
+    # Crear el PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="ranking_etapa_{evaluacion.etapa}_{evaluacion.title}.pdf"'
+    
+    # Crear el documento PDF con márgenes más pequeños para mejor aprovechamiento
+    doc = SimpleDocTemplate(response, pagesize=A4, 
+                          leftMargin=0.5*inch, rightMargin=0.5*inch,
+                          topMargin=0.5*inch, bottomMargin=0.5*inch)
+    elements = []
+    
+    # Definir colores modernos y elegantes
+    primary_color = colors.Color(0.2, 0.4, 0.8)  # Azul moderno
+    secondary_color = colors.Color(0.9, 0.9, 0.95)  # Gris muy claro
+    accent_color = colors.Color(0.1, 0.6, 0.3)  # Verde moderno
+    gold_color = colors.Color(1, 0.843, 0)  # Dorado
+    silver_color = colors.Color(0.75, 0.75, 0.75)  # Plata
+    bronze_color = colors.Color(0.804, 0.498, 0.196)  # Bronce
+    
+    # Estilos modernos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'ModernTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=20,
+        alignment=1,  # Centrado
+        textColor=primary_color,
+        fontName='Helvetica-Bold',
+        spaceBefore=10
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'ModernSubtitle',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=15,
+        alignment=1,  # Centrado
+        textColor=primary_color,
+        fontName='Helvetica-Bold'
+    )
+    
+    etapa_style = ParagraphStyle(
+        'EtapaStyle',
+        parent=styles['Heading2'],
+        fontSize=20,
+        spaceAfter=25,
+        alignment=1,  # Centrado
+        textColor=accent_color,
+        fontName='Helvetica-Bold',
+        spaceBefore=15
+    )
+    
+    # Título principal
+    title = Paragraph("OLIMPIADAS DE MATEMÁTICAS - CARRERA MECÁNICA", title_style)
+    elements.append(title)
+    
+    # Logos lado a lado
+    logo_mecanica = None
+    logo_uteq = None
+    
+    # Cargar Logo Mecánica
+    logo_mecanica_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logoMecanica.png')
+    if os.path.exists(logo_mecanica_path):
+        try:
+            logo_mecanica = Image(logo_mecanica_path, width=1.8*inch, height=1.3*inch)
+        except Exception as e:
+            print(f"Error al cargar logo Mecánica: {e}")
+    
+    # Cargar Logo UTEQ
+    logo_uteq_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logo-uteq.png')
+    if os.path.exists(logo_uteq_path):
+        try:
+            logo_uteq = Image(logo_uteq_path, width=1.8*inch, height=1.3*inch)
+        except Exception as e:
+            print(f"Error al cargar logo UTEQ: {e}")
+    
+    # Crear tabla para logos lado a lado
+    if logo_mecanica or logo_uteq:
+        logo_table_data = []
+        logo_row = []
+        
+        # Logo Mecánica a la izquierda
+        if logo_mecanica:
+            logo_row.append(logo_mecanica)
+        else:
+            logo_row.append(Paragraph("", styles['Normal']))
+        
+        # Espacio central
+        logo_row.append(Paragraph("", styles['Normal']))
+        
+        # Logo UTEQ a la derecha
+        if logo_uteq:
+            logo_row.append(logo_uteq)
+        else:
+            logo_row.append(Paragraph("", styles['Normal']))
+        
+        logo_table_data.append(logo_row)
+        
+        # Crear tabla de logos
+        logo_table = Table(logo_table_data, colWidths=[2.5*inch, 1*inch, 2.5*inch])
+        logo_table_style = TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo Mecánica centrado
+            ('ALIGN', (2, 0), (2, 0), 'CENTER'),  # Logo UTEQ centrado
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, 0), 0),
+            ('RIGHTPADDING', (0, 0), (-1, 0), 0),
+            ('TOPPADDING', (0, 0), (-1, 0), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 0),
+        ])
+        logo_table.setStyle(logo_table_style)
+        
+        elements.append(logo_table)
+        elements.append(Spacer(1, 25))
+    
+    # Etapa
+    etapa_text = f"RESULTADOS DE LA ETAPA {evaluacion.etapa}"
+    etapa_paragraph = Paragraph(etapa_text, etapa_style)
+    elements.append(etapa_paragraph)
+    
+    # Subtítulo
+    subtitle = Paragraph("Ranking de los participantes:", subtitle_style)
+    elements.append(subtitle)
+    elements.append(Spacer(1, 20))
+    
+    # Datos de la tabla
+    table_data = [['Posición', 'Participante', 'Cédula', 'Puntaje', 'Tiempo', 'Estado']]
+    
+    for i, resultado in enumerate(resultados, 1):
+        # Determinar estado según la etapa
+        if evaluacion.etapa == 1 and i <= 15:
+            estado = "Clasificado"
+        elif evaluacion.etapa == 2 and i <= 5:
+            estado = "Finalista"
+        elif evaluacion.etapa == 3:
+            if i == 1:
+                estado = "Oro"
+            elif i == 2 or i == 3:
+                estado = "Plata"
+            elif i == 4 or i == 5:
+                estado = "Bronce"
+            else:
+                estado = "Participante"
+        else:
+            estado = "Participante"
+        
+        # Agregar fila a la tabla
+        table_data.append([
+            str(i),
+            resultado.participante.NombresCompletos,
+            resultado.participante.cedula,
+            str(resultado.get_puntaje_numerico()),
+            resultado.get_tiempo_formateado(),
+            estado
+        ])
+    
+    # Crear tabla con anchos optimizados
+    table = Table(table_data, colWidths=[0.7*inch, 2.8*inch, 1.3*inch, 0.8*inch, 1.1*inch, 1.3*inch])
+    
+    # Estilo moderno de la tabla
+    table_style = TableStyle([
+        # Encabezado
+        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 15),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        
+        # Filas alternadas para mejor legibilidad
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('BACKGROUND', (0, 2), (-1, -1), secondary_color),
+        
+        # Bordes suaves
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, primary_color),
+        
+        # Tipografía
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        
+        # Alineación
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Nombres a la izquierda
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Posición centrada
+        ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Cédula centrada
+        ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Puntaje centrado
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Tiempo centrado
+        ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Estado centrado
+    ])
+    
+    # Aplicar colores de estado con diseño moderno
+    for i, resultado in enumerate(resultados, 1):
+        row_index = i  # +1 porque la primera fila es el encabezado
+        
+        if evaluacion.etapa == 3:
+            if i == 1:  # Oro
+                table_style.add('BACKGROUND', (5, row_index), (5, row_index), gold_color)
+                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
+                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+            elif i == 2 or i == 3:  # Plata
+                table_style.add('BACKGROUND', (5, row_index), (5, row_index), silver_color)
+                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
+                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+            elif i == 4 or i == 5:  # Bronce
+                table_style.add('BACKGROUND', (5, row_index), (5, row_index), bronze_color)
+                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
+                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+        elif evaluacion.etapa == 1 and i <= 15:
+            table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
+            table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
+            table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+        elif evaluacion.etapa == 2 and i <= 5:
+            table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
+            table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
+            table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+    
+    table.setStyle(table_style)
+    elements.append(table)
+    
+    # Construir el PDF
+    doc.build(elements)
+    
+    return response
+
+# ============================================================================
+# VISTAS PARA MONITOREO EN TIEMPO REAL
+# ============================================================================
+
+@login_required
+def monitoreo_evaluacion(request, pk):
+    """
+    Vista principal para el monitoreo en tiempo real de una evaluación
+    """
+    if not has_full_access(request.user):
+        messages.error(request, 'No tienes permisos para acceder al monitoreo en tiempo real.')
+        return redirect('quizzes:dashboard')
+    
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Obtener todos los monitoreos activos para esta evaluación
+    monitoreos = MonitoreoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        estado='activo'
+    ).select_related('participante', 'resultado')
+    
+    # Estadísticas generales
+    total_participantes = len(evaluacion.get_participantes_autorizados())
+    participantes_activos = monitoreos.filter(ultima_actividad__gte=timezone.now() - timezone.timedelta(minutes=5)).count()
+    participantes_finalizados = MonitoreoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        estado='finalizado'
+    ).count()
+    
+    context = {
+        'evaluacion': evaluacion,
+        'monitoreos': monitoreos,
+        'total_participantes': total_participantes,
+        'participantes_activos': participantes_activos,
+        'participantes_finalizados': participantes_finalizados,
+        'participantes_pendientes': total_participantes - participantes_activos - participantes_finalizados,
+    }
+    
+    return render(request, 'quizzes/monitoreo_evaluacion.html', context)
+
+
+@csrf_exempt
+@login_required
+def actualizar_monitoreo(request, pk):
+    """
+    Endpoint para actualizar el estado del monitoreo desde el frontend
+    """
+    if not has_full_access(request.user):
+        return JsonResponse({'error': 'Sin permisos'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        participante_id = data.get('participante_id')
+        evaluacion_id = data.get('evaluacion_id')
+        
+        # Obtener o crear el monitoreo
+        participante = get_object_or_404(Participantes, pk=participante_id)
+        evaluacion = get_object_or_404(Evaluacion, pk=evaluacion_id)
+        resultado = get_object_or_404(ResultadoEvaluacion, participante=participante, evaluacion=evaluacion)
+        
+        monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+            evaluacion=evaluacion,
+            participante=participante,
+            defaults={'resultado': resultado}
+        )
+        
+        if not created:
+            monitoreo.resultado = resultado
+        
+        # Actualizar datos del monitoreo
+        monitoreo.pagina_actual = data.get('pagina_actual', monitoreo.pagina_actual)
+        monitoreo.preguntas_respondidas = data.get('preguntas_respondidas', monitoreo.preguntas_respondidas)
+        monitoreo.preguntas_revisadas = data.get('preguntas_revisadas', monitoreo.preguntas_revisadas)
+        monitoreo.tiempo_activo = data.get('tiempo_activo', monitoreo.tiempo_activo)
+        monitoreo.tiempo_inactivo = data.get('tiempo_inactivo', monitoreo.tiempo_inactivo)
+        
+        # Verificar inactividad (más de 2 minutos sin actividad)
+        tiempo_ultima_actividad = (timezone.now() - monitoreo.ultima_actividad).total_seconds()
+        if tiempo_ultima_actividad > 120:  # 2 minutos
+            monitoreo.agregar_alerta('inactividad', f'Estudiante inactivo por {int(tiempo_ultima_actividad/60)} minutos', 'media')
+        
+        monitoreo.save()
+        
+        return JsonResponse({
+            'success': True,
+            'monitoreo_id': monitoreo.id,
+            'ultima_actividad': monitoreo.ultima_actividad.isoformat()
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+def obtener_estado_monitoreo(request, pk):
+    """
+    Endpoint para obtener el estado actual del monitoreo
+    """
+    if not has_full_access(request.user):
+        return JsonResponse({'error': 'Sin permisos'}, status=403)
+    
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Obtener todos los participantes autorizados
+    participantes_autorizados = evaluacion.get_participantes_autorizados()
+    datos_monitoreo = []
+    
+    for participante in participantes_autorizados:
+        # Verificar si el participante tiene un resultado completado
+        resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=True
+        ).first()
+        
+        # Obtener o crear el monitoreo para este participante
+        monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+            evaluacion=evaluacion,
+            participante=participante,
+            defaults={'resultado': resultado} if resultado else {}
+        )
+        
+        # Si el participante tiene un resultado completado, asegurar que el monitoreo esté finalizado
+        if resultado and monitoreo.estado != 'finalizado':
+            monitoreo.estado = 'finalizado'
+            monitoreo.resultado = resultado
+            monitoreo.save()
+        
+        # Si no hay resultado completado pero el monitoreo está finalizado, cambiar a activo
+        if not resultado and monitoreo.estado == 'finalizado':
+            monitoreo.estado = 'activo'
+            monitoreo.save()
+        
+        # Agregar datos del monitoreo
+        datos_monitoreo.append({
+            'id': monitoreo.id,
+            'participante_id': monitoreo.participante.id,
+            'participante_nombre': monitoreo.participante.NombresCompletos,
+            'participante_cedula': monitoreo.participante.cedula,
+            'estado': monitoreo.estado,
+            'esta_activo': monitoreo.esta_activo() if monitoreo.estado == 'activo' else False,
+            'pagina_actual': monitoreo.pagina_actual,
+            'preguntas_respondidas': monitoreo.preguntas_respondidas,
+            'preguntas_revisadas': monitoreo.preguntas_revisadas,
+            'porcentaje_avance': round(monitoreo.get_porcentaje_avance(), 1),
+            'tiempo_activo': monitoreo.get_tiempo_total_activo(),
+            'tiempo_inactivo': monitoreo.get_tiempo_total_inactivo(),
+            'ultima_actividad': monitoreo.ultima_actividad.isoformat(),
+            'alertas_count': len(monitoreo.alertas_detectadas),
+            'alertas_recientes': [
+                alerta for alerta in monitoreo.alertas_detectadas[-3:]  # Últimas 3 alertas
+            ],
+            'tiene_resultado_completado': resultado is not None,
+            'puntaje': resultado.puntaje if resultado else None,
+            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None
+        })
+    
+    return JsonResponse({
+        'monitoreos': datos_monitoreo,
+        'timestamp': timezone.now().isoformat()
+    })
+
+
+@csrf_exempt
+@login_required
+def finalizar_evaluacion_admin(request, pk):
+    """
+    Endpoint para finalizar una evaluación por decisión administrativa
+    """
+    if not has_full_access(request.user):
+        return JsonResponse({'error': 'Sin permisos'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        monitoreo_id = data.get('monitoreo_id')
+        motivo = data.get('motivo', 'Finalización administrativa')
+        
+        monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
+        
+        # Finalizar la evaluación
+        monitoreo.finalizar_por_admin(request.user, motivo)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Evaluación de {monitoreo.participante.NombresCompletos} finalizada exitosamente'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def detalle_monitoreo(request, monitoreo_id):
+    """
+    Vista para ver el detalle completo de un monitoreo específico
+    """
+    if not has_full_access(request.user):
+        messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
+        return redirect('quizzes:dashboard')
+    
+    monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
+    
+    context = {
+        'monitoreo': monitoreo,
+        'evaluacion': monitoreo.evaluacion,
+        'participante': monitoreo.participante,
+        'resultado': monitoreo.resultado,
+    }
+    
+    return render(request, 'quizzes/detalle_monitoreo.html', context)
+
+
+@csrf_exempt
+@login_required
+def agregar_alerta_manual(request, monitoreo_id):
+    """
+    Endpoint para agregar alertas manuales desde el panel de administración
+    """
+    if not has_full_access(request.user):
+        return JsonResponse({'error': 'Sin permisos'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        tipo_alerta = data.get('tipo_alerta')
+        descripcion = data.get('descripcion')
+        severidad = data.get('severidad', 'baja')
+        
+        monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
+        monitoreo.agregar_alerta(tipo_alerta, descripcion, severidad)
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Alerta agregada exitosamente'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 

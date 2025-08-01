@@ -220,9 +220,13 @@ body.evaluacion-activa #sidebarToggleBtnHeader {
 {% block extra_js %}
 <script>
 // Variables globales
-let tiempoRestante = {{ tiempo_total }};
+let tiempoRestante = {% if continuar_evaluacion and resultado.tiempo_restante %}{{ resultado.tiempo_restante }}{% else %}{{ tiempo_total }}{% endif %};
 let timerInterval;
 let guardadoInterval;
+let evaluacionEnviandose = false; // Variable para controlar si la evaluación se está enviando
+let evaluacionFinalizadaAdmin = false; // Variable para controlar si ya se mostró el modal de evaluación finalizada
+let verificacionInterval; // Variable para el intervalo de verificación
+let modalMostrandose = false; // Variable para controlar si el modal ya se está mostrando
 
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
@@ -236,10 +240,85 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarProgresoGuardado();
 });
 
+// Función para limpiar todos los intervalos y timers
+function limpiarIntervalos() {
+    if (verificacionInterval) {
+        clearInterval(verificacionInterval);
+    }
+    if (timerInterval) {
+        clearInterval(timerInterval);
+    }
+    if (guardadoInterval) {
+        clearInterval(guardadoInterval);
+    }
+}
+
 // Función de inicialización
 function inicializarEvaluacion() {
     actualizarProgreso();
     actualizarNavegacion();
+    iniciarVerificacionEstado();
+    
+    {% if continuar_evaluacion %}
+    // Mostrar mensaje de que se está continuando la evaluación
+    Swal.fire({
+        icon: 'info',
+        title: 'Continuando Evaluación',
+        text: 'Se ha detectado una evaluación en progreso. Tu tiempo y respuestas han sido restaurados.',
+        timer: 3000,
+        showConfirmButton: false
+    });
+    {% endif %}
+}
+
+// Función para verificar periódicamente si la evaluación fue finalizada administrativamente
+function iniciarVerificacionEstado() {
+    // Verificar cada 10 segundos
+    verificacionInterval = setInterval(function() {
+        if (!evaluacionFinalizadaAdmin) {
+            verificarEstadoEvaluacion();
+        }
+    }, 10000);
+}
+
+// Verificar estado de la evaluación
+function verificarEstadoEvaluacion() {
+    fetch(`{% url 'quizzes:verificar_estado_evaluacion' evaluacion.pk %}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.finalizada_admin && !evaluacionFinalizadaAdmin && !modalMostrandose) {
+                // Marcar que ya se mostró el modal para evitar duplicados
+                evaluacionFinalizadaAdmin = true;
+                modalMostrandose = true;
+                
+                // Detener todas las verificaciones y timers
+                limpiarIntervalos();
+                
+                // Marcar que la evaluación se está enviando para evitar alertas del navegador
+                evaluacionEnviandose = true;
+                
+                // La evaluación fue finalizada administrativamente
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Evaluación Finalizada',
+                    html: `
+                        <p>Tu evaluación ha sido finalizada administrativamente.</p>
+                        <p><strong>Motivo:</strong> ${data.motivo}</p>
+                        <p><strong>Administrador:</strong> ${data.admin}</p>
+                        <p>Tu puntaje será de 0/10.</p>
+                    `,
+                    confirmButtonText: 'Entendido',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false
+                }).then(() => {
+                    // Redirigir a la página de evaluaciones
+                    window.location.href = "{% url 'quizzes:quiz' %}";
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error verificando estado de evaluación:', error);
+        });
 }
 
 // Activar modo evaluación (ocultar sidebar)
@@ -272,7 +351,7 @@ function configurarEventos() {
     
     // Eventos de página
     window.addEventListener('beforeunload', function(e) {
-        if (tiempoRestante > 0) {
+        if (tiempoRestante > 0 && !evaluacionEnviandose && !evaluacionFinalizadaAdmin && !modalMostrandose) {
             guardarRespuestaAutomatica();
             e.preventDefault();
             e.returnValue = '';
@@ -381,6 +460,29 @@ function guardarRespuestaAutomatica() {
     .then(data => {
         if (data.success) {
             console.log('Progreso guardado automáticamente');
+        } else if (data.redirect && !evaluacionFinalizadaAdmin && !modalMostrandose) {
+            // Marcar que ya se mostró el modal para evitar duplicados
+            evaluacionFinalizadaAdmin = true;
+            modalMostrandose = true;
+            
+            // Detener todas las verificaciones y timers
+            limpiarIntervalos();
+            
+            // Marcar que la evaluación se está enviando para evitar alertas del navegador
+            evaluacionEnviandose = true;
+            
+            // La evaluación fue finalizada administrativamente
+            Swal.fire({
+                icon: 'error',
+                title: 'Evaluación Finalizada',
+                text: 'Tu evaluación ha sido finalizada administrativamente. Tu puntaje será de 0/10.',
+                confirmButtonText: 'Entendido',
+                allowOutsideClick: false,
+                allowEscapeKey: false
+            }).then(() => {
+                // Redirigir a la página de evaluaciones
+                window.location.href = "{% url 'quizzes:quiz' %}";
+            });
         }
     })
     .catch(error => {
@@ -460,6 +562,9 @@ function enviarEvaluacion() {
     const modal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
     modal.hide();
     
+    // Marcar que la evaluación se está enviando para evitar la alerta de beforeunload
+    evaluacionEnviandose = true;
+    
     // Desactivar modo evaluación antes de enviar
     desactivarModoEvaluacion();
     
@@ -475,6 +580,9 @@ function enviarEvaluacionAutomaticamente() {
         showConfirmButton: false,
         timer: 2000
     }).then(() => {
+        // Marcar que la evaluación se está enviando para evitar la alerta de beforeunload
+        evaluacionEnviandose = true;
+        
         // Desactivar modo evaluación antes de enviar automáticamente
         desactivarModoEvaluacion();
         document.getElementById('quizForm').submit();

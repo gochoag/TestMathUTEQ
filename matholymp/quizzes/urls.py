@@ -15,6 +15,7 @@ urlpatterns = [
     path('quiz/<int:pk>/', views.take_quiz, name='take_quiz'),
     path('quiz/<int:pk>/guardar/', views.guardar_respuesta_automatica, name='guardar_respuesta_automatica'),
     path('quiz/<int:pk>/progreso/', views.obtener_progreso_evaluacion, name='obtener_progreso_evaluacion'),
+    path('quiz/<int:pk>/verificar-estado/', views.verificar_estado_evaluacion, name='verificar_estado_evaluacion'),
     path('evaluaciones/', views.quiz_view, name='quiz'),  # Nueva URL para evaluaciones
     path('evaluaciones/crear/', views.create_evaluacion, name='create_evaluacion'),
     path('mis-resultados/', views.student_results, name='student_results'),
@@ -32,6 +33,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/resultados/', views.evaluacion_results, name='evaluacion_results'),
     path('evaluacion/<int:pk>/eliminar/', views.delete_evaluacion, name='delete_evaluacion'),
     path('evaluacion/<int:pk>/ranking/', views.ranking_evaluacion, name='ranking_evaluacion'),
+    path('evaluacion/<int:pk>/ranking/pdf/', views.exportar_ranking_pdf, name='exportar_ranking_pdf'),
     path('evaluacion/<int:pk>/participantes/', views.gestionar_participantes_evaluacion, name='gestionar_participantes_evaluacion'),
     
     path('gestionar-participantes/', views.manage_participants, name='manage_participants'),
@@ -45,4 +47,12 @@ urlpatterns = [
     path('guardar-excel-participantes/', views.save_excel_participants, name='save_excel_participants'),
     path('upload-image/', views.upload_image, name='upload_image'),
     path('perfil/', views.profile_view, name='profile'),
+    
+    # URLs para monitoreo en tiempo real
+    path('evaluacion/<int:pk>/monitoreo/', views.monitoreo_evaluacion, name='monitoreo_evaluacion'),
+    path('evaluacion/<int:pk>/monitoreo/actualizar/', views.actualizar_monitoreo, name='actualizar_monitoreo'),
+    path('evaluacion/<int:pk>/monitoreo/estado/', views.obtener_estado_monitoreo, name='obtener_estado_monitoreo'),
+    path('evaluacion/<int:pk>/monitoreo/finalizar/', views.finalizar_evaluacion_admin, name='finalizar_evaluacion_admin'),
+    path('monitoreo/<int:monitoreo_id>/detalle/', views.detalle_monitoreo, name='detalle_monitoreo'),
+    path('monitoreo/<int:monitoreo_id>/alerta/', views.agregar_alerta_manual, name='agregar_alerta_manual'),
 ]
