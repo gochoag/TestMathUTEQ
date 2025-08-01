@@ -13,6 +13,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 import re
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from openpyxl import load_workbook
 import json
 from django.http import JsonResponse
@@ -46,20 +47,39 @@ def custom_login(request):
     if request.GET.get('session_expired'):
         messages.warning(request, 'Tu sesión expiró por inactividad')
         return redirect(settings.LOGIN_URL)
+    
     if request.method == 'POST':
-        form = AuthenticationForm(request, data=request.POST)
-        if form.is_valid():
-            # Autenticar al usuario
-            user = form.get_user()
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        
+        # Buscar usuario por username case-insensitive
+        try:
+            user_obj = User.objects.get(username__iexact=username)
+            # Intentar autenticar con el username real (case-sensitive) pero password
+            user = authenticate(request, username=user_obj.username, password=password)
+        except User.DoesNotExist:
+            user = None
+        
+        if user is not None:
             login(request, user)
             request.session['last_activity'] = timezone.now().timestamp()
-            return redirect('quizzes:dashboard')  # Redirige a la página de dashboard después del login
-    else:
-        form = AuthenticationForm()
+            messages.success(request, f'¡Bienvenido, {user.get_full_name() or user.username}!')
+            return redirect('quizzes:dashboard')
+        else:
+            # Mostrar mensaje de error específico
+            if not username:
+                messages.error(request, 'Por favor, ingresa tu nombre de usuario.')
+            elif not password:
+                messages.error(request, 'Por favor, ingresa tu contraseña.')
+            else:
+                messages.error(request, 'Usuario o contraseña incorrectos. Por favor, verifica tus credenciales.')
+    
+    # Crear un formulario vacío para el template
+    form = AuthenticationForm()
 
     return render(request, 'quizzes/login.html', {
         'form': form,
-        'messages': messages.get_messages(request)  # Pasa los mensajes existentes
+        'messages': messages.get_messages(request)
     })
 
 
@@ -223,18 +243,34 @@ def take_quiz(request, pk):
             resultado_existente.tiempo_restante = 0
             resultado_existente.save()
         else:
-            nuevo_resultado = ResultadoEvaluacion.objects.create(
-                evaluacion=evaluacion,
-                participante=participante,
-                puntaje=percentage,
-                puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
-                puntos_totales=10,  # Puntos totales siempre son 10
-                tiempo_utilizado=tiempo_utilizado // 60,
-                fecha_fin=timezone.now(),
-                completada=True,
-                respuestas_guardadas=respuestas_finales,
-                tiempo_restante=0
-            )
+            try:
+                nuevo_resultado = ResultadoEvaluacion.objects.create(
+                    evaluacion=evaluacion,
+                    participante=participante,
+                    puntaje=percentage,
+                    puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
+                    puntos_totales=10,  # Puntos totales siempre son 10
+                    tiempo_utilizado=tiempo_utilizado // 60,
+                    fecha_fin=timezone.now(),
+                    completada=True,
+                    respuestas_guardadas=respuestas_finales,
+                    tiempo_restante=0
+                )
+            except IntegrityError:
+                # Si ya existe un resultado, actualizarlo
+                nuevo_resultado = ResultadoEvaluacion.objects.get(
+                    evaluacion=evaluacion,
+                    participante=participante
+                )
+                nuevo_resultado.puntaje = percentage
+                nuevo_resultado.puntos_obtenidos = puntaje_ponderado
+                nuevo_resultado.puntos_totales = 10
+                nuevo_resultado.tiempo_utilizado = tiempo_utilizado // 60
+                nuevo_resultado.fecha_fin = timezone.now()
+                nuevo_resultado.completada = True
+                nuevo_resultado.respuestas_guardadas = respuestas_finales
+                nuevo_resultado.tiempo_restante = 0
+                nuevo_resultado.save()
         
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
@@ -254,12 +290,20 @@ def take_quiz(request, pk):
     # Si no hay intento en progreso, crear uno nuevo
     if not continuar_evaluacion:
         tiempo_total = evaluacion.duration_minutes * 60  # en segundos
-        resultado_existente = ResultadoEvaluacion.objects.create(
-            evaluacion=evaluacion,
-            participante=participante,
-            fecha_inicio=timezone.now(),
-            tiempo_restante=tiempo_total
-        )
+        try:
+            resultado_existente = ResultadoEvaluacion.objects.create(
+                evaluacion=evaluacion,
+                participante=participante,
+                fecha_inicio=timezone.now(),
+                tiempo_restante=tiempo_total
+            )
+        except IntegrityError:
+            # Si ya existe un resultado para esta evaluación y participante
+            resultado_existente = ResultadoEvaluacion.objects.get(
+                evaluacion=evaluacion,
+                participante=participante
+            )
+            messages.warning(request, 'Ya tienes un intento en progreso para esta evaluación.')
     
     context = {
         'evaluacion': evaluacion,
@@ -408,8 +452,14 @@ def manage_participants(request):
             messages.error(request, f"Teléfono: {error_phone}")
             return redirect('quizzes:manage_participants')
         
+        # Verificar si la cédula ya existe como username
+        if User.objects.filter(username=cedula).exists():
+            messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
+            return redirect('quizzes:manage_participants')
+        
         # Crear el participante
         participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
+        messages.success(request, f"Participante {NombresCompletos} creado correctamente.")
         return redirect('quizzes:manage_participants')
 
     # Editar participante
@@ -436,6 +486,13 @@ def manage_participants(request):
         # Obtener el participante y actualizar sus datos
         participante = Participantes.objects.select_related('user').get(id=edit_id)
         user_obj = participante.user
+        
+        # Verificar si la nueva cédula ya existe como username en otro usuario
+        if cedula != participante.cedula:  # Solo verificar si la cédula cambió
+            if User.objects.filter(username=cedula).exclude(id=user_obj.id).exists():
+                messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
+                return redirect('quizzes:manage_participants')
+        
         user_obj.username = cedula  # Actualiza el username a la cédula
         user_obj.first_name = NombresCompletos
         user_obj.email = email
@@ -446,6 +503,7 @@ def manage_participants(request):
         participante.edad = edad
         user_obj.save()
         participante.save()
+        messages.success(request, f"Participante {NombresCompletos} actualizado correctamente.")
         return redirect('quizzes:manage_participants')
 
     # Búsqueda de participantes
@@ -495,9 +553,16 @@ def manage_admins(request):
         first_name = request.POST.get('first_name')
         last_name = request.POST.get('last_name')
         email = request.POST.get('email')
+        
+        # Verificar si el username ya existe
+        if User.objects.filter(username=username).exists():
+            messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
+            return redirect('quizzes:manage_admins')
+        
         password = get_random_string(length=8)
         new_user = User.objects.create_user(username=username, password=password, first_name=first_name, last_name=last_name, email=email)
         admin_profile = AdminProfile.objects.create(user=new_user, created_by=user, password=password)
+        messages.success(request, f"Administrador {first_name} {last_name} creado correctamente.")
         return redirect('quizzes:manage_admins')
 
     # Editar admin
@@ -509,11 +574,18 @@ def manage_admins(request):
         email = request.POST.get('email')
         admin = AdminProfile.objects.select_related('user').get(id=edit_id)
         user_obj = admin.user
+        
+        # Verificar si el nuevo username ya existe en otro usuario
+        if username != user_obj.username and User.objects.filter(username=username).exists():
+            messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
+            return redirect('quizzes:manage_admins')
+        
         user_obj.username = username
         user_obj.first_name = first_name
         user_obj.last_name = last_name
         user_obj.email = email
         user_obj.save()
+        messages.success(request, f"Administrador {first_name} {last_name} actualizado correctamente.")
         return redirect('quizzes:manage_admins')
 
     admins = AdminProfile.objects.select_related('user').all()
@@ -908,7 +980,7 @@ def save_excel_participants(request):
     
     return JsonResponse({'error': 'Método no permitido'}, status=405)
 
-# Función utilitaria para enviar credenciales por correo
+# Función utilitaria para enviar credenciales por correo (PARA EL REGISTRO EN EL SISTEMA ALADO DE LOGIN)
 from django.core.mail import send_mail
 from django.conf import settings
 def send_credentials_email(nombre, username, password, email, rol='Administrador'):
@@ -2194,14 +2266,42 @@ El equipo de Olymp
             html_message=html_message
         )
         
-        messages.success(request, f'Correo enviado exitosamente al representante {grupo.representante.NombresRepresentante}.')
+        # Verificar si es una petición AJAX
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        
+        if is_ajax:
+            # Para peticiones AJAX, devolver JSON
+            return JsonResponse({
+                'success': True,
+                'message': f'Correo enviado exitosamente al representante {grupo.representante.NombresRepresentante}.'
+            })
+        else:
+            # Para peticiones normales, usar mensajes y redirecciones
+            messages.success(request, f'Correo enviado exitosamente al representante {grupo.representante.NombresRepresentante}.')
+            return redirect('quizzes:manage_grupos')
         
     except GrupoParticipantes.DoesNotExist:
-        messages.error(request, 'El grupo especificado no existe.')
+        error_msg = 'El grupo especificado no existe.'
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if is_ajax:
+            return JsonResponse({
+                'success': False,
+                'message': error_msg
+            })
+        else:
+            messages.error(request, error_msg)
+            return redirect('quizzes:manage_grupos')
     except Exception as e:
-        messages.error(request, f'Error al enviar el correo: {str(e)}')
-    
-    return redirect('quizzes:manage_grupos')
+        error_msg = f'Error al enviar el correo: {str(e)}'
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if is_ajax:
+            return JsonResponse({
+                'success': False,
+                'message': error_msg
+            })
+        else:
+            messages.error(request, error_msg)
+            return redirect('quizzes:manage_grupos')
 
 @login_required
 def send_credentials_email(request, user_type, user_id):
@@ -2213,16 +2313,13 @@ def send_credentials_email(request, user_type, user_id):
             email = user_obj.email
             username = user_obj.user.username
             
-            # Si no tiene contraseña temporal, generar una nueva
-            if not user_obj.password_temporal:
-                nueva_password = get_random_string(length=6)
-                user_obj.password_temporal = nueva_password
-                user_obj.save()
-                # Actualizar también la contraseña del usuario
-                user_obj.user.set_password(nueva_password)
-                user_obj.user.save()
-            else:
-                nueva_password = user_obj.password_temporal
+            # Siempre generar una nueva contraseña temporal
+            nueva_password = get_random_string(length=6)
+            user_obj.password_temporal = nueva_password
+            user_obj.save()
+            # Actualizar también la contraseña del usuario
+            user_obj.user.set_password(nueva_password)
+            user_obj.user.save()
             
             subject = f'Credenciales de Acceso - Sistema Olymp'
             system_name = 'Sistema Olymp'
@@ -2233,16 +2330,13 @@ def send_credentials_email(request, user_type, user_id):
             email = user_obj.user.email
             username = user_obj.user.username
             
-            # Si no tiene contraseña, generar una nueva
-            if not user_obj.password:
-                nueva_password = get_random_string(length=8)
-                user_obj.password = nueva_password
-                user_obj.save()
-                # Actualizar también la contraseña del usuario
-                user_obj.user.set_password(nueva_password)
-                user_obj.user.save()
-            else:
-                nueva_password = user_obj.password
+            # Siempre generar una nueva contraseña
+            nueva_password = get_random_string(length=8)
+            user_obj.password = nueva_password
+            user_obj.save()
+            # Actualizar también la contraseña del usuario
+            user_obj.user.set_password(nueva_password)
+            user_obj.user.save()
             
             subject = f'Credenciales de Acceso - Panel de Administración Olymp'
             system_name = 'Panel de Administración Olymp'
@@ -2318,20 +2412,46 @@ El equipo de Olymp
             html_message=html_message
         )
         
-        # Mensaje de éxito según el tipo de usuario
-        if user_type == 'participante':
-            messages.success(request, f'Correo enviado exitosamente al participante {nombre}.')
-            return redirect('quizzes:manage_participants')
+        # Verificar si es una petición AJAX
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        
+        if is_ajax:
+            # Para peticiones AJAX, devolver JSON
+            return JsonResponse({
+                'success': True,
+                'message': f'Correo enviado exitosamente al {"participante" if user_type == "participante" else "administrador"} {nombre}.'
+            })
         else:
-            messages.success(request, f'Correo enviado exitosamente al administrador {nombre}.')
-            return redirect('quizzes:manage_admins')
+            # Para peticiones normales, usar mensajes y redirecciones
+            if user_type == 'participante':
+                messages.success(request, f'Correo enviado exitosamente al participante {nombre}.')
+                return redirect('quizzes:manage_participants')
+            else:
+                messages.success(request, f'Correo enviado exitosamente al administrador {nombre}.')
+                return redirect('quizzes:manage_admins')
         
     except (Participantes.DoesNotExist, AdminProfile.DoesNotExist):
-        messages.error(request, 'El usuario especificado no existe.')
-        return redirect('quizzes:dashboard')
+        error_msg = 'El usuario especificado no existe.'
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if is_ajax:
+            return JsonResponse({
+                'success': False,
+                'message': error_msg
+            })
+        else:
+            messages.error(request, error_msg)
+            return redirect('quizzes:dashboard')
     except Exception as e:
-        messages.error(request, f'Error al enviar el correo: {str(e)}')
-        return redirect('quizzes:dashboard')
+        error_msg = f'Error al enviar el correo: {str(e)}'
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if is_ajax:
+            return JsonResponse({
+                'success': False,
+                'message': error_msg
+            })
+        else:
+            messages.error(request, error_msg)
+            return redirect('quizzes:dashboard')
 
 
 @login_required
@@ -2340,88 +2460,210 @@ def profile_view(request):
     # Obtener o crear el perfil del usuario
     profile, created = UserProfile.objects.get_or_create(user=request.user)
     
+    # Verificar si el usuario es un participante
+    try:
+        participante = Participantes.objects.get(user=request.user)
+        is_participante = True
+        # Para participantes, usar el teléfono del modelo Participantes
+        phone_value = participante.phone
+    except Participantes.DoesNotExist:
+        is_participante = False
+        # Para otros usuarios, usar el teléfono del UserProfile
+        phone_value = profile.phone
+    
+    # Verificar si es una petición AJAX
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    
     if request.method == 'POST':
         # Procesar el formulario de actualización de perfil
         if 'update_profile' in request.POST:
-            # Actualizar información básica
-            first_name = request.POST.get('first_name', '').strip()
-            last_name = request.POST.get('last_name', '').strip()
-            email = request.POST.get('email', '').strip()
-            phone = request.POST.get('phone', '').strip()
-            bio = request.POST.get('bio', '').strip()
-            
-            # Validar email único
-            if email != request.user.email:
-                if User.objects.filter(email=email).exclude(id=request.user.id).exists():
-                    messages.error(request, 'El correo electrónico ya está en uso.')
-                    return redirect('quizzes:profile')
-            
-            # Actualizar usuario
-            request.user.first_name = first_name
-            request.user.last_name = last_name
-            request.user.email = email
-            request.user.save()
-            
-            # Actualizar perfil
-            profile.phone = phone
-            profile.bio = bio
-            
-            # Procesar nueva foto si se subió
-            if 'avatar' in request.FILES:
-                # Eliminar foto anterior si existe
-                if profile.avatar:
-                    try:
-                        os.remove(profile.avatar.path)
-                    except:
-                        pass
+            try:
+                # Actualizar información básica
+                full_name = request.POST.get('full_name', '').strip()
+                email = request.POST.get('email', '').strip()
+                phone = request.POST.get('phone', '').strip()
+                bio = request.POST.get('bio', '').strip()
                 
-                profile.avatar = request.FILES['avatar']
-            
-            profile.save()
-            
-            # Si se actualizó el avatar, devolver información para actualizar el sidebar
-            if 'avatar' in request.FILES:
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Perfil actualizado exitosamente.',
-                    'avatar_url': profile.avatar.url if profile.avatar else None
-                })
-            
-            messages.success(request, 'Perfil actualizado exitosamente.')
-            return redirect('quizzes:profile')
+                # Validar que se proporcione el nombre completo
+                if not full_name:
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'El campo Nombres Completos es obligatorio.'
+                        })
+                    else:
+                        messages.error(request, 'El campo Nombres Completos es obligatorio.')
+                        return redirect('quizzes:profile')
+                
+                # Validar email único
+                if email != request.user.email:
+                    if User.objects.filter(email=email).exclude(id=request.user.id).exists():
+                        if is_ajax:
+                            return JsonResponse({
+                                'success': False,
+                                'message': 'El correo electrónico ya está en uso.'
+                            })
+                        else:
+                            messages.error(request, 'El correo electrónico ya está en uso.')
+                            return redirect('quizzes:profile')
+                
+                # Validar formato de teléfono si se proporciona
+                if phone and not re.match(r'^\d{10}$', phone):
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'El teléfono debe tener exactamente 10 dígitos numéricos.'
+                        })
+                    else:
+                        messages.error(request, 'El teléfono debe tener exactamente 10 dígitos numéricos.')
+                        return redirect('quizzes:profile')
+                
+                # Actualizar usuario - dividir el nombre completo en first_name y last_name
+                # Si hay espacios, el primer espacio separa nombres de apellidos
+                name_parts = full_name.split(' ', 1)
+                if len(name_parts) > 1:
+                    first_name = name_parts[0]
+                    last_name = name_parts[1]
+                else:
+                    first_name = full_name
+                    last_name = ''
+                
+                request.user.first_name = first_name
+                request.user.last_name = last_name
+                request.user.email = email
+                request.user.save()
+                
+                # Actualizar perfil según el tipo de usuario
+                if is_participante:
+                    # Para participantes, actualizar el teléfono en el modelo Participantes
+                    participante.phone = phone
+                    participante.save()
+                    # También actualizar el UserProfile para bio y avatar
+                    profile.bio = bio
+                else:
+                    # Para otros usuarios, actualizar el UserProfile
+                    profile.phone = phone
+                    profile.bio = bio
+                
+                # Procesar nueva foto si se subió
+                if 'avatar' in request.FILES:
+                    # Eliminar foto anterior si existe
+                    if profile.avatar:
+                        try:
+                            os.remove(profile.avatar.path)
+                        except:
+                            pass
+                    
+                    profile.avatar = request.FILES['avatar']
+                
+                profile.save()
+                
+                # Si es AJAX, devolver JSON
+                if is_ajax:
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Perfil actualizado exitosamente.',
+                        'avatar_url': profile.avatar.url if profile.avatar else None
+                    })
+                
+                messages.success(request, 'Perfil actualizado exitosamente.')
+                return redirect('quizzes:profile')
+                
+            except Exception as e:
+                # Para peticiones AJAX, siempre devolver JSON
+                if is_ajax:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Error al actualizar el perfil: {str(e)}'
+                    })
+                else:
+                    messages.error(request, f'Error al actualizar el perfil: {str(e)}')
+                    return redirect('quizzes:profile')
         
         # Procesar cambio de contraseña
         elif 'change_password' in request.POST:
-            current_password = request.POST.get('current_password')
-            new_password = request.POST.get('new_password')
-            confirm_password = request.POST.get('confirm_password')
-            
-            # Validar contraseña actual
-            if not request.user.check_password(current_password):
-                messages.error(request, 'La contraseña actual es incorrecta.')
-                return redirect('quizzes:profile')
-            
-            # Validar que las nuevas contraseñas coincidan
-            if new_password != confirm_password:
-                messages.error(request, 'Las nuevas contraseñas no coinciden.')
-                return redirect('quizzes:profile')
-            
-            # Validar longitud mínima
-            if len(new_password) < 8:
-                messages.error(request, 'La nueva contraseña debe tener al menos 8 caracteres.')
-                return redirect('quizzes:profile')
-            
-            # Cambiar contraseña
-            request.user.set_password(new_password)
-            request.user.save()
-            
-            # Re-autenticar al usuario
-            login(request, request.user)
-            messages.success(request, 'Contraseña cambiada exitosamente.')
-            return redirect('quizzes:profile')
+            try:
+                current_password = request.POST.get('current_password')
+                new_password = request.POST.get('new_password')
+                confirm_password = request.POST.get('confirm_password')
+                
+                # Validar contraseña actual
+                if not request.user.check_password(current_password):
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'La contraseña actual es incorrecta.'
+                        })
+                    else:
+                        messages.error(request, 'La contraseña actual es incorrecta.')
+                        return redirect('quizzes:profile')
+                
+                # Validar que las nuevas contraseñas coincidan
+                if new_password != confirm_password:
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'Las nuevas contraseñas no coinciden.'
+                        })
+                    else:
+                        messages.error(request, 'Las nuevas contraseñas no coinciden.')
+                        return redirect('quizzes:profile')
+                
+                # Validar longitud mínima
+                if len(new_password) < 8:
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': 'La nueva contraseña debe tener al menos 8 caracteres.'
+                        })
+                    else:
+                        messages.error(request, 'La nueva contraseña debe tener al menos 8 caracteres.')
+                        return redirect('quizzes:profile')
+                
+                # Cambiar contraseña
+                request.user.set_password(new_password)
+                request.user.save()
+                
+                # Re-autenticar al usuario
+                login(request, request.user)
+                
+                if is_ajax:
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Contraseña cambiada exitosamente.'
+                    })
+                else:
+                    messages.success(request, 'Contraseña cambiada exitosamente.')
+                    return redirect('quizzes:profile')
+                    
+            except Exception as e:
+                if is_ajax:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Error al cambiar la contraseña: {str(e)}'
+                    })
+                else:
+                    messages.error(request, f'Error al cambiar la contraseña: {str(e)}')
+                    return redirect('quizzes:profile')
+        else:
+            # Si es AJAX pero no se reconoce el tipo de formulario
+            if is_ajax:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Tipo de formulario no reconocido.'
+                })
+    
+    # Si es una petición AJAX GET, devolver error
+    if is_ajax:
+        return JsonResponse({
+            'success': False,
+            'message': 'Método no permitido para peticiones AJAX.'
+        })
     
     context = {
         'profile': profile,
         'user': request.user,
+        'phone_value': phone_value,
     }
     return render(request, 'quizzes/profile.html', context)
+

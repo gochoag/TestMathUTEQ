@@ -92,6 +92,22 @@ function previewData() {
     if (mapTelefono) columnMapping[mapTelefono] = 'phone';
     if (mapEdad) columnMapping[mapEdad] = 'edad';
     
+    // Mostrar indicador de carga
+    Swal.fire({
+        title: 'Procesando archivo...',
+        html: 'Por favor espera mientras se procesa el archivo Excel.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        customClass: {
+            container: 'swal2-container-over-modal',
+            popup: 'swal2-popup-over-modal'
+        },
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
     // Enviar archivo al servidor para procesamiento
     const formData = new FormData();
     formData.append('excel_file', document.getElementById('excelFile').files[0]);
@@ -111,6 +127,9 @@ function previewData() {
     })
     .then(response => response.json())
     .then(data => {
+        // Cerrar el loading
+        Swal.close();
+        
         if (data.success) {
             processedData = data.data;
             displayPreview(data);
@@ -120,15 +139,26 @@ function previewData() {
                 icon: 'error',
                 title: 'Error al procesar el archivo',
                 text: 'Error: ' + data.error,
+                customClass: {
+                    container: 'swal2-container-over-modal',
+                    popup: 'swal2-popup-over-modal'
+                }
             });
         }
     })
     .catch(error => {
+        // Cerrar el loading
+        Swal.close();
+        
         console.error('Error:', error);
         Swal.fire({
             icon: 'error',
             title: 'Error al procesar el archivo',
             text: 'Por favor intenta de nuevo.',
+            customClass: {
+                container: 'swal2-container-over-modal',
+                popup: 'swal2-popup-over-modal'
+            }
         });
     });
 }
@@ -209,6 +239,22 @@ function saveParticipants() {
         }
     }).then((result) => {
         if (result.isConfirmed) {
+            // Mostrar indicador de carga con título y mensaje personalizados
+            Swal.fire({
+                title: 'Guardando participantes...',
+                html: 'Por favor espera mientras se guardan los participantes en la base de datos.',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                customClass: {
+                    container: 'swal2-container-over-modal',
+                    popup: 'swal2-popup-over-modal'
+                },
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
             const formData = new FormData();
             formData.append('participants_data', JSON.stringify(processedData));
 
@@ -224,6 +270,9 @@ function saveParticipants() {
             })
             .then(response => response.json())
             .then(data => {
+                // Cerrar el loading
+                Swal.close();
+                
                 if (data.success) {
                     let errorHtml = '';
                     if (data.errors.length > 0) {
@@ -263,6 +312,9 @@ function saveParticipants() {
                 }
             })
             .catch(error => {
+                // Cerrar el loading
+                Swal.close();
+                
                 console.error('Error:', error);
                 Swal.fire({
                     icon: 'error',

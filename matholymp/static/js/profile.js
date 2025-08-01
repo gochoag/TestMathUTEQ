@@ -9,44 +9,125 @@ document.addEventListener('DOMContentLoaded', function() {
     const profileForm = document.getElementById('profileForm');
     if (profileForm) {
         profileForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // Siempre prevenir el envío normal del formulario
             const formData = new FormData(this);
             
-            // Si hay un archivo de avatar, usar AJAX para actualizar
-            if (avatarInput && avatarInput.files.length > 0) {
-                e.preventDefault();
+            // Agregar explícitamente el campo update_profile con un valor
+            formData.set('update_profile', 'true');
+             
+             // Mostrar indicador de carga
+            const submitButton = this.querySelector('button[type="submit"]');
+            const originalText = submitButton.innerHTML;
+            submitButton.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Actualizando...';
+            submitButton.disabled = true;
+            
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                // Verificar si la respuesta es JSON
+                const contentType = response.headers.get('content-type');
                 
-                fetch(window.location.href, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Actualizar avatar en el sidebar
-                        updateSidebarAvatar(data.avatar_url);
-                        
-                        // Mostrar mensaje de éxito
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json().then(data => {
+                        // Si el status no es ok, lanzar error con los datos JSON
+                        if (!response.ok) {
+                            const error = new Error(data.message || `HTTP error! status: ${response.status}`);
+                            error.status = response.status;
+                            error.data = data;
+                            throw error;
+                        }
+                        return data;
+                    });
+                } else {
+                    // Si no es JSON, lanzar error
+                    return response.text().then(text => {
+                        throw new Error('La respuesta del servidor no es JSON válido');
+                    });
+                }
+            })
+            .then(data => {
+                if (data.success) {
+                    // Actualizar avatar en el sidebar
+                    updateSidebarAvatar(data.avatar_url);
+                    
+                    // Mostrar mensaje de éxito
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Éxito!',
+                        text: data.message,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                } else {
+                    // Verificar si la sesión ha expirado
+                    if (data.session_expired) {
                         Swal.fire({
-                            icon: 'success',
-                            title: '¡Éxito!',
+                            icon: 'warning',
+                            title: 'Sesión Expirada',
                             text: data.message,
-                            timer: 2000,
-                            showConfirmButton: false
+                            confirmButtonText: 'Recargar Página'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                window.location.reload();
+                            }
+                        });
+                    } else {
+                        // Mostrar mensaje de error del servidor
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.message || 'Hubo un error al actualizar el perfil.'
                         });
                     }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
+                }
+            })
+            .catch(error => {
+                let errorMessage = 'Hubo un error al actualizar el perfil. Por favor, intenta de nuevo.';
+                let icon = 'error';
+                
+                // Verificar si es un error de sesión expirada
+                if (error.data && error.data.session_expired) {
+                    errorMessage = error.data.message;
+                    icon = 'warning';
+                    
                     Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Hubo un error al actualizar el perfil.'
+                        icon: icon,
+                        title: 'Sesión Expirada',
+                        text: errorMessage,
+                        confirmButtonText: 'Recargar Página'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.reload();
+                        }
                     });
+                    return;
+                }
+                
+                if (error.message.includes('JSON')) {
+                    errorMessage = 'Error en la respuesta del servidor. Por favor, recarga la página e intenta de nuevo.';
+                } else if (error.message.includes('HTTP error')) {
+                    errorMessage = 'Error de conexión con el servidor. Verifica tu conexión e intenta de nuevo.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Error de conexión. Verifica tu conexión a internet e intenta de nuevo.';
+                }
+                
+                Swal.fire({
+                    icon: icon,
+                    title: 'Error',
+                    text: errorMessage
                 });
-            }
+            })
+            .finally(() => {
+                // Restaurar el botón
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            });
         });
     }
     
@@ -63,6 +144,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+    
+
     
     // Preview de imagen cuando se selecciona un archivo
     if (avatarInput) {
@@ -121,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
         newPassword.addEventListener('input', validatePasswords);
         confirmPassword.addEventListener('input', validatePasswords);
         
-        // Confirmación de cambio de contraseña
+        // Manejar envío del formulario de cambio de contraseña
         passwordForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -139,8 +222,132 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.show();
         });
         
+        // Confirmar cambio de contraseña con AJAX
         document.getElementById('confirmPasswordChange').addEventListener('click', function() {
-            passwordForm.submit();
+            const formData = new FormData(passwordForm);
+            
+            // Agregar explícitamente el campo change_password con un valor
+            formData.set('change_password', 'true');
+            
+            // Mostrar indicador de carga
+            const submitButton = this;
+            const originalText = submitButton.innerHTML;
+            submitButton.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Cambiando...';
+            submitButton.disabled = true;
+            
+            // Cerrar el modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('passwordModal'));
+            modal.hide();
+            
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                // Verificar si la respuesta es JSON
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json().then(data => {
+                        // Si el status no es ok, lanzar error con los datos JSON
+                        if (!response.ok) {
+                            const error = new Error(data.message || `HTTP error! status: ${response.status}`);
+                            error.status = response.status;
+                            error.data = data;
+                            throw error;
+                        }
+                        return data;
+                    });
+                } else {
+                    // Si no es JSON, lanzar error
+                    return response.text().then(text => {
+                        throw new Error('La respuesta del servidor no es JSON válido');
+                    });
+                }
+            })
+            .then(data => {
+                if (data.success) {
+                    // Mostrar mensaje de éxito
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Éxito!',
+                        text: data.message,
+                        confirmButtonText: 'OK'
+                    }).then((result) => {
+                        // Limpiar el formulario
+                        passwordForm.reset();
+                        
+                        // Hacer logout (automáticamente redirige al login)
+                        window.location.href = '/logout/';
+                    });
+                } else {
+                    // Verificar si la sesión ha expirado
+                    if (data.session_expired) {
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Sesión Expirada',
+                            text: data.message,
+                            confirmButtonText: 'Recargar Página'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                window.location.reload();
+                            }
+                        });
+                    } else {
+                        // Mostrar mensaje de error del servidor
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.message || 'Hubo un error al cambiar la contraseña.'
+                        });
+                    }
+                }
+            })
+            .catch(error => {
+                let errorMessage = 'Hubo un error al cambiar la contraseña. Por favor, intenta de nuevo.';
+                let icon = 'error';
+                
+                // Verificar si es un error de sesión expirada
+                if (error.data && error.data.session_expired) {
+                    errorMessage = error.data.message;
+                    icon = 'warning';
+                    
+                    Swal.fire({
+                        icon: icon,
+                        title: 'Sesión Expirada',
+                        text: errorMessage,
+                        confirmButtonText: 'Recargar Página'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.reload();
+                        }
+                    });
+                    return;
+                }
+                
+                if (error.message.includes('JSON')) {
+                    errorMessage = 'Error en la respuesta del servidor. Por favor, recarga la página e intenta de nuevo.';
+                } else if (error.message.includes('HTTP error')) {
+                    errorMessage = 'Error de conexión con el servidor. Verifica tu conexión e intenta de nuevo.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Error de conexión. Verifica tu conexión a internet e intenta de nuevo.';
+                }
+                
+                Swal.fire({
+                    icon: icon,
+                    title: 'Error',
+                    text: errorMessage
+                });
+            })
+            .finally(() => {
+                // Restaurar el botón
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            });
         });
     }
     

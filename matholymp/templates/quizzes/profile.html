@@ -41,15 +41,10 @@
                     <form method="POST" enctype="multipart/form-data" id="profileForm">
                         {% csrf_token %}
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="first_name" class="form-label">Nombres <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="first_name" name="first_name" 
-                                       value="{{ user.first_name }}" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="last_name" class="form-label">Apellidos <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="last_name" name="last_name" 
-                                       value="{{ user.last_name }}" required>
+                            <div class="col-md-12 mb-3">
+                                <label for="full_name" class="form-label">Nombres Completos <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="full_name" name="full_name" 
+                                       value="{{ user.first_name }} {{ user.last_name }}" required>
                             </div>
                         </div>
                         
@@ -62,7 +57,7 @@
                             <div class="col-md-6 mb-3">
                                 <label for="phone" class="form-label">Teléfono</label>
                                 <input type="tel" class="form-control" id="phone" name="phone" 
-                                       value="{{ profile.phone }}" pattern="[0-9]{10}" 
+                                       value="{{ phone_value }}" pattern="[0-9]{10}" 
                                        placeholder="0987654321">
                                 <div class="form-text">Formato: 10 dígitos sin espacios</div>
                             </div>

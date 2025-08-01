@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     toasts.forEach(toastEl => {
       // Configura delay según el tipo (más largo para warnings)
-      const delay = toastEl.classList.contains('bg-warning') ? 7000 : 5000;
+      const delay = toastEl.classList.contains('bg-warning') ? 5000 : 4000;
       toastEl.dataset.bsDelay = delay;
       
       const toast = new bootstrap.Toast(toastEl);
@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   
   // Función global para mostrar toasts desde JS
-  function showDynamicToast({type = 'info', title, message, delay = 5000}) {
+  function showDynamicToast({type = 'info', title, message, delay = 4000}) {
     const container = document.querySelector('.toast-container') || createToastContainer();
     const toastId = 'toast-' + Date.now();
     

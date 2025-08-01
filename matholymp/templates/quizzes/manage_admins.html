@@ -188,7 +188,62 @@ function confirmSendCredentials(id, nombre) {
         reverseButtons: false
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = '{% url "quizzes:send_credentials_email" "admin" 0 %}'.replace('0', id);
+            // Mostrar indicador de carga con título y mensaje personalizados
+            Swal.fire({
+                title: 'Enviando credenciales...',
+                html: 'Por favor espera mientras se envían las credenciales por correo electrónico.',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            // Usar fetch para hacer la petición sin redirección
+            fetch('{% url "quizzes:send_credentials_email" "admin" 0 %}'.replace('0', id), {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Error en la respuesta del servidor');
+            })
+            .then(data => {
+                // Cerrar el loading
+                Swal.close();
+                
+                if (data.success) {
+                    // Mostrar toast de éxito usando la función global
+                    showDynamicToast({
+                        type: 'success',
+                        title: 'Éxito',
+                        message: data.message
+                    });
+                } else {
+                    // Mostrar toast de error usando la función global
+                    showDynamicToast({
+                        type: 'danger',
+                        title: 'Error',
+                        message: data.message
+                    });
+                }
+            })
+            .catch(error => {
+                // Cerrar el loading
+                Swal.close();
+                
+                console.error('Error:', error);
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: 'Hubo un error al enviar las credenciales. Por favor, intenta de nuevo.'
+                });
+            });
         }
     });
 }

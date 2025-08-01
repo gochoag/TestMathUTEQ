@@ -99,5 +99,15 @@ SESSION_COOKIE_AGE = 1800
 # La sesión expira cuando el usuario cierra el navegador
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
+# Configuración de mensajes para Bootstrap
+from django.contrib.messages import constants as messages
+MESSAGE_TAGS = {
+    messages.DEBUG: 'info',
+    messages.INFO: 'info',
+    messages.SUCCESS: 'success',
+    messages.WARNING: 'warning',
+    messages.ERROR: 'danger',
+}
+
 # Renovar la sesión con cada request
 SESSION_SAVE_EVERY_REQUEST = True
