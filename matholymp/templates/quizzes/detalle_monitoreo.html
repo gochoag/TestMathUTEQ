@@ -449,7 +449,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const descripcion = document.getElementById('descripcion-alerta-manual').value;
         
         if (!descripcion.trim()) {
-            alert('Por favor, ingrese una descripción para la alerta.');
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese una descripción para la alerta.'
+            });
             return;
         }
         
@@ -471,12 +475,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 bootstrap.Modal.getInstance(document.getElementById('modalAlertaManual')).hide();
                 location.reload(); // Recargar para mostrar la nueva alerta
             } else {
-                alert('Error: ' + data.error);
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: 'Error: ' + data.error
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al agregar la alerta');
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al agregar la alerta'
+            });
         });
     });
     
@@ -484,7 +496,11 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-confirmar-finalizar-manual').addEventListener('click', function() {
         const motivo = document.getElementById('motivo-finalizacion-manual').value;
         if (!motivo.trim()) {
-            alert('Por favor, ingrese un motivo para la finalización.');
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese un motivo para la finalización.'
+            });
             return;
         }
         
@@ -505,12 +521,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 bootstrap.Modal.getInstance(document.getElementById('modalFinalizarManual')).hide();
                 location.reload(); // Recargar para mostrar el nuevo estado
             } else {
-                alert('Error: ' + data.error);
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: 'Error: ' + data.error
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al finalizar la evaluación');
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al finalizar la evaluación'
+            });
         });
     });
 });

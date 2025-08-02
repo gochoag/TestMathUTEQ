@@ -1910,8 +1910,22 @@ def ranking_evaluacion(request, pk):
     
     # Calcular estadísticas
     total_participantes = resultados.count()
-    promedio_puntaje = resultados.aggregate(Avg('puntaje'))['puntaje__avg'] or 0
-    promedio_tiempo = resultados.aggregate(Avg('tiempo_utilizado'))['tiempo_utilizado__avg'] or 0
+    
+    # Calcular promedio de puntos obtenidos (número, no porcentaje)
+    promedio_puntos = resultados.aggregate(Avg('puntos_obtenidos'))['puntos_obtenidos__avg'] or 0
+    
+    # Calcular tiempo promedio real (usando fechas de inicio y fin)
+    tiempo_total_minutos = 0
+    resultados_con_tiempo_real = 0
+    
+    for resultado in resultados:
+        if resultado.fecha_inicio and resultado.fecha_fin:
+            tiempo_segundos = (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+            tiempo_minutos = tiempo_segundos / 60
+            tiempo_total_minutos += tiempo_minutos
+            resultados_con_tiempo_real += 1
+    
+    promedio_tiempo = tiempo_total_minutos / resultados_con_tiempo_real if resultados_con_tiempo_real > 0 else 0
     
     # Determinar ganadores según la etapa
     ganadores = []
@@ -1919,15 +1933,15 @@ def ranking_evaluacion(request, pk):
         ganadores = resultados[:15]
     elif evaluacion.etapa == 2 and total_participantes >= 5:
         ganadores = resultados[:5]
-    elif evaluacion.etapa == 3 and total_participantes >= 3:
-        ganadores = resultados[:3]
+    elif evaluacion.etapa == 3 and total_participantes >= 5:
+        ganadores = resultados[:5]  # Mostrar los 5 primeros en la final
     
     context = {
         'evaluacion': evaluacion,
         'resultados': resultados,
         'total_participantes': total_participantes,
-        'promedio_puntaje': round(promedio_puntaje, 2),
-        'promedio_tiempo': round(promedio_tiempo, 2),
+        'promedio_puntaje': round(promedio_puntos, 3),  # Mostrar como número con 3 decimales
+        'promedio_tiempo': round(promedio_tiempo, 1),   # Mostrar tiempo en minutos con 1 decimal
         'ganadores': ganadores
     }
     
@@ -1974,7 +1988,7 @@ def gestionar_participantes_evaluacion(request, pk):
             elif evaluacion.etapa == 2:
                 # Para etapa 2: comportamiento diferente según permisos
                 if has_full_access(request.user):
-                    # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    # Superuser y Admin con acceso total: ven todos los participantes
                     # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
                     participantes_automaticos = evaluacion.get_participantes_etapa2()
                     participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
@@ -1987,9 +2001,9 @@ def gestionar_participantes_evaluacion(request, pk):
                             'cedula': participante.cedula
                         })
                     
-                    # Luego agregar el resto de participantes individuales
+                    # Luego agregar TODOS los participantes (individuales y de grupos) que no están en automáticos
                     for participante in Participantes.objects.all():
-                        if not participante.grupos.exists() and participante.id not in participantes_automaticos_ids:
+                        if participante.id not in participantes_automaticos_ids:
                             participantes_individuales.append({
                                 'id': participante.id,
                                 'NombresCompletos': participante.NombresCompletos,
@@ -2012,7 +2026,7 @@ def gestionar_participantes_evaluacion(request, pk):
             elif evaluacion.etapa == 3:
                 # Para etapa 3: comportamiento diferente según permisos
                 if has_full_access(request.user):
-                    # Superuser y Admin con acceso total: ven todos los participantes individuales
+                    # Superuser y Admin con acceso total: ven todos los participantes
                     # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
                     participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
@@ -2025,9 +2039,9 @@ def gestionar_participantes_evaluacion(request, pk):
                             'cedula': participante.cedula
                         })
                     
-                    # Luego agregar el resto de participantes individuales
+                    # Luego agregar TODOS los participantes (individuales y de grupos) que no están en automáticos
                     for participante in Participantes.objects.all():
-                        if not participante.grupos.exists() and participante.id not in participantes_automaticos_ids:
+                        if participante.id not in participantes_automaticos_ids:
                             participantes_individuales.append({
                                 'id': participante.id,
                                 'NombresCompletos': participante.NombresCompletos,
@@ -3170,9 +3184,9 @@ def actualizar_monitoreo(request, pk):
         monitoreo.tiempo_activo = data.get('tiempo_activo', monitoreo.tiempo_activo)
         monitoreo.tiempo_inactivo = data.get('tiempo_inactivo', monitoreo.tiempo_inactivo)
         
-        # Verificar inactividad (más de 2 minutos sin actividad)
+        # Verificar inactividad (más de 5 minutos sin actividad)
         tiempo_ultima_actividad = (timezone.now() - monitoreo.ultima_actividad).total_seconds()
-        if tiempo_ultima_actividad > 120:  # 2 minutos
+        if tiempo_ultima_actividad > 300:  # 5 minutos
             monitoreo.agregar_alerta('inactividad', f'Estudiante inactivo por {int(tiempo_ultima_actividad/60)} minutos', 'media')
         
         monitoreo.save()

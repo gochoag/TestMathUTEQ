@@ -214,7 +214,7 @@ class Evaluacion(models.Model):
         mejores_resultados = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion_etapa1,
             completada=True
-        ).order_by('-puntaje', 'tiempo_utilizado')[:15]
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:15]
         
         return [resultado.participante for resultado in mejores_resultados]
     
@@ -232,7 +232,7 @@ class Evaluacion(models.Model):
         mejores_resultados = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion_etapa2,
             completada=True
-        ).order_by('-puntaje', 'tiempo_utilizado')[:5]
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
         
         return [resultado.participante for resultado in mejores_resultados]
     

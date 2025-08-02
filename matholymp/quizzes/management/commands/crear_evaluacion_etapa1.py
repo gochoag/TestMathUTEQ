@@ -1,17 +1,164 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.contrib.auth.models import User
-from quizzes.models import Evaluacion, Pregunta, Opcion, Participantes, ResultadoEvaluacion
+from quizzes.models import Evaluacion, Pregunta, Opcion, Participantes, ResultadoEvaluacion, Representante, GrupoParticipantes
 from django.utils.crypto import get_random_string
 import random
 from datetime import timedelta
 from decimal import Decimal
 
 class Command(BaseCommand):
-    help = 'Crea evaluaciones de etapa 1, 2 y 3 con participantes y resultados simulados'
+    help = 'Crea evaluaciones de etapa 1, 2 y 3 con grupos, representantes y participantes individuales'
 
     def handle(self, *args, **options):
         self.stdout.write('=== CREANDO EVALUACIONES DE ETAPA 1, 2 Y 3 ===')
+        
+        # ===== CREAR REPRESENTANTES =====
+        self.stdout.write('\n=== CREANDO REPRESENTANTES ===')
+        
+        # Representante para Grupo A
+        representante_a = Representante.objects.create(
+            NombreColegio='Colegio San Francisco',
+            DireccionColegio='Av. Principal 123, Quito',
+            TelefonoInstitucional='022345678',
+            CorreoInstitucional='colegio.sanfrancisco@edu.ec',
+            NombresRepresentante='María González',
+            TelefonoRepresentante='0987654321',
+            CorreoRepresentante='maria.gonzalez@colegio.edu.ec'
+        )
+        self.stdout.write(f'✓ Representante A creado: {representante_a.NombresRepresentante} - {representante_a.NombreColegio}')
+        
+        # Representante para Grupo B
+        representante_b = Representante.objects.create(
+            NombreColegio='Instituto Tecnológico',
+            DireccionColegio='Calle Secundaria 456, Guayaquil',
+            TelefonoInstitucional='042345678',
+            CorreoInstitucional='instituto.tecnologico@edu.ec',
+            NombresRepresentante='Carlos Rodríguez',
+            TelefonoRepresentante='0987654322',
+            CorreoRepresentante='carlos.rodriguez@instituto.edu.ec'
+        )
+        self.stdout.write(f'✓ Representante B creado: {representante_b.NombresRepresentante} - {representante_b.NombreColegio}')
+        
+        # ===== CREAR GRUPOS =====
+        self.stdout.write('\n=== CREANDO GRUPOS ===')
+        
+        grupo_a = GrupoParticipantes.objects.create(
+            name='Grupo A - San Francisco',
+            representante=representante_a
+        )
+        self.stdout.write(f'✓ Grupo A creado: {grupo_a.name}')
+        
+        grupo_b = GrupoParticipantes.objects.create(
+            name='Grupo B - Tecnológico',
+            representante=representante_b
+        )
+        self.stdout.write(f'✓ Grupo B creado: {grupo_b.name}')
+        
+        # ===== CREAR PARTICIPANTES =====
+        self.stdout.write('\n=== CREANDO PARTICIPANTES ===')
+        
+        participantes_grupo_a = []
+        participantes_grupo_b = []
+        participantes_individuales = []
+        
+        # Crear 12 participantes para Grupo A
+        self.stdout.write('Creando 12 participantes para Grupo A...')
+        for i in range(1, 13):
+            cedula = f'12345678{str(i).zfill(2)}'
+            nombres = f'Estudiante A{i}'
+            email = f'estudiante.a{i}@sanfrancisco.edu.ec'
+            
+            # Crear usuario
+            username = cedula
+            password = get_random_string(length=6)
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=nombres,
+                email=email
+            )
+            
+            # Crear participante
+            participante = Participantes.objects.create(
+                user=user,
+                cedula=cedula,
+                NombresCompletos=nombres,
+                email=email,
+                password_temporal=password
+            )
+            
+            participantes_grupo_a.append(participante)
+            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+        
+        # Crear 12 participantes para Grupo B
+        self.stdout.write('Creando 12 participantes para Grupo B...')
+        for i in range(13, 25):
+            cedula = f'12345678{str(i).zfill(2)}'
+            nombres = f'Estudiante B{i-12}'
+            email = f'estudiante.b{i-12}@tecnologico.edu.ec'
+            
+            # Crear usuario
+            username = cedula
+            password = get_random_string(length=6)
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=nombres,
+                email=email
+            )
+            
+            # Crear participante
+            participante = Participantes.objects.create(
+                user=user,
+                cedula=cedula,
+                NombresCompletos=nombres,
+                email=email,
+                password_temporal=password
+            )
+            
+            participantes_grupo_b.append(participante)
+            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+        
+        # Crear 6 participantes individuales
+        self.stdout.write('Creando 6 participantes individuales...')
+        for i in range(25, 31):
+            cedula = f'12345678{str(i).zfill(2)}'
+            nombres = f'Estudiante Ind{i-24}'
+            email = f'estudiante.ind{i-24}@individual.edu.ec'
+            
+            # Crear usuario
+            username = cedula
+            password = get_random_string(length=6)
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=nombres,
+                email=email
+            )
+            
+            # Crear participante
+            participante = Participantes.objects.create(
+                user=user,
+                cedula=cedula,
+                NombresCompletos=nombres,
+                email=email,
+                password_temporal=password
+            )
+            
+            participantes_individuales.append(participante)
+            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+        
+        # Asignar participantes a sus grupos
+        grupo_a.participantes.add(*participantes_grupo_a)
+        grupo_b.participantes.add(*participantes_grupo_b)
+        
+        self.stdout.write(f'✓ 12 participantes asignados a Grupo A')
+        self.stdout.write(f'✓ 12 participantes asignados a Grupo B')
+        self.stdout.write(f'✓ 6 participantes individuales creados')
+        
+        # Lista completa de participantes para etapa 1
+        todos_participantes = participantes_grupo_a + participantes_grupo_b + participantes_individuales
         
         # ===== ETAPA 1 =====
         self.stdout.write('\n=== CREANDO EVALUACIÓN DE ETAPA 1 ===')
@@ -65,46 +212,17 @@ class Command(BaseCommand):
         
         self.stdout.write(f'✓ 50 preguntas creadas para etapa 1')
         
-        # Crear 30 participantes de prueba
-        self.stdout.write('Creando 30 participantes de prueba...')
-        participantes = []
-        for i in range(1, 31):
-            cedula = f'12345678{str(i).zfill(2)}'
-            nombres = f'Participante {i}'
-            email = f'participante{i}@test.com'
-            
-            # Crear usuario
-            username = cedula
-            password = get_random_string(length=6)
-            user = User.objects.create_user(
-                username=username,
-                password=password,
-                first_name=nombres,
-                email=email
-            )
-            
-            # Crear participante
-            participante = Participantes.objects.create(
-                user=user,
-                cedula=cedula,
-                NombresCompletos=nombres,
-                email=email,
-                password_temporal=password
-            )
-            
-            participantes.append(participante)
-            self.stdout.write(f'  ✓ Participante {i}: {nombres} ({cedula})')
-        
-        # Asignar participantes a la evaluación de etapa 1
-        evaluacion_etapa1.participantes_individuales.add(*participantes)
-        self.stdout.write(f'✓ 30 participantes asignados a la evaluación de etapa 1')
+        # Asignar grupos y participantes individuales a la evaluación de etapa 1
+        evaluacion_etapa1.grupos_participantes.add(grupo_a, grupo_b)
+        evaluacion_etapa1.participantes_individuales.add(*participantes_individuales)
+        self.stdout.write(f'✓ 2 grupos y 6 participantes individuales asignados a la evaluación de etapa 1')
         
         # Simular resultados de etapa 1
         self.stdout.write('Simulando resultados de etapa 1...')
         
         # Primeros 15 participantes: nota 10/10 (todas correctas)
         for i in range(15):
-            participante = participantes[i]
+            participante = todos_participantes[i]
             tiempo_utilizado = random.randint(20, 45)  # Entre 20 y 45 minutos
             
             # Nueva lógica: 20 preguntas correctas = 20 puntos, ponderado a 10
@@ -127,7 +245,7 @@ class Command(BaseCommand):
         
         # Últimos 15 participantes: nota menor a 10/10 (simular respuestas mixtas)
         for i in range(15, 30):
-            participante = participantes[i]
+            participante = todos_participantes[i]
             tiempo_utilizado = random.randint(30, 60)  # Entre 30 y 60 minutos
             
             # Generar puntaje aleatorio entre 6.0 y 9.5
@@ -394,7 +512,10 @@ class Command(BaseCommand):
         # Etapa 1
         self.stdout.write(f'\n📊 ETAPA 1 - Clasificatoria:')
         self.stdout.write(f'   ID: {evaluacion_etapa1.id}')
-        self.stdout.write(f'   Participantes: 30')
+        self.stdout.write(f'   Grupos: 2 (A y B)')
+        self.stdout.write(f'   Participantes por grupo: 12 cada uno')
+        self.stdout.write(f'   Participantes individuales: 6')
+        self.stdout.write(f'   Total participantes: 30')
         self.stdout.write(f'   Preguntas: 50 (mostrar 20)')
         self.stdout.write(f'   Clasificados: 15 (10/10)')
         
@@ -432,6 +553,8 @@ class Command(BaseCommand):
             self.stdout.write(f'{i}. {resultado.participante.NombresCompletos}: {resultado.get_puntaje_numerico()} ({resultado.puntaje:.1f}%) - {resultado.tiempo_utilizado} min {medalla}')
         
         self.stdout.write('\n=== EVALUACIONES CREADAS EXITOSAMENTE ===')
+        self.stdout.write('✅ 2 Grupos creados con sus representantes')
+        self.stdout.write('✅ 30 Participantes totales (12+12+6)')
         self.stdout.write('✅ Etapa 1: 30 participantes → 15 clasificados')
         self.stdout.write('✅ Etapa 2: 15 participantes → 5 finalistas')
         self.stdout.write('✅ Etapa 3: 5 participantes → 1 ORO, 2 PLATA, 2 BRONCE')

@@ -362,10 +362,10 @@ function agregarAlerta(monitoreoId) {
     modal.show();
 }
 
-// Función para ver detalles
-function verDetalles(monitoreoId) {
-    window.open(`/monitoreo/${monitoreoId}/detalle/`, '_blank');
-}
+    // Función para ver detalles
+    function verDetalles(monitoreoId) {
+        window.location.href = `/monitoreo/${monitoreoId}/detalle/`;
+    }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
@@ -390,7 +390,11 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
         const motivo = document.getElementById('motivo-finalizacion').value;
         if (!motivo.trim()) {
-            alert('Por favor, ingrese un motivo para la finalización.');
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese un motivo para la finalización.'
+            });
             return;
         }
         
@@ -410,17 +414,27 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 bootstrap.Modal.getInstance(document.getElementById('modalFinalizar')).hide();
                 cargarMonitoreo();
-                // Mostrar notificación de éxito
-                if (typeof showToast === 'function') {
-                    showToast('Éxito', data.message, 'success');
-                }
+                // Mostrar notificación de éxito usando la función global
+                showDynamicToast({
+                    type: 'success',
+                    title: 'Éxito',
+                    message: data.message
+                });
             } else {
-                alert('Error: ' + data.error);
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: data.error
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al finalizar la evaluación');
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al finalizar la evaluación'
+            });
         });
     });
     
@@ -431,7 +445,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const descripcion = document.getElementById('descripcion-alerta').value;
         
         if (!descripcion.trim()) {
-            alert('Por favor, ingrese una descripción para la alerta.');
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese una descripción para la alerta.'
+            });
             return;
         }
         
@@ -452,25 +470,31 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 bootstrap.Modal.getInstance(document.getElementById('modalAlerta')).hide();
                 cargarMonitoreo();
-                // Mostrar notificación de éxito
-                if (typeof showToast === 'function') {
-                    showToast('Éxito', data.message, 'success');
-                }
+                // Mostrar notificación de éxito usando la función global
+                showDynamicToast({
+                    type: 'success',
+                    title: 'Éxito',
+                    message: data.message
+                });
             } else {
-                alert('Error: ' + data.error);
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: data.error
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al agregar la alerta');
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al agregar la alerta'
+            });
         });
     });
 });
 
-// Función para mostrar toast (si no existe)
-function showToast(title, message, type) {
-    // Implementación básica si no existe la función showToast
-    console.log(`${title}: ${message}`);
-}
+
 </script>
 {% endblock %} 

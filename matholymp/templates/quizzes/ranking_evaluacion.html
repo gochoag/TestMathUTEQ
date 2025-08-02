@@ -41,7 +41,7 @@
                     <div class="card bg-success text-white">
                         <div class="card-body text-center">
                             <i class="bi bi-graph-up display-4"></i>
-                            <h4 class="mt-2">{{ promedio_puntaje }}%</h4>
+                            <h4 class="mt-2">{{ promedio_puntaje|floatformat:3 }}</h4>
                             <p class="mb-0">Promedio</p>
                         </div>
                     </div>
@@ -50,7 +50,7 @@
                     <div class="card bg-info text-white">
                         <div class="card-body text-center">
                             <i class="bi bi-clock display-4"></i>
-                            <h4 class="mt-2">{{ promedio_tiempo|floatformat:0 }}m</h4>
+                            <h4 class="mt-2">{{ promedio_tiempo|floatformat:1 }}m</h4>
                             <p class="mb-0">Tiempo Promedio</p>
                         </div>
                     </div>
@@ -87,7 +87,7 @@
                             <div class="row">
                                 {% for resultado in ganadores %}
                                 <div class="col-md-4 mb-3">
-                                    <div class="d-flex align-items-center p-3 border rounded">
+                                    <div class="d-flex align-items-center p-3 border rounded ganadores-card">
                                         <div class="me-3">
                                             {% if evaluacion.etapa == 3 %}
                                                 {% if forloop.counter == 1 %}
@@ -234,6 +234,31 @@
         
         .table th, .table td {
             border: 1px solid #000 !important;
+        }
+    }
+    
+    /* Estilos para las tarjetas de ganadores */
+    .ganadores-card {
+        transition: all 0.3s ease;
+    }
+    
+    .ganadores-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Responsive para tarjetas de ganadores */
+    @media (max-width: 768px) {
+        .col-md-2 {
+            flex: 0 0 50%;
+            max-width: 50%;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .col-md-2 {
+            flex: 0 0 100%;
+            max-width: 100%;
         }
     }
 </style>
