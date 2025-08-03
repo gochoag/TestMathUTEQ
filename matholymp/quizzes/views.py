@@ -53,6 +53,43 @@ def has_full_access(user):
         return False
 
 
+# Función para validar contraseñas de forma robusta
+def validate_password_strength(password, username):
+    """
+    Valida la fortaleza de una contraseña.
+    
+    Args:
+        password (str): La contraseña a validar
+        username (str): El nombre de usuario para verificar similitud
+    
+    Returns:
+        str or None: Mensaje de error si la contraseña no es válida, None si es válida
+    """
+    # 1. Validar longitud mínima
+    if len(password) < 8:
+        return 'La contraseña debe tener al menos 8 caracteres.'
+    
+    # 2. Validar que no sea similar al nombre de usuario
+    if password.lower() in username.lower() or username.lower() in password.lower():
+        return 'La contraseña no puede ser similar al nombre de usuario.'
+    
+    # 3. Validar que no sea completamente numérica
+    if password.isdigit():
+        return 'La contraseña no puede ser completamente numérica.'
+    
+    # 4. Validar contraseñas comunes
+    common_passwords = ['12345678', 'password', 'contraseña', 'qwerty123', '87654321', 'abc12345']
+    if password.lower() in common_passwords:
+        return 'La contraseña es demasiado común. Elige una más segura.'
+    
+    # 5. Validar que tenga al menos una letra y un número
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return 'La contraseña debe contener al menos una letra y un número.'
+    
+    # Si llegamos aquí, la contraseña es válida
+    return None
+
+
 # Vista de login
 
 def custom_login(request):
@@ -1405,8 +1442,8 @@ def upload_image(request):
                         }
                     }, status=400)
             
-            # Crear directorio si no existe en static/media/ckeditor_uploads
-            upload_dir = os.path.join(settings.BASE_DIR, 'static', 'media', 'ckeditor_uploads')
+            # Crear directorio si no existe en media/ckeditor_uploads
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'ckeditor_uploads')
             os.makedirs(upload_dir, exist_ok=True)
             
             # Generar nombre único para el archivo
@@ -1420,8 +1457,8 @@ def upload_image(request):
                 for chunk in uploaded_file.chunks():
                     destination.write(chunk)
             
-            # Retornar URL para CKEditor (usando static URL)
-            file_url = f"/static/media/ckeditor_uploads/{filename}"
+            # Retornar URL para CKEditor (usando media URL)
+            file_url = f"{settings.MEDIA_URL}ckeditor_uploads/{filename}"
             
             return JsonResponse({
                 'url': file_url,
@@ -2800,15 +2837,17 @@ def profile_view(request):
                         messages.error(request, 'Las nuevas contraseñas no coinciden.')
                         return redirect('quizzes:profile')
                 
-                # Validar longitud mínima
-                if len(new_password) < 8:
+                # Validar contraseña usando función reutilizable
+                error_message = validate_password_strength(new_password, request.user.username)
+                
+                if error_message:
                     if is_ajax:
                         return JsonResponse({
                             'success': False,
-                            'message': 'La nueva contraseña debe tener al menos 8 caracteres.'
+                            'message': error_message
                         })
                     else:
-                        messages.error(request, 'La nueva contraseña debe tener al menos 8 caracteres.')
+                        messages.error(request, error_message)
                         return redirect('quizzes:profile')
                 
                 # Cambiar contraseña
