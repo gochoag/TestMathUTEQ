@@ -2,202 +2,11 @@
 let currentPreguntaId = null;
 let isEditing = false;
 
-// Configuración de CKEditor
-const ckeditorConfig = {
-    extraPlugins: 'pastefromword,customimagehandler',
-    removePlugins: 'exportpdf,uploadimage',
-    allowedContent: true,
-    forcePasteAsPlainText: false,
-    pasteFromWordPromptCleanup: true,
-    keystrokes: [
-        [ CKEDITOR.CTRL + 86 /* V */, 'PasteFromWord' ],
-        [ CKEDITOR.CTRL + CKEDITOR.SHIFT + 86 /* Ctrl+Shift+V */, 'pastetext' ]
-    ],
-    // Deshabilitar el manejo automático de imágenes del portapapeles
-    clipboard_handleImages: false,
-    // Configuración para extraer imágenes base64
-    pasteFilter: {
-        elementNames: [
-            { element: 'img', attributes: '!src' }
-        ]
-    }
-};
+// La configuración de CKEditor está ahora en ckeditor_config.js
+// Solo mantenemos las referencias locales necesarias
 
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
-    // Crear plugin personalizado para manejar imágenes
-    if (window.CKEDITOR) {
-        CKEDITOR.plugins.add('customimagehandler', {
-            init: function(editor) {
-                // Agregar comando personalizado para insertar imagen
-                editor.addCommand('insertImage', {
-                    exec: function(editor) {
-                        // Crear input file oculto
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/*';
-                        input.style.display = 'none';
-                        document.body.appendChild(input);
-                        
-                        input.onchange = function(e) {
-                            const file = e.target.files[0];
-                            if (file) {
-                                const formData = new FormData();
-                                formData.append('upload', file);
-                                
-                                fetch(uploadImageUrl, {
-                                    method: 'POST',
-                                    headers: {
-                                        'X-CSRFToken': getCookie('csrftoken')
-                                    },
-                                    body: formData
-                                })
-                                .then(response => response.json())
-                                .then(data => {
-                                    if (data.url) {
-                                        editor.insertHtml(`<img src="${data.url}" alt="Imagen" style="max-width: 100%; height: auto;" />`);
-                                    } else {
-                                        Swal.fire({
-                                            icon: 'error',
-                                            title: 'Error',
-                                            text: 'No se pudo subir la imagen',
-                                            customClass: {
-                                                container: 'swal-over-modal'
-                                            }
-                                        });
-                                    }
-                                })
-                                .catch(error => {
-                                    console.error('Error uploading image:', error);
-                                    Swal.fire({
-                                        icon: 'error',
-                                        title: 'Error',
-                                        text: 'Error al subir la imagen',
-                                        customClass: {
-                                            container: 'swal-over-modal'
-                                        }
-                                    });
-                                });
-                            }
-                            document.body.removeChild(input);
-                        };
-                        
-                        input.click();
-                    }
-                });
-                
-                // Agregar botón a la toolbar
-                editor.ui.addButton('CustomImage', {
-                    label: 'Insertar Imagen',
-                    command: 'insertImage',
-                    toolbar: 'insert'
-                });
-                
-                // Agregar comando para pegar imagen del portapapeles
-                editor.addCommand('pasteImage', {
-                    exec: function(editor) {
-                        // Crear un área temporal para pegar
-                        const tempDiv = document.createElement('div');
-                        tempDiv.contentEditable = true;
-                        tempDiv.style.position = 'absolute';
-                        tempDiv.style.left = '-9999px';
-                        tempDiv.style.top = '-9999px';
-                        document.body.appendChild(tempDiv);
-                        
-                        // Enfocar el área temporal
-                        tempDiv.focus();
-                        
-                        // Simular Ctrl+V
-                        const pasteEvent = new KeyboardEvent('keydown', {
-                            key: 'v',
-                            code: 'KeyV',
-                            ctrlKey: true,
-                            bubbles: true
-                        });
-                        
-                        tempDiv.dispatchEvent(pasteEvent);
-                        
-                        // Esperar un momento y verificar si se pegó algo
-                        setTimeout(() => {
-                            const pastedContent = tempDiv.innerHTML;
-                            
-                            // Buscar imágenes base64
-                            const imgRegex = /<img[^>]+src="data:image\/[^;]+;base64,[^"]+"/g;
-                            const matches = pastedContent.match(imgRegex);
-                            
-                            if (matches && matches.length > 0) {
-                                // Procesar imágenes
-                                let uploadPromises = [];
-                                
-                                for (const match of matches) {
-                                    const base64Match = match.match(/data:image\/[^;]+;base64,([^"]+)/);
-                                    if (base64Match) {
-                                        const base64Data = base64Match[1];
-                                        const byteCharacters = atob(base64Data);
-                                        const byteNumbers = new Array(byteCharacters.length);
-                                        for (let i = 0; i < byteCharacters.length; i++) {
-                                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                                        }
-                                        const byteArray = new Uint8Array(byteNumbers);
-                                        const blob = new Blob([byteArray], {type: 'image/png'});
-                                        
-                                        const formData = new FormData();
-                                        formData.append('upload', blob, 'pasted-image.png');
-                                        
-                                        const uploadPromise = fetch(uploadImageUrl, {
-                                            method: 'POST',
-                                            headers: {
-                                                'X-CSRFToken': getCookie('csrftoken')
-                                            },
-                                            body: formData
-                                        })
-                                        .then(response => response.json())
-                                        .then(data => {
-                                            if (data.url) {
-                                                return data.url;
-                                            }
-                                            throw new Error('No se recibió URL en la respuesta');
-                                        });
-                                        
-                                        uploadPromises.push(uploadPromise);
-                                    }
-                                }
-                                
-                                // Procesar silenciosamente sin mostrar indicador
-                                
-                                // Esperar a que todas las imágenes se suban
-                                Promise.all(uploadPromises)
-                                    .then(urls => {
-                                        // Insertar todas las imágenes silenciosamente
-                                        urls.forEach(url => {
-                                            editor.insertHtml(`<img src="${url}" alt="Imagen" style="max-width: 100%; height: auto; margin: 5px 0;" />`);
-                                        });
-                                    })
-                                    .catch(error => {
-                                        console.error('Error uploading pasted image:', error);
-                                        // Procesar silenciosamente sin mostrar error
-                                    });
-                            } else {
-                                // No se encontraron imágenes - procesar silenciosamente
-                                console.log('No se detectó ninguna imagen en el portapapeles');
-                            }
-                            
-                            // Limpiar área temporal
-                            document.body.removeChild(tempDiv);
-                        }, 100);
-                    }
-                });
-                
-                // Agregar botón para pegar imagen
-                editor.ui.addButton('PasteImage', {
-                    label: 'Pegar Imagen',
-                    command: 'pasteImage',
-                    toolbar: 'insert'
-                });
-            }
-        });
-    }
-    
     initializeCKEditor();
     setupEventListeners();
 });
@@ -205,178 +14,42 @@ document.addEventListener('DOMContentLoaded', function() {
 // Inicializar CKEditor
 function initializeCKEditor() {
     if (window.CKEDITOR) {
-        // Configuración específica para cada editor
+        // Configuración específica para el editor de pregunta
         const preguntaEditor = CKEDITOR.replace('editorPregunta', {
-            ...ckeditorConfig,
+            ...window.ckeditorConfig,
             height: 200,
             toolbar: [
                 { name: 'document', items: ['Source'] },
                 { name: 'clipboard', items: ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'] },
-                { name: 'editing', items: ['Find', 'Replace', '-', 'SelectAll', '-', 'SpellChecker', 'Scayt'] },
-                { name: 'forms', items: ['Form', 'Checkbox', 'Radio', 'TextField', 'Textarea', 'Select', 'Button', 'ImageButton', 'HiddenField'] },
+                { name: 'editing', items: ['Find', 'Replace', '-', 'SelectAll'] },
                 '/',
                 { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript', '-', 'RemoveFormat'] },
-                { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'Blockquote', 'CreateDiv', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock', '-', 'BidiLtr', 'BidiRtl'] },
-                { name: 'links', items: ['Link', 'Unlink', 'Anchor'] },
-                { name: 'insert', items: ['CustomImage', 'PasteImage', 'Table', 'HorizontalRule', 'Smiley', 'SpecialChar', 'PageBreak', 'Iframe'] },
+                { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'Blockquote', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
+                { name: 'links', items: ['Link', 'Unlink'] },
+                { name: 'insert', items: ['CustomImage', 'Table', 'HorizontalRule', 'SpecialChar'] },
                 '/',
                 { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
                 { name: 'colors', items: ['TextColor', 'BGColor'] },
-                { name: 'tools', items: ['Maximize', 'ShowBlocks'] }
+                { name: 'tools', items: ['Maximize'] }
             ]
         });
         
         // Configuración para los editores de opciones
         for (let i = 1; i <= 4; i++) {
             CKEDITOR.replace('editorOpcion' + i, {
-                ...ckeditorConfig,
+                ...window.ckeditorConfig,
                 height: 120,
                 toolbar: [
                     { name: 'clipboard', items: ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'] },
                     { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript', '-', 'RemoveFormat'] },
-                    { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
+                    { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
                     { name: 'links', items: ['Link', 'Unlink'] },
-                    { name: 'insert', items: ['CustomImage', 'PasteImage', 'Table', 'HorizontalRule', 'SpecialChar'] },
-                    { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
+                    { name: 'insert', items: ['CustomImage', 'Table', 'SpecialChar'] },
+                    { name: 'styles', items: ['Format', 'Font', 'FontSize'] },
                     { name: 'colors', items: ['TextColor', 'BGColor'] }
                 ]
             });
         }
-        
-        // Configurar manejo de imágenes del portapapeles
-        CKEDITOR.on('instanceReady', function(evt) {
-            const editor = evt.editor;
-            
-            // Manejar imágenes del portapapeles
-            editor.on('paste', function(e) {
-                const data = e.data;
-                const html = data.dataValue;
-                
-                // Buscar imágenes base64 en el HTML pegado
-                const imgRegex = /<img[^>]+src="data:image\/[^;]+;base64,[^"]+"/g;
-                const matches = html.match(imgRegex);
-                
-                if (matches) {
-                    // Cancelar el evento de pegado por defecto
-                    e.cancel();
-                    
-                    // Procesar cada imagen base64 de forma asíncrona
-                    let processedHtml = html;
-                    let uploadPromises = [];
-                    
-                    // Procesar silenciosamente sin mostrar indicador
-                    
-                    for (const match of matches) {
-                        const base64Match = match.match(/data:image\/[^;]+;base64,([^"]+)/);
-                        if (base64Match) {
-                            const base64Data = base64Match[1];
-                            const byteCharacters = atob(base64Data);
-                            const byteNumbers = new Array(byteCharacters.length);
-                            for (let i = 0; i < byteCharacters.length; i++) {
-                                byteNumbers[i] = byteCharacters.charCodeAt(i);
-                            }
-                            const byteArray = new Uint8Array(byteNumbers);
-                            const blob = new Blob([byteArray], {type: 'image/png'});
-                            
-                            // Crear promesa para subir imagen
-                            const uploadPromise = fetch(uploadImageUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRFToken': getCookie('csrftoken')
-                                },
-                                body: (() => {
-                                    const formData = new FormData();
-                                    formData.append('upload', blob, 'pasted-image.png');
-                                    return formData;
-                                })()
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.url) {
-                                    return { original: match, replacement: data.url };
-                                }
-                                throw new Error('No se recibió URL en la respuesta');
-                            });
-                            
-                            uploadPromises.push(uploadPromise);
-                        }
-                    }
-                    
-                    // Esperar a que todas las imágenes se suban
-                    Promise.all(uploadPromises)
-                        .then(results => {
-                            let finalHtml = processedHtml;
-                            results.forEach(result => {
-                                finalHtml = finalHtml.replace(
-                                    result.original, 
-                                    result.original.replace(/data:image\/[^;]+;base64,[^"]+/, result.replacement)
-                                );
-                            });
-                            
-                            // Insertar el contenido procesado silenciosamente
-                            editor.insertHtml(finalHtml);
-                        })
-                        .catch(error => {
-                            console.error('Error uploading pasted images:', error);
-                            // Procesar silenciosamente sin mostrar error
-                        });
-                }
-            });
-            
-            // Manejar también el evento de pegado de archivos
-            editor.on('paste', function(e) {
-                const data = e.data;
-                const files = data.dataTransfer ? data.dataTransfer.files : null;
-                
-                if (files && files.length > 0) {
-                    e.cancel();
-                    
-                    let uploadPromises = [];
-                    
-                    // Procesar silenciosamente sin mostrar indicador
-                    
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        
-                        // Verificar que sea una imagen
-                        if (file.type.startsWith('image/')) {
-                            const formData = new FormData();
-                            formData.append('upload', file);
-                            
-                            const uploadPromise = fetch(uploadImageUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRFToken': getCookie('csrftoken')
-                                },
-                                body: formData
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.url) {
-                                    return data.url;
-                                }
-                                throw new Error('No se recibió URL en la respuesta');
-                            });
-                            
-                            uploadPromises.push(uploadPromise);
-                        }
-                    }
-                    
-                    // Esperar a que todas las imágenes se suban
-                    Promise.all(uploadPromises)
-                        .then(urls => {
-                            // Insertar todas las imágenes silenciosamente
-                            urls.forEach(url => {
-                                editor.insertHtml(`<img src="${url}" alt="Imagen" style="max-width: 100%; height: auto; margin: 5px 0;" />`);
-                            });
-                        })
-                        .catch(error => {
-                            console.error('Error uploading files:', error);
-                            // Procesar silenciosamente sin mostrar error
-                        });
-                }
-            });
-        });
     }
 }
 

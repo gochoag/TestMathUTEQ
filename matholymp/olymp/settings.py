@@ -1,5 +1,7 @@
 import os
 from decouple import config
+# Importar ImproperlyConfigured para manejar errores de configuración
+from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_KEY = config('SECRET_KEY')
@@ -48,15 +50,21 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'olymp.wsgi.application'
+# Funcion para obtener las variables de entorno (Borrar si no se usa)
+def get_env(name, default=None):
+    val = os.environ.get(name, default)
+    if val is None:
+        raise ImproperlyConfigured(f"Falta la variable de entorno {name}")
+    return val
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'olympbd',
-        'USER': 'root',
-        'PASSWORD': '123456',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE':   get_env('DB_ENGINE',   'django.db.backends.mysql'),
+        'NAME':     get_env('DB_NAME',     'testmath'),
+        'USER':     get_env('DB_USER',     'testuser'),
+        'PASSWORD': get_env('DB_PASSWORD', 'testpass'),
+        'HOST':     get_env('DB_HOST',     'db'),
+        'PORT':     get_env('DB_PORT',     '3306'),
     }
 }
 

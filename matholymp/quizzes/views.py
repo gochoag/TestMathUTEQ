@@ -529,7 +529,7 @@ def dashboard(request):
     elif AdminProfile.objects.filter(user=user).exists():
         admin_profile = AdminProfile.objects.get(user=user)
         context['role'] = 'admin'
-        context['has_full_access'] = admin_profile.acceso_total
+        context['has_full_access'] = True  # Todos los administradores tienen acceso completo
         context['admin_profile'] = admin_profile
     elif Participantes.objects.filter(user=user).exists():
         context['role'] = 'participant'
@@ -1203,7 +1203,7 @@ def manage_quizs(request):
     elif is_admin:
         admin_profile = AdminProfile.objects.get(user=user)
         admin_type = 'admin_full' if admin_profile.acceso_total else 'admin_limited'
-        has_full_access = admin_profile.acceso_total
+        has_full_access = True  # Todos los administradores tienen acceso completo
     else:
         admin_type = 'unknown'
         has_full_access = False
@@ -1739,10 +1739,7 @@ def edit_evaluacion(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Para etapas 2 y 3, solo superusuarios y admins con acceso total pueden editar
-    if evaluacion.etapa in [2, 3] and not has_full_access(request.user):
-        messages.error(request, 'Solo los superusuarios y administradores con acceso total pueden editar evaluaciones de etapas avanzadas.')
-        return redirect('quizzes:manage_quizs')
+    # Todos los administradores pueden editar evaluaciones de cualquier etapa
     
     if request.method == 'POST':
         try:
@@ -1865,12 +1862,7 @@ def delete_evaluacion(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Para etapas 2 y 3, solo superusuarios y admins con acceso total pueden eliminar
-    if evaluacion.etapa in [2, 3] and not has_full_access(request.user):
-        return JsonResponse({
-            'success': False,
-            'error': 'Solo los superusuarios y administradores con acceso total pueden eliminar evaluaciones de etapas avanzadas.'
-        }, status=403)
+    # Todos los administradores pueden eliminar evaluaciones de cualquier etapa
     
     if request.method == 'POST':
         try:
@@ -3114,7 +3106,8 @@ def monitoreo_evaluacion(request, pk):
     """
     Vista principal para el monitoreo en tiempo real de una evaluación
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden acceder al monitoreo)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder al monitoreo en tiempo real.')
         return redirect('quizzes:dashboard')
     
@@ -3152,7 +3145,8 @@ def actualizar_monitoreo(request, pk):
     """
     Endpoint para actualizar el estado del monitoreo desde el frontend
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden actualizar monitoreo)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
     if request.method != 'POST':
@@ -3207,7 +3201,8 @@ def obtener_estado_monitoreo(request, pk):
     """
     Endpoint para obtener el estado actual del monitoreo
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden acceder al estado del monitoreo)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
@@ -3278,7 +3273,8 @@ def finalizar_evaluacion_admin(request, pk):
     """
     Endpoint para finalizar una evaluación por decisión administrativa
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden finalizar evaluaciones)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
     if request.method != 'POST':
@@ -3308,7 +3304,8 @@ def detalle_monitoreo(request, monitoreo_id):
     """
     Vista para ver el detalle completo de un monitoreo específico
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden acceder al detalle del monitoreo)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
         return redirect('quizzes:dashboard')
     
@@ -3330,7 +3327,8 @@ def agregar_alerta_manual(request, monitoreo_id):
     """
     Endpoint para agregar alertas manuales desde el panel de administración
     """
-    if not has_full_access(request.user):
+    # Verificar permisos básicos (solo admins pueden agregar alertas manuales)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
     if request.method != 'POST':

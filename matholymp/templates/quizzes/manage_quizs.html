@@ -209,9 +209,7 @@
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                    {% if has_full_access %}
-                                                        <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
-                                                    {% endif %}
+                                                    <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
                                                     <li><hr class="dropdown-divider"></li>
                                                     <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
                                                 </ul>
@@ -321,16 +319,12 @@
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
-                                                    {% if has_full_access %}
-                                                        <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
-                                                    {% endif %}
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                    {% if has_full_access %}
-                                                        <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
-                                                        <li><hr class="dropdown-divider"></li>
-                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
-                                                    {% endif %}
+                                                    <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -441,16 +435,12 @@
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye me-2"></i>Ver</a></li>
-                                                    {% if has_full_access %}
-                                                        <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
-                                                    {% endif %}
+                                                    <li><a class="dropdown-item" href="{% url 'quizzes:edit_evaluacion' pk=evaluacion.id %}"><i class="bi bi-pencil me-2"></i>Editar</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}"><i class="bi bi-question-square me-2"></i>Preguntas</a></li>
                                                     <li><a class="dropdown-item" href="{% url 'quizzes:evaluacion_results' pk=evaluacion.id %}"><i class="bi bi-graph-up me-2"></i>Resultados</a></li>
-                                                    {% if has_full_access %}
-                                                        <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
-                                                        <li><hr class="dropdown-divider"></li>
-                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
-                                                    {% endif %}
+                                                    <li><a class="dropdown-item text-info" href="{% url 'quizzes:monitoreo_evaluacion' pk=evaluacion.id %}"><i class="bi bi-eye-fill me-2"></i>Monitoreo en Tiempo Real</a></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteEvaluacion({{ evaluacion.id }}, '{{ evaluacion.title }}')"><i class="bi bi-trash me-2"></i>Eliminar</a></li>
                                                 </ul>
                                             </div>
                                         </div>

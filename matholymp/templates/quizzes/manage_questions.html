@@ -183,12 +183,20 @@
 <!-- CKEditor y JS -->
 <script src="{% static 'ckeditor/ckeditor.js' %}"></script>
 <script>
-// Variables globales para URLs
-const uploadImageUrl = "{% url 'quizzes:upload_image' %}";
-const saveQuestionUrl = "{% url 'quizzes:save_question' eval_id=evaluacion.id %}";
-const deleteQuestionUrl = "{% url 'quizzes:delete_question' pk=0 %}";
-const getQuestionDataUrl = "{% url 'quizzes:get_question_data' pk=0 %}";
-const updateQuestionUrl = "{% url 'quizzes:update_question' pk=0 %}";
+// Variables globales para URLs - DEFINIDAS ANTES que los otros scripts
+window.uploadImageUrl = "{% url 'quizzes:upload_image' %}";
+window.saveQuestionUrl = "{% url 'quizzes:save_question' eval_id=evaluacion.id %}";
+window.deleteQuestionUrl = "{% url 'quizzes:delete_question' pk=0 %}";
+window.getQuestionDataUrl = "{% url 'quizzes:get_question_data' pk=0 %}";
+window.updateQuestionUrl = "{% url 'quizzes:update_question' pk=0 %}";
+
+// También crear las variables normales para compatibilidad con código existente
+const uploadImageUrl = window.uploadImageUrl;
+const saveQuestionUrl = window.saveQuestionUrl;
+const deleteQuestionUrl = window.deleteQuestionUrl;
+const getQuestionDataUrl = window.getQuestionDataUrl;
+const updateQuestionUrl = window.updateQuestionUrl;
 </script>
+<script src="{% static 'js/ckeditor_config.js' %}"></script>
 <script src="{% static 'js/manage_questions.js' %}"></script>
 {% endblock %} 
