@@ -23,25 +23,130 @@ window.ckeditorConfig = {
 // Plugin personalizado para manejo mejorado de imágenes
 CKEDITOR.plugins.add('wordimagehandler', {
     init: function(editor) {
+        
+        // Interceptor global de clipboard antes de que CKEditor lo procese
+        editor.on('contentDom', function() {
+            const editable = editor.editable();
+            if (editable) {
+                editable.attachListener(editable, 'paste', function(evt) {
+                    const nativeEvent = evt.data.$;
+                    
+                    if (nativeEvent.clipboardData && nativeEvent.clipboardData.items) {
+                        const items = Array.from(nativeEvent.clipboardData.items);
+                        const imageItems = items.filter(item => item.type.startsWith('image/'));
+                        
+                        if (imageItems.length > 0) {
+                            // Cancelar el evento nativo para evitar que Word procese la imagen
+                            nativeEvent.preventDefault();
+                            nativeEvent.stopPropagation();
+                            
+                            // Procesar las imágenes reales
+                            const files = imageItems.map(item => item.getAsFile()).filter(file => file);
+                            if (files.length > 0) {
+                                // Usar la función existente para procesar archivos
+                                setTimeout(() => {
+                                    handleDirectFiles(editor, files);
+                                }, 10);
+                                
+                                return false; // Cancelar procesamiento adicional
+                            }
+                        }
+                    }
+                    
+                    // Si no hay imágenes reales, dejar que el flujo normal continúe
+                    return true;
+                }, null, null, -1); // Prioridad alta (-1) para ejecutar antes que otros listeners
+            }
+        });
         // Evento principal de pegado simplificado y efectivo
         editor.on('paste', function(e) {
             if (!e.data) return;
             
-            // Manejar archivos directos (drag & drop o pegado de archivos)
+            // PRIORIDAD 1: Interceptar imágenes reales del clipboard antes de que se procesen
+            if (e.data.dataTransfer && e.data.dataTransfer.items) {
+                const items = Array.from(e.data.dataTransfer.items);
+                const imageItems = items.filter(item => item.type.startsWith('image/'));
+                
+                if (imageItems.length > 0) {
+                    e.cancel();
+                    
+                    const imageFiles = imageItems.map(item => item.getAsFile()).filter(file => file);
+                    if (imageFiles.length > 0) {
+                        handleDirectFiles(editor, imageFiles);
+                        return;
+                    }
+                }
+            }
+            
+            // PRIORIDAD 1.5: Intentar obtener imagen del clipboard usando API moderna antes de procesar HTML
+            if (e.data.dataValue && navigator.clipboard && navigator.clipboard.read) {
+                const html = e.data.dataValue;
+                const base64Images = extractBase64Images(html);
+                
+                // Si hay imágenes base64 pequeñas (posibles placeholders), intentar obtener imagen real del clipboard
+                if (base64Images.length > 0) {
+                    const hasSmallImages = base64Images.some(img => img.base64Data.length < 200);
+                    
+                    if (hasSmallImages) {
+                        e.cancel();
+                        
+                        navigator.clipboard.read().then(clipboardItems => {
+                            for (const item of clipboardItems) {
+                                for (const type of item.types) {
+                                    if (type.startsWith('image/')) {
+                                        item.getType(type).then(blob => {
+                                            if (blob.size > 1000) { // Solo si es una imagen real (>1KB)
+                                                uploadSingleImage(editor, blob);
+                                                return;
+                                            } else {
+                                                processImagesAndText(editor, html, base64Images);
+                                            }
+                                        }).catch(error => {
+                                            processImagesAndText(editor, html, base64Images);
+                                        });
+                                        return;
+                                    }
+                                }
+                            }
+                            
+                            // No se encontró imagen en clipboard, procesar HTML normal
+                            processImagesAndText(editor, html, base64Images);
+                            
+                        }).catch(error => {
+                            processImagesAndText(editor, html, base64Images);
+                        });
+                        
+                        return;
+                    }
+                }
+            }
+            
+            // PRIORIDAD 2: Manejar archivos directos (drag & drop)
             if (e.data.dataTransfer && e.data.dataTransfer.files && e.data.dataTransfer.files.length > 0) {
                 e.cancel();
                 handleDirectFiles(editor, e.data.dataTransfer.files);
                 return;
             }
             
-            // Manejar HTML con imágenes base64 (típico de Word)
+            // PRIORIDAD 3: Procesar contenido HTML con imágenes base64 (fallback para fórmulas)
             if (e.data.dataValue) {
                 const html = e.data.dataValue;
                 const base64Images = extractBase64Images(html);
                 
                 if (base64Images.length > 0) {
                     e.cancel();
-                    processImagesAndText(editor, html, base64Images);
+                    
+                    // Detectar si es solo imagen(es) sin texto significativo
+                    const htmlWithoutImages = html.replace(/<img[^>]*>/gi, '').replace(/<[^>]*>/g, '').trim();
+                    const isOnlyImages = htmlWithoutImages.length < 10;
+                    
+                    if (isOnlyImages && base64Images.length === 1) {
+                        // Imagen sola - intentar múltiples métodos
+                        processSingleImageWithFallback(editor, base64Images[0], html);
+                    } else {
+                        // Caso normal: usar procesamiento completo para fórmulas
+                        processImagesAndText(editor, html, base64Images);
+                    }
                     return;
                 }
             }
@@ -150,6 +255,67 @@ function handleDirectFiles(editor, files) {
     }
 }
 
+// Función con múltiples métodos para imágenes solas (incluyendo placeholders de Word)
+function processSingleImageWithFallback(editor, imageData, originalHtml) {
+    // Método 1: Si es un placeholder muy pequeño, procesar directamente (la lógica principal ya intentó obtener imagen real)
+    if (imageData.base64Data.length < 200) {
+        processSingleImageDirect(editor, imageData);
+    } else {
+        // Método 2: Imagen base64 grande, procesar normalmente
+        processSingleImageDirect(editor, imageData);
+    }
+}
+
+// Función especial para procesar una sola imagen (usando método directo que funciona)
+function processSingleImageDirect(editor, imageData) {
+    try {
+        // Convertir base64 a blob
+        const byteCharacters = atob(imageData.base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {type: `image/${imageData.imageType}`});
+        
+        // Usar uploadSingleImagePromise en lugar de uploadSingleImage
+        uploadSingleImagePromise(blob, `image_sola.${imageData.imageType}`)
+            .then(url => {
+                // Detectar si es el placeholder específico de Word y aplicar estilos especiales
+                const isWordPlaceholder = imageData.base64Data === 'R0lGODlhDgAOAIAAAAAAAP///yH5BAAAAAAALAAAAAAOAA4AAAIMhI+py+0Po5y02qsKADs=';
+                
+                if (isWordPlaceholder && blob.size < 100) {
+                    // Aplicar estilos que hagan visible el placeholder
+                    const imgHtml = `<img src="${url}" alt="Imagen desde Word" style="
+                        max-width: 100%; 
+                        height: auto; 
+                        min-width: 48px; 
+                        min-height: 48px; 
+                        background: #f0f0f0; 
+                        border: 2px solid #ccc; 
+                        border-radius: 4px;
+                        padding: 8px;
+                        display: inline-block;
+                        filter: invert(50%) sepia(50%) saturate(100%) hue-rotate(200deg);
+                    " title="Imagen copiada desde Word" />`;
+                    editor.insertHtml(imgHtml);
+                } else {
+                    // Imagen normal
+                    editor.insertHtml(`<img src="${url}" alt="Imagen" style="max-width: 100%; height: auto;" />`);
+                }
+            })
+            .catch(error => {
+                // Fallback al método original
+                processImagesAndText(editor, `<p>${imageData.fullMatch}</p>`, [imageData]);
+            });
+        
+    } catch (error) {
+        // Fallback al método original
+        processImagesAndText(editor, `<p>${imageData.fullMatch}</p>`, [imageData]);
+    }
+}
+
+
 // Función principal para procesar imágenes y texto (simplificada y efectiva)
 function processImagesAndText(editor, html, base64Images) {
     showLoadingMessage('Procesando imágenes...');
@@ -186,17 +352,47 @@ function processImagesAndText(editor, html, base64Images) {
         .then(results => {
             hideLoadingMessage();
             
-            // Limpiar el HTML y reemplazar imágenes
-            let cleanHtml = cleanTextAroundFormulas(html, base64Images);
+            // Detectar si es solo imagen(es) sin texto significativo
+            const htmlWithoutImages = html.replace(/<img[^>]*>/gi, '').replace(/<[^>]*>/g, '').trim();
+            const isOnlyImages = htmlWithoutImages.length < 10; // Menos de 10 caracteres de texto real
             
-            // Reemplazar cada imagen base64 con su URL del servidor
-            results.forEach(result => {
-                const newImgTag = createSimpleImgTag(result.newUrl, result.isFormula);
-                cleanHtml = cleanHtml.replace(result.originalTag, newImgTag);
-            });
+            let finalHtml;
             
-            // Insertar el contenido limpio y procesado
-            editor.insertHtml(cleanHtml);
+            if (isOnlyImages) {
+                // Caso especial: solo imágenes sin texto - procesamiento directo
+                // Debug temporal
+                console.log('DEBUG: Procesando imagen sola');
+                console.log('DEBUG: Results:', results);
+                
+                if (results.length === 1 && results[0].newUrl) {
+                    // Para imagen sola, usar el mismo método que funciona para archivos directos
+                    const url = results[0].newUrl;
+                    const imgTag = `<img src="${url}" alt="Imagen" style="max-width: 100%; height: auto;" />`;
+                    console.log('DEBUG: Tag generado:', imgTag);
+                    finalHtml = imgTag;
+                } else {
+                    // Múltiples imágenes
+                    finalHtml = '';
+                    results.forEach(result => {
+                        const newImgTag = createSimpleImgTag(result.newUrl, result.isFormula);
+                        finalHtml += newImgTag + ' ';
+                    });
+                }
+            } else {
+                // Caso normal: texto + imágenes - procesamiento completo
+                let cleanHtml = cleanTextAroundFormulas(html, base64Images);
+                
+                // Reemplazar cada imagen base64 con su URL del servidor
+                results.forEach(result => {
+                    const newImgTag = createSimpleImgTag(result.newUrl, result.isFormula);
+                    cleanHtml = cleanHtml.replace(result.originalTag, newImgTag);
+                });
+                
+                finalHtml = cleanHtml;
+            }
+            
+            // Insertar el contenido procesado
+            editor.insertHtml(finalHtml);
             
             // Mensaje de éxito
             const formulas = results.filter(r => r.isFormula).length;
