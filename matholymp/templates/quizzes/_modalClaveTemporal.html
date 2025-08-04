@@ -1,0 +1,160 @@
+<!-- Modal Solicitud de Clave Temporal -->
+<div class="modal fade modal-clave-temporal" id="modalClaveTemporal" tabindex="-1" aria-labelledby="modalClaveTemporalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalClaveTemporalLabel">
+                    <i class="bi bi-key me-2"></i>
+                    Solicitud de Clave Temporal
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Información:</strong> Ingrese su nombre de usuario para solicitar una nueva contraseña temporal. 
+                    Se enviará un correo electrónico con las nuevas credenciales.
+                </div>
+                
+                <form id="formClaveTemporal">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="username" class="form-label">
+                            <i class="bi bi-person me-1"></i>
+                            Ingrese su usuario:
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="username" 
+                               name="username" 
+                               placeholder="Ej: admin123 o 1234567890"
+                               required>
+                        <div class="form-text">
+                            Puede ser su nombre de usuario o cédula (para participantes)
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" id="btnSolicitarClave">
+                    <i class="bi bi-envelope me-1"></i>
+                    Solicitar Clave Temporal
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnSolicitarClave = document.getElementById('btnSolicitarClave');
+    const formClaveTemporal = document.getElementById('formClaveTemporal');
+    const usernameInput = document.getElementById('username');
+
+    btnSolicitarClave.addEventListener('click', function() {
+        const username = usernameInput.value.trim();
+        
+        if (!username) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Campo requerido',
+                text: 'Por favor, ingrese su nombre de usuario.',
+                confirmButtonColor: '#007bff'
+            });
+            return;
+        }
+
+        // Mostrar confirmación
+        Swal.fire({
+            icon: 'question',
+            title: 'Confirmar solicitud',
+            text: `¿Está seguro de que "${username}" es su usuario correcto? Se enviará una nueva contraseña a su correo electrónico.`,
+            showCancelButton: true,
+            confirmButtonText: 'Sí, enviar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#007bff',
+            cancelButtonColor: '#6c757d'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                solicitarClaveTemporal(username);
+            }
+        });
+    });
+
+    function solicitarClaveTemporal(username) {
+        // Mostrar loading
+        Swal.fire({
+            title: 'Procesando solicitud...',
+            text: 'Verificando usuario y enviando correo...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        // Realizar petición AJAX
+        fetch('{% url "quizzes:solicitar_clave_temporal" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                username: username
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Solicitud enviada!',
+                    text: data.message,
+                    confirmButtonColor: '#28a745'
+                }).then(() => {
+                    // Cerrar modal y limpiar formulario
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalClaveTemporal'));
+                    modal.hide();
+                    formClaveTemporal.reset();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message,
+                    confirmButtonColor: '#dc3545'
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de conexión',
+                text: 'Ha ocurrido un error al procesar su solicitud. Por favor, intente nuevamente.',
+                confirmButtonColor: '#dc3545'
+            });
+        });
+    }
+
+    // Función para obtener el token CSRF
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+});
+</script> 

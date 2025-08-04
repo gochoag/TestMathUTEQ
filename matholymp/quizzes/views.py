@@ -2,7 +2,10 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, UserProfile, MonitoreoEvaluacion
+from django.core.mail import send_mail
+from django.conf import settings
+from .email_utils import generate_email_messages
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -11,6 +14,7 @@ from django.utils.crypto import get_random_string
 from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.db import models
 import re
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -36,6 +40,9 @@ try:
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
+
+
+
 
 
 # Función helper para verificar acceso total
@@ -665,6 +672,24 @@ def manage_participants(request):
                 messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
                 return redirect('quizzes:manage_participants')
         
+        # Validar correo único si cambió
+        if email != participante.email:  # Solo verificar si el correo cambió
+            email_normalized = email.lower().strip()
+            
+            # Verificar si ya existe otro participante con este correo
+            if Participantes.objects.filter(email__iexact=email_normalized).exclude(id=participante.id).exists():
+                messages.error(request, f"El correo {email} ya está registrado por otro participante.")
+                return redirect('quizzes:manage_participants')
+            
+            # Verificar conflictos con representantes
+            from quizzes.models import Representante
+            if Representante.objects.filter(
+                models.Q(CorreoInstitucional__iexact=email_normalized) | 
+                models.Q(CorreoRepresentante__iexact=email_normalized)
+            ).exists():
+                messages.error(request, f"El correo {email} ya está siendo usado por un representante.")
+                return redirect('quizzes:manage_participants')
+        
         # Convertir edad vacía a None
         if edad == '':
             edad = None
@@ -675,18 +700,43 @@ def manage_participants(request):
                 messages.error(request, "La edad debe ser un número válido.")
                 return redirect('quizzes:manage_participants')
         
-        user_obj.username = cedula  # Actualiza el username a la cédula
-        user_obj.first_name = NombresCompletos
-        user_obj.email = email
-        participante.cedula = cedula
-        participante.NombresCompletos = NombresCompletos
-        participante.email = email
-        participante.phone = phone
-        participante.edad = edad
-        user_obj.save()
-        participante.save()
-        messages.success(request, f"Participante {NombresCompletos} actualizado correctamente.")
-        return redirect('quizzes:manage_participants')
+        try:
+            # Usar transacción para asegurar consistencia
+            from django.db import transaction
+            with transaction.atomic():
+                user_obj.username = cedula  # Actualiza el username a la cédula
+                user_obj.first_name = NombresCompletos
+                user_obj.email = email.lower().strip()  # Normalizar correo
+                participante.cedula = cedula
+                participante.NombresCompletos = NombresCompletos
+                participante.email = email.lower().strip()  # Normalizar correo
+                participante.phone = phone
+                participante.edad = edad
+                
+                # Validar y guardar
+                user_obj.full_clean()
+                participante.full_clean()
+                user_obj.save()
+                participante.save()
+                
+            messages.success(request, f"Participante {NombresCompletos} actualizado correctamente.")
+            return redirect('quizzes:manage_participants')
+            
+        except ValidationError as e:
+            error_message = extract_validation_error_message(e)
+            messages.error(request, f"Error de validación: {error_message}")
+            return redirect('quizzes:manage_participants')
+        except IntegrityError as e:
+            if 'email' in str(e).lower():
+                messages.error(request, 'El correo electrónico ya está en uso.')
+            elif 'cedula' in str(e).lower():
+                messages.error(request, 'La cédula ya está registrada.')
+            else:
+                messages.error(request, 'Error de integridad en la base de datos.')
+            return redirect('quizzes:manage_participants')
+        except Exception as e:
+            messages.error(request, f'Error inesperado al actualizar participante: {str(e)}')
+            return redirect('quizzes:manage_participants')
 
     # Búsqueda de participantes
     search_query = request.GET.get('search', '').strip()
@@ -736,16 +786,59 @@ def manage_admins(request):
         last_name = request.POST.get('last_name')
         email = request.POST.get('email')
         
+        # Validar campos obligatorios
+        if not username or not first_name or not email:
+            messages.error(request, "Todos los campos son obligatorios.")
+            return redirect('quizzes:manage_admins')
+        
+        # Normalizar email
+        email_normalized = email.lower().strip()
+        
         # Verificar si el username ya existe
         if User.objects.filter(username=username).exists():
             messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
             return redirect('quizzes:manage_admins')
         
-        password = get_random_string(length=8)
-        new_user = User.objects.create_user(username=username, password=password, first_name=first_name, last_name=last_name, email=email)
-        admin_profile = AdminProfile.objects.create(user=new_user, created_by=user, password=password)
-        messages.success(request, f"Administrador {first_name} {last_name} creado correctamente.")
-        return redirect('quizzes:manage_admins')
+        # Verificar si el email ya existe
+        if User.objects.filter(email__iexact=email_normalized).exists():
+            messages.error(request, f"El correo electrónico '{email}' ya está registrado por otro usuario.")
+            return redirect('quizzes:manage_admins')
+        
+        # Verificar conflictos con participantes y representantes
+        if Participantes.objects.filter(email__iexact=email_normalized).exists():
+            messages.error(request, f"El correo '{email}' ya está siendo usado por un participante.")
+            return redirect('quizzes:manage_admins')
+        
+        if Representante.objects.filter(
+            models.Q(CorreoInstitucional__iexact=email_normalized) | 
+            models.Q(CorreoRepresentante__iexact=email_normalized)
+        ).exists():
+            messages.error(request, f"El correo '{email}' ya está siendo usado por un representante.")
+            return redirect('quizzes:manage_admins')
+        
+        try:
+            password = get_random_string(length=8)
+            new_user = User.objects.create_user(
+                username=username, 
+                password=password, 
+                first_name=first_name, 
+                last_name=last_name, 
+                email=email_normalized
+            )
+            admin_profile = AdminProfile.objects.create(user=new_user, created_by=user, password=password)
+            messages.success(request, f"Administrador {first_name} {last_name} creado correctamente.")
+            return redirect('quizzes:manage_admins')
+        except IntegrityError as e:
+            if 'username' in str(e).lower():
+                messages.error(request, 'El nombre de usuario ya está en uso.')
+            elif 'email' in str(e).lower():
+                messages.error(request, 'El correo electrónico ya está en uso.')
+            else:
+                messages.error(request, 'Error de integridad en la base de datos.')
+            return redirect('quizzes:manage_admins')
+        except Exception as e:
+            messages.error(request, f'Error inesperado al crear administrador: {str(e)}')
+            return redirect('quizzes:manage_admins')
 
     # Editar admin
     if request.method == 'POST' and request.POST.get('edit_id'):
@@ -754,21 +847,75 @@ def manage_admins(request):
         first_name = request.POST.get('first_name')
         last_name = request.POST.get('last_name')
         email = request.POST.get('email')
-        admin = AdminProfile.objects.select_related('user').get(id=edit_id)
-        user_obj = admin.user
         
-        # Verificar si el nuevo username ya existe en otro usuario
-        if username != user_obj.username and User.objects.filter(username=username).exists():
-            messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
+        # Validar campos obligatorios
+        if not username or not first_name or not email:
+            messages.error(request, "Todos los campos son obligatorios.")
             return redirect('quizzes:manage_admins')
         
-        user_obj.username = username
-        user_obj.first_name = first_name
-        user_obj.last_name = last_name
-        user_obj.email = email
-        user_obj.save()
-        messages.success(request, f"Administrador {first_name} {last_name} actualizado correctamente.")
-        return redirect('quizzes:manage_admins')
+        try:
+            admin = AdminProfile.objects.select_related('user').get(id=edit_id)
+            user_obj = admin.user
+            
+            # Normalizar email
+            email_normalized = email.lower().strip()
+            
+            # Verificar si el nuevo username ya existe en otro usuario
+            if username != user_obj.username and User.objects.filter(username=username).exists():
+                messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
+                return redirect('quizzes:manage_admins')
+            
+            # Verificar si el nuevo email ya existe en otro usuario
+            if email_normalized != user_obj.email and User.objects.filter(email__iexact=email_normalized).exists():
+                messages.error(request, f"El correo electrónico '{email}' ya está registrado por otro usuario.")
+                return redirect('quizzes:manage_admins')
+            
+            # Verificar conflictos con participantes y representantes
+            if email_normalized != user_obj.email:
+                if Participantes.objects.filter(email__iexact=email_normalized).exists():
+                    messages.error(request, f"El correo '{email}' ya está siendo usado por un participante.")
+                    return redirect('quizzes:manage_admins')
+                
+                if Representante.objects.filter(
+                    models.Q(CorreoInstitucional__iexact=email_normalized) | 
+                    models.Q(CorreoRepresentante__iexact=email_normalized)
+                ).exists():
+                    messages.error(request, f"El correo '{email}' ya está siendo usado por un representante.")
+                    return redirect('quizzes:manage_admins')
+            
+            # Usar transacción para asegurar consistencia
+            from django.db import transaction
+            with transaction.atomic():
+                user_obj.username = username
+                user_obj.first_name = first_name
+                user_obj.last_name = last_name
+                user_obj.email = email_normalized
+                
+                # Validar y guardar
+                user_obj.full_clean()
+                user_obj.save()
+            
+            messages.success(request, f"Administrador {first_name} {last_name} actualizado correctamente.")
+            return redirect('quizzes:manage_admins')
+            
+        except AdminProfile.DoesNotExist:
+            messages.error(request, 'Administrador no encontrado.')
+            return redirect('quizzes:manage_admins')
+        except ValidationError as e:
+            error_message = extract_validation_error_message(e)
+            messages.error(request, f"Error de validación: {error_message}")
+            return redirect('quizzes:manage_admins')
+        except IntegrityError as e:
+            if 'username' in str(e).lower():
+                messages.error(request, 'El nombre de usuario ya está en uso.')
+            elif 'email' in str(e).lower():
+                messages.error(request, 'El correo electrónico ya está en uso.')
+            else:
+                messages.error(request, 'Error de integridad en la base de datos.')
+            return redirect('quizzes:manage_admins')
+        except Exception as e:
+            messages.error(request, f'Error inesperado al actualizar administrador: {str(e)}')
+            return redirect('quizzes:manage_admins')
 
     admins = AdminProfile.objects.select_related('user').all()
     return render(request, 'quizzes/manage_admins.html', {'admins': admins})
@@ -822,6 +969,37 @@ def validate_phone_format(phone):
         return False, "El teléfono debe tener exactamente 10 dígitos numéricos."
     return True, ""
 
+def extract_validation_error_message(validation_error):
+    """
+    Extrae el mensaje de error de un ValidationError de manera segura
+    
+    Args:
+        validation_error: La excepción ValidationError
+    
+    Returns:
+        str: El mensaje de error como cadena simple
+    """
+    if hasattr(validation_error, 'message_dict'):
+        # Si es un diccionario de errores, tomar el primer mensaje
+        if validation_error.message_dict:
+            first_field = list(validation_error.message_dict.keys())[0]
+            first_messages = validation_error.message_dict[first_field]
+            if isinstance(first_messages, list) and first_messages:
+                return first_messages[0]
+            else:
+                return str(first_messages)
+        else:
+            return str(validation_error)
+    elif hasattr(validation_error, 'messages') and validation_error.messages:
+        # Si es una lista de mensajes, tomar el primero
+        if isinstance(validation_error.messages, list) and validation_error.messages:
+            return validation_error.messages[0]
+        else:
+            return str(validation_error.messages)
+    else:
+        # Si es un mensaje simple
+        return str(validation_error)
+
 # Vista para listar y registrar representantes
 @login_required
 def manage_representantes(request):
@@ -843,6 +1021,15 @@ def manage_representantes(request):
         if request.POST.get('add_representante'):
             data = request.POST
             
+            # Validar campos obligatorios
+            required_fields = ['NombreColegio', 'DireccionColegio', 'TelefonoInstitucional', 
+                             'CorreoInstitucional', 'NombresRepresentante', 'TelefonoRepresentante', 
+                             'CorreoRepresentante']
+            for field in required_fields:
+                if not data.get(field):
+                    messages.error(request, f"El campo {field} es obligatorio.")
+                    return redirect('quizzes:manage_representantes')
+            
             # Validar teléfonos
             telefono_inst = data.get('TelefonoInstitucional')
             telefono_rep = data.get('TelefonoRepresentante')
@@ -858,23 +1045,67 @@ def manage_representantes(request):
                 messages.error(request, f"Teléfono Representante: {error_rep}")
                 return redirect('quizzes:manage_representantes')
             
-            Representante.objects.create(
-                NombreColegio=data.get('NombreColegio'),
-                DireccionColegio=data.get('DireccionColegio'),
-                TelefonoInstitucional=telefono_inst,
-                CorreoInstitucional=data.get('CorreoInstitucional'),
-                NombresRepresentante=data.get('NombresRepresentante'),
-                TelefonoRepresentante=telefono_rep,
-                CorreoRepresentante=data.get('CorreoRepresentante'),
-            )
-            messages.success(request, 'Representante registrado exitosamente.')
-            return redirect('quizzes:manage_representantes')
+            # Normalizar correos
+            correo_inst = data.get('CorreoInstitucional').lower().strip()
+            correo_rep = data.get('CorreoRepresentante').lower().strip()
+            
+            # Verificar conflictos con otros modelos usando la función de validación
+            try:
+                from .models import validate_email_across_all_models
+                validate_email_across_all_models(correo_inst)
+                validate_email_across_all_models(correo_rep)
+            except ValidationError as e:
+                error_message = extract_validation_error_message(e)
+                messages.error(request, error_message)
+                return redirect('quizzes:manage_representantes')
+            
+            try:
+                # Usar transacción para asegurar consistencia
+                from django.db import transaction
+                with transaction.atomic():
+                    representante = Representante.objects.create(
+                        NombreColegio=data.get('NombreColegio'),
+                        DireccionColegio=data.get('DireccionColegio'),
+                        TelefonoInstitucional=telefono_inst,
+                        CorreoInstitucional=correo_inst,
+                        NombresRepresentante=data.get('NombresRepresentante'),
+                        TelefonoRepresentante=telefono_rep,
+                        CorreoRepresentante=correo_rep,
+                    )
+                    # Validar el objeto creado
+                    representante.full_clean()
+                
+                messages.success(request, 'Representante registrado exitosamente.')
+                return redirect('quizzes:manage_representantes')
+                
+            except ValidationError as e:
+                error_message = extract_validation_error_message(e)
+                messages.error(request, f"Error de validación: {error_message}")
+                return redirect('quizzes:manage_representantes')
+            except IntegrityError as e:
+                if 'correo' in str(e).lower():
+                    messages.error(request, 'Uno de los correos ya está en uso.')
+                else:
+                    messages.error(request, 'Error de integridad en la base de datos.')
+                return redirect('quizzes:manage_representantes')
+            except Exception as e:
+                messages.error(request, f'Error inesperado al crear representante: {str(e)}')
+                return redirect('quizzes:manage_representantes')
         
         # Editar representante
         elif request.POST.get('edit_id'):
             edit_id = request.POST.get('edit_id')
             data = request.POST
             
+            # Validar campos obligatorios
+            required_fields = ['NombreColegio', 'DireccionColegio', 'TelefonoInstitucional', 
+                             'CorreoInstitucional', 'NombresRepresentante', 'TelefonoRepresentante', 
+                             'CorreoRepresentante']
+            for field in required_fields:
+                if not data.get(field):
+                    messages.error(request, f"El campo {field} es obligatorio.")
+                    return redirect('quizzes:manage_representantes')
+            
             # Validar teléfonos
             telefono_inst = data.get('TelefonoInstitucional')
             telefono_rep = data.get('TelefonoRepresentante')
@@ -890,17 +1121,66 @@ def manage_representantes(request):
                 messages.error(request, f"Teléfono Representante: {error_rep}")
                 return redirect('quizzes:manage_representantes')
             
-            representante = Representante.objects.get(id=edit_id)
-            representante.NombreColegio = data.get('NombreColegio')
-            representante.DireccionColegio = data.get('DireccionColegio')
-            representante.TelefonoInstitucional = telefono_inst
-            representante.CorreoInstitucional = data.get('CorreoInstitucional')
-            representante.NombresRepresentante = data.get('NombresRepresentante')
-            representante.TelefonoRepresentante = telefono_rep
-            representante.CorreoRepresentante = data.get('CorreoRepresentante')
-            representante.save()
-            messages.success(request, 'Representante actualizado exitosamente.')
-            return redirect('quizzes:manage_representantes')
+            try:
+                representante = Representante.objects.get(id=edit_id)
+                
+                # Normalizar correos
+                correo_inst = data.get('CorreoInstitucional').lower().strip()
+                correo_rep = data.get('CorreoRepresentante').lower().strip()
+                
+                # Verificar conflictos solo si los correos cambiaron
+                if correo_inst != representante.CorreoInstitucional:
+                    try:
+                        from .models import validate_email_across_all_models
+                        validate_email_across_all_models(correo_inst, exclude_representante_id=representante.id)
+                    except ValidationError as e:
+                        error_message = extract_validation_error_message(e)
+                        messages.error(request, error_message)
+                        return redirect('quizzes:manage_representantes')
+                
+                if correo_rep != representante.CorreoRepresentante:
+                    try:
+                        from .models import validate_email_across_all_models
+                        validate_email_across_all_models(correo_rep, exclude_representante_id=representante.id)
+                    except ValidationError as e:
+                        error_message = extract_validation_error_message(e)
+                        messages.error(request, error_message)
+                        return redirect('quizzes:manage_representantes')
+                
+                # Usar transacción para asegurar consistencia
+                from django.db import transaction
+                with transaction.atomic():
+                    representante.NombreColegio = data.get('NombreColegio')
+                    representante.DireccionColegio = data.get('DireccionColegio')
+                    representante.TelefonoInstitucional = telefono_inst
+                    representante.CorreoInstitucional = correo_inst
+                    representante.NombresRepresentante = data.get('NombresRepresentante')
+                    representante.TelefonoRepresentante = telefono_rep
+                    representante.CorreoRepresentante = correo_rep
+                    
+                    # Validar y guardar
+                    representante.full_clean()
+                    representante.save()
+                
+                messages.success(request, 'Representante actualizado exitosamente.')
+                return redirect('quizzes:manage_representantes')
+                
+            except Representante.DoesNotExist:
+                messages.error(request, 'Representante no encontrado.')
+                return redirect('quizzes:manage_representantes')
+            except ValidationError as e:
+                error_message = extract_validation_error_message(e)
+                messages.error(request, f"Error de validación: {error_message}")
+                return redirect('quizzes:manage_representantes')
+            except IntegrityError as e:
+                if 'correo' in str(e).lower():
+                    messages.error(request, 'Uno de los correos ya está en uso.')
+                else:
+                    messages.error(request, 'Error de integridad en la base de datos.')
+                return redirect('quizzes:manage_representantes')
+            except Exception as e:
+                messages.error(request, f'Error inesperado al actualizar representante: {str(e)}')
+                return redirect('quizzes:manage_representantes')
 
     representantes = Representante.objects.all()
     
@@ -1079,6 +1359,20 @@ def process_excel_participants(request):
                     row_errors.append('Email es requerido')
                 elif '@' not in row_data['email']:
                     row_errors.append('Email inválido')
+                else:
+                    # Validar que el correo no esté duplicado
+                    email_normalized = row_data['email'].lower().strip()
+                    
+                    # Verificar si ya existe un participante con este correo
+                    if Participantes.objects.filter(email__iexact=email_normalized).exists():
+                        row_errors.append(f'Ya existe un participante con el correo "{row_data["email"]}"')
+                    
+                    # Verificar si el correo está siendo usado por un representante
+                    if Representante.objects.filter(
+                        Q(CorreoInstitucional__iexact=email_normalized) |
+                        Q(CorreoRepresentante__iexact=email_normalized)
+                    ).exists():
+                        row_errors.append(f'El correo "{row_data["email"]}" ya está siendo usado por un representante')
                 
                 # Validar teléfono si está presente
                 if row_data.get('phone') and not validate_phone_format(row_data['phone'])[0]:
@@ -1162,34 +1456,6 @@ def save_excel_participants(request):
     
     return JsonResponse({'error': 'Método no permitido'}, status=405)
 
-# Función utilitaria para enviar credenciales por correo (PARA EL REGISTRO EN EL SISTEMA ALADO DE LOGIN)
-from django.core.mail import send_mail
-from django.conf import settings
-def send_credentials_email(nombre, username, password, email, rol='Administrador'):
-    subject = f'Credenciales de acceso como {rol}'
-    message = f"""
-    Hola {nombre},
-
-    Gracias por registrarte en nuestra plataforma. Aquí están tus credenciales:
-
-    Usuario: {username}
-    Contraseña: {password}
-
-    Por favor, accede a la plataforma en: http://127.0.0.1:8000/
-
-    Si tienes alguna duda o problema, no dudes en contactarnos.
-
-    Saludos cordiales,
-    El equipo de Olymp
-    """
-
-    send_mail(
-        subject,
-        message,
-        settings.EMAIL_HOST_USER, 
-        [email],
-        fail_silently=False  
-    )
 
 @login_required
 def quiz_view(request):
@@ -2376,18 +2642,18 @@ def send_participants_email(request, grupo_id):
             messages.error(request, 'Este grupo no tiene participantes asignados.')
             return redirect('quizzes:manage_grupos')
         
-        # Crear tabla HTML con los datos de los participantes
+        # Crear tabla HTML moderna con los datos de los participantes
         participantes_html = """
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">
+        <table style="width: 100%; border-collapse: collapse; background: white;">
             <thead>
-                <tr style="background-color: #f2f2f2;">
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Cédula</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Nombres Completos</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Email</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Teléfono</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Edad</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Usuario</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Contraseña</th>
+                <tr>
+                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Cédula</th>
+                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Nombres Completos</th>
+                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Email</th>
+                    <!--<th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Teléfono</th>-->
+                    <!--<th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Edad</th>-->
+                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Usuario</th>
+                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Contraseña</th>
                 </tr>
             </thead>
             <tbody>
@@ -2406,14 +2672,14 @@ def send_participants_email(request, grupo_id):
                 nueva_password = participante.password_temporal
             
             participantes_html += f"""
-                <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.cedula}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.NombresCompletos}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.email}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.phone or 'No registrado'}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.edad or 'No registrado'}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{participante.user.username}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">{nueva_password}</td>
+                <tr style="border-bottom: 1px solid #e0e0e0;">
+                    <td style="padding: 12px 10px; font-size: 13px; font-weight: 600; color: #333;">{participante.cedula}</td>
+                    <td style="padding: 12px 10px; font-size: 13px; color: #555;">{participante.NombresCompletos}</td>
+                    <td style="padding: 12px 10px; font-size: 13px; color: #667eea;">{participante.email}</td>
+                    <!--<td style="padding: 12px 10px; font-size: 13px; color: #666;">{participante.phone or 'No registrado'}</td>-->
+                    <!--<td style="padding: 12px 10px; font-size: 13px; color: #666;">{participante.edad or 'No registrado'}</td>-->
+                    <td style="padding: 12px 10px; font-size: 13px; font-family: 'Courier New', monospace; font-weight: 600; color: #667eea;">{participante.user.username}</td>
+                    <td style="padding: 12px 10px; font-size: 13px; font-family: 'Courier New', monospace; font-weight: 600; color: #e74c3c; background: #fdf2f2; border-radius: 4px;">{nueva_password}</td>
                 </tr>
             """
         
@@ -2422,67 +2688,25 @@ def send_participants_email(request, grupo_id):
         </table>
         """
         
-        # Crear el mensaje del correo
+        # Crear el mensaje del correo usando la función global
         subject = f'Lista de Participantes - Grupo: {grupo.name}'
         
-        # Mensaje en texto plano
-        plain_message = f"""
-Estimado/a {grupo.representante.NombresRepresentante},
-
-Adjunto encontrará la lista completa de participantes asignados al grupo "{grupo.name}".
-
-Total de participantes: {grupo.participantes.count()}
-
-IMPORTANTE: Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.
-Los participantes pueden acceder a la plataforma usando su cédula como usuario y la contraseña que aparece en la tabla.
-
-Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.
-
-Saludos cordiales,
-El equipo de Olymp
-        """
+        # Preparar contenido adicional para la función global
+        additional_content = {
+            'participantes_html': participantes_html,
+            'total_participantes': grupo.participantes.count()
+        }
         
-        # Mensaje HTML
-        html_message = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                .header {{ background-color: #f8f9fa; padding: 20px; border-radius: 5px; }}
-                .info {{ background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }}
-                .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h2>Lista de Participantes - Grupo: {grupo.name}</h2>
-            </div>
-            
-            <p>Estimado/a <strong>{grupo.representante.NombresRepresentante}</strong>,</p>
-            
-            <p>Adjunto encontrará la lista completa de participantes asignados al grupo <strong>"{grupo.name}"</strong>:</p>
-            
-            {participantes_html}
-            
-            <div class="info">
-                <h3>Información importante:</h3>
-                <ul>
-                    <li><strong>Total de participantes:</strong> {grupo.participantes.count()}</li>
-                    <li><strong>IMPORTANTE:</strong> Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.</li>
-                    <li>Los participantes pueden acceder a la plataforma usando su <strong>cédula como usuario</strong> y la <strong>contraseña que aparece en la tabla</strong>.</li>
-                    <li>Estas son las contraseñas que los participantes deben usar para acceder al sistema.</li>
-                </ul>
-            </div>
-            
-            <p>Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.</p>
-            
-            <div class="footer">
-                <p><strong>Saludos cordiales,</strong><br>
-                El equipo de Olymp</p>
-            </div>
-        </body>
-        </html>
-        """
+        # Generar mensajes usando la función global
+        plain_message, html_message = generate_email_messages(
+            subject=subject,
+            nombre=grupo.representante.NombresRepresentante,
+            system_name=grupo.name,
+            username='',  # No aplica para lista de participantes
+            nueva_password='',  # No aplica para lista de participantes
+            email_type='participants_list',
+            additional_content=additional_content
+        )
         
         # Enviar el correo
         send_mail(
@@ -2573,62 +2797,15 @@ def send_credentials_email(request, user_type, user_id):
             messages.error(request, 'Tipo de usuario no válido.')
             return redirect('quizzes:dashboard')
         
-        # Mensaje en texto plano
-        plain_message = f"""
-Estimado/a {nombre},
-
-Sus credenciales de acceso al {system_name} son las siguientes:
-
-Usuario: {username}
-Contraseña: {nueva_password}
-
-Puede acceder al sistema usando estas credenciales.
-
-Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos.
-
-Saludos cordiales,
-El equipo de Olymp
-        """
-        
-        # Mensaje HTML
-        html_message = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                .header {{ background-color: #f8f9fa; padding: 20px; border-radius: 5px; }}
-                .credentials {{ background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }}
-                .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h2>Credenciales de Acceso - {system_name}</h2>
-            </div>
-            
-            <p>Estimado/a <strong>{nombre}</strong>,</p>
-            
-            <p>Sus credenciales de acceso al {system_name} son las siguientes:</p>
-            
-            <div class="credentials">
-                <h3>Credenciales de Acceso:</h3>
-                <ul>
-                    <li><strong>Usuario:</strong> {username}</li>
-                    <li><strong>Contraseña:</strong> {nueva_password}</li>
-                </ul>
-            </div>
-            
-            <p>Puede acceder al sistema usando estas credenciales.</p>
-            
-            <p>Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos.</p>
-            
-            <div class="footer">
-                <p><strong>Saludos cordiales,</strong><br>
-                El equipo de Olymp</p>
-            </div>
-        </body>
-        </html>
-        """
+        # Generar mensajes usando la función global
+        plain_message, html_message = generate_email_messages(
+            subject=subject,
+            nombre=nombre,
+            system_name=system_name,
+            username=username,
+            nueva_password=nueva_password,
+            email_type='credentials'
+        )
         
         # Enviar el correo
         send_mail(
@@ -2723,17 +2900,36 @@ def profile_view(request):
                         messages.error(request, 'El campo Nombres Completos es obligatorio.')
                         return redirect('quizzes:profile')
                 
-                # Validar email único
+                # Normalizar email siempre
+                email_normalized = email.lower().strip()
+                
+                # Validar email único solo si cambió
                 if email != request.user.email:
-                    if User.objects.filter(email=email).exclude(id=request.user.id).exists():
+                    # Verificar si ya existe otro usuario con este correo
+                    if User.objects.filter(email__iexact=email_normalized).exclude(id=request.user.id).exists():
                         if is_ajax:
                             return JsonResponse({
                                 'success': False,
-                                'message': 'El correo electrónico ya está en uso.'
+                                'message': 'El correo electrónico ya está en uso por otro usuario.'
                             })
                         else:
-                            messages.error(request, 'El correo electrónico ya está en uso.')
+                            messages.error(request, 'El correo electrónico ya está en uso por otro usuario.')
                             return redirect('quizzes:profile')
+                    
+                    # Si es participante, verificar conflictos con representantes
+                    if is_participante:
+                        if Representante.objects.filter(
+                            models.Q(CorreoInstitucional__iexact=email_normalized) | 
+                            models.Q(CorreoRepresentante__iexact=email_normalized)
+                        ).exists():
+                            if is_ajax:
+                                return JsonResponse({
+                                    'success': False,
+                                    'message': 'El correo electrónico ya está siendo usado por un representante.'
+                                })
+                            else:
+                                messages.error(request, 'El correo electrónico ya está siendo usado por un representante.')
+                                return redirect('quizzes:profile')
                 
                 # Validar formato de teléfono si se proporciona
                 if phone and not re.match(r'^\d{10}$', phone):
@@ -2756,35 +2952,72 @@ def profile_view(request):
                     first_name = full_name
                     last_name = ''
                 
-                request.user.first_name = first_name
-                request.user.last_name = last_name
-                request.user.email = email
-                request.user.save()
-                
-                # Actualizar perfil según el tipo de usuario
-                if is_participante:
-                    # Para participantes, actualizar el teléfono en el modelo Participantes
-                    participante.phone = phone
-                    participante.save()
-                    # También actualizar el UserProfile para bio y avatar
-                    profile.bio = bio
-                else:
-                    # Para otros usuarios, actualizar el UserProfile
-                    profile.phone = phone
-                    profile.bio = bio
-                
-                # Procesar nueva foto si se subió
-                if 'avatar' in request.FILES:
-                    # Eliminar foto anterior si existe
-                    if profile.avatar:
-                        try:
-                            os.remove(profile.avatar.path)
-                        except:
-                            pass
+                try:
+                    # Usar transacción para asegurar consistencia
+                    from django.db import transaction
+                    with transaction.atomic():
+                        request.user.first_name = first_name
+                        request.user.last_name = last_name
+                        request.user.email = email_normalized
+                        
+                        # Validar y guardar usuario
+                        request.user.full_clean()
+                        request.user.save()
+                        
+                        # Actualizar perfil según el tipo de usuario
+                        if is_participante:
+                            # Para participantes, actualizar el teléfono en el modelo Participantes
+                            participante.phone = phone
+                            participante.email = email_normalized  # Actualizar también el correo del participante
+                            participante.full_clean()
+                            participante.save()
+                            # También actualizar el UserProfile para bio y avatar
+                            profile.bio = bio
+                        else:
+                            # Para otros usuarios, actualizar el UserProfile
+                            profile.phone = phone
+                            profile.bio = bio
+                        
+                        # Procesar nueva foto si se subió
+                        if 'avatar' in request.FILES:
+                            # Eliminar foto anterior si existe
+                            if profile.avatar:
+                                try:
+                                    os.remove(profile.avatar.path)
+                                except:
+                                    pass
+                            
+                            profile.avatar = request.FILES['avatar']
+                        
+                        profile.full_clean()
+                        profile.save()
+                        
+                except ValidationError as e:
+                    error_message = extract_validation_error_message(e)
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': f'Error de validación: {error_message}'
+                        })
+                    else:
+                        messages.error(request, f'Error de validación: {error_message}')
+                        return redirect('quizzes:profile')
+                except IntegrityError as e:
+                    if 'email' in str(e).lower():
+                        error_msg = 'El correo electrónico ya está en uso.'
+                    elif 'phone' in str(e).lower():
+                        error_msg = 'El teléfono ya está registrado.'
+                    else:
+                        error_msg = 'Error de integridad en la base de datos.'
                     
-                    profile.avatar = request.FILES['avatar']
-                
-                profile.save()
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False,
+                            'message': error_msg
+                        })
+                    else:
+                        messages.error(request, error_msg)
+                        return redirect('quizzes:profile')
                 
                 # Si es AJAX, devolver JSON
                 if is_ajax:
@@ -3389,4 +3622,176 @@ def agregar_alerta_manual(request, monitoreo_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+def send_credentials_for_clave_temporal(tipo_usuario, user_id):
+    """
+    Función auxiliar para generar nueva contraseña y enviar email de credenciales
+    para la funcionalidad de solicitar clave temporal.
+    
+    Args:
+        tipo_usuario (str): 'participante' o 'admin'
+        user_id (int): ID del usuario
+    
+    Returns:
+        tuple: (success, message, email) donde success es bool, message es str, email es str
+    """
+    try:
+        if tipo_usuario == 'participante':
+            user_obj = Participantes.objects.get(id=user_id)
+            nombre = user_obj.NombresCompletos
+            email = user_obj.email
+            username = user_obj.user.username
+            
+            # Generar nueva contraseña temporal
+            nueva_password = get_random_string(length=6)
+            user_obj.password_temporal = nueva_password
+            user_obj.save()
+            # Actualizar también la contraseña del usuario
+            user_obj.user.set_password(nueva_password)
+            user_obj.user.save()
+            
+            subject = f'Credenciales de Acceso - Sistema Olymp'
+            system_name = 'Sistema Olymp'
+            
+        else:  # admin
+            user_obj = AdminProfile.objects.get(id=user_id)
+            nombre = user_obj.user.get_full_name()
+            email = user_obj.user.email
+            username = user_obj.user.username
+            
+            # Generar nueva contraseña
+            nueva_password = get_random_string(length=8)
+            user_obj.password = nueva_password
+            user_obj.save()
+            # Actualizar también la contraseña del usuario
+            user_obj.user.set_password(nueva_password)
+            user_obj.user.save()
+            
+            subject = f'Credenciales de Acceso - Panel de Administración Olymp'
+            system_name = 'Panel de Administración Olymp'
+        
+        # Generar mensajes usando la función global
+        plain_message, html_message = generate_email_messages(
+            subject=subject,
+            nombre=nombre,
+            system_name=system_name,
+            username=username,
+            nueva_password=nueva_password,
+            email_type='credentials'
+        )
+        
+        # Enviar el correo
+        send_mail(
+            subject,
+            plain_message,
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
+            html_message=html_message
+        )
+        
+        return True, f'Se ha enviado una nueva contraseña temporal a su correo electrónico ({email}).', email
+        
+    except Exception as email_error:
+        return False, f'Error al enviar el correo: {str(email_error)}', email if 'email' in locals() else None
+
+
+@csrf_exempt
+def solicitar_clave_temporal(request):
+    """
+    Endpoint para solicitar una nueva clave temporal
+    No requiere login ya que es para usuarios que olvidaron su contraseña
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Método no permitido'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        username = data.get('username', '').strip()
+        
+        if not username:
+            return JsonResponse({
+                'success': False, 
+                'message': 'El nombre de usuario es requerido.'
+            })
+        
+        # Buscar el usuario (puede ser admin o participante)
+        tipo_usuario = None
+        email = None
+        user_id = None
+        
+        # Primero buscar como administrador
+        try:
+            admin_profile = AdminProfile.objects.get(user__username__iexact=username)
+            tipo_usuario = 'admin'
+            email = admin_profile.user.email
+            user_id = admin_profile.id
+        except AdminProfile.DoesNotExist:
+            # Si no es admin, buscar como participante
+            try:
+                participante = Participantes.objects.get(user__username__iexact=username)
+                tipo_usuario = 'participante'
+                email = participante.email
+                user_id = participante.id
+            except Participantes.DoesNotExist:
+                # Intentar buscar por cédula (solo para participantes)
+                try:
+                    participante = Participantes.objects.get(cedula=username)
+                    tipo_usuario = 'participante'
+                    email = participante.email
+                    user_id = participante.id
+                except Participantes.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'El usuario "{username}" no existe en el sistema.'
+                    })
+        
+        # Verificar si puede solicitar (máximo 3 por semana)
+        solicitudes_semana = SolicitudClaveTemporal.contar_solicitudes_semana(username, tipo_usuario)
+        if solicitudes_semana >= 3:
+            return JsonResponse({
+                'success': False,
+                'message': f'Ha excedido el límite de solicitudes. Ya ha solicitado {solicitudes_semana} veces esta semana. El límite es de 3 solicitudes por semana.'
+            })
+        
+        # Crear registro de solicitud
+        solicitud = SolicitudClaveTemporal.objects.create(
+            username=username,
+            tipo_usuario=tipo_usuario,
+            email=email
+        )
+        
+        # Generar nueva contraseña y enviar email usando la función auxiliar
+        success, message, email_sent = send_credentials_for_clave_temporal(tipo_usuario, user_id)
+        
+        if success:
+            # Marcar solicitud como procesada
+            solicitud.procesada = True
+            solicitud.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': message
+            })
+        else:
+            # Si hay error en el envío, marcar como fallida
+            solicitud.procesada = False
+            solicitud.mensaje_error = message
+            solicitud.save()
+            
+            return JsonResponse({
+                'success': False,
+                'message': message
+            })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'message': 'Error en el formato de datos enviados.'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        })
 

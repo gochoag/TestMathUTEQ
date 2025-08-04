@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import GrupoParticipantes, Participantes, Evaluacion, Pregunta, Opcion, AdminProfile
+from .models import GrupoParticipantes, Participantes, Evaluacion, Pregunta, Opcion, AdminProfile, SolicitudClaveTemporal
 
 
 class OpcionInline(admin.TabularInline):
@@ -24,3 +24,25 @@ admin.site.register(Participantes)
 admin.site.register(Evaluacion)
 admin.site.register(Pregunta, PreguntaAdmin)
 admin.site.register(Opcion)
+
+
+@admin.register(SolicitudClaveTemporal)
+class SolicitudClaveTemporalAdmin(admin.ModelAdmin):
+    list_display = ('username', 'tipo_usuario', 'email', 'fecha_solicitud', 'procesada')
+    list_filter = ('tipo_usuario', 'procesada', 'fecha_solicitud')
+    search_fields = ('username', 'email')
+    readonly_fields = ('fecha_solicitud',)
+    list_editable = ('procesada',)
+    ordering = ('-fecha_solicitud',)
+    
+    fieldsets = (
+        ('Información del Usuario', {
+            'fields': ('username', 'tipo_usuario', 'email')
+        }),
+        ('Información de la Solicitud', {
+            'fields': ('fecha_solicitud',)
+        }),
+        ('Estado', {
+            'fields': ('procesada', 'mensaje_error')
+        }),
+    )

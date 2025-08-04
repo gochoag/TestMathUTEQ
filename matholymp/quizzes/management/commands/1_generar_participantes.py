@@ -36,6 +36,7 @@ class Command(BaseCommand):
         # Generar participantes
         participantes_creados = 0
         cedulas_generadas = set()
+        emails_generados = set()
         
         for i in range(30):
             # Generar datos únicos
@@ -48,7 +49,11 @@ class Command(BaseCommand):
             nombre = self.generar_nombres()
             apellido = self.generar_apellidos()
             nombres_completos = f"{nombre} {apellido}"
-            email = self.generar_email(nombre, apellido)
+            
+            # Generar email único
+            email = self.generar_email_unico(nombre, apellido, emails_generados)
+            emails_generados.add(email.lower())
+            
             telefono = self.generar_telefono()
             edad = random.randint(15, 18)  # Edad típica para olimpiadas de matemáticas
             
@@ -93,11 +98,27 @@ class Command(BaseCommand):
         """Genera un número de teléfono ecuatoriano válido"""
         return ''.join([str(random.randint(0, 9)) for _ in range(10)])
 
-    def generar_email(self, nombre, apellido):
-        """Genera un email basado en el nombre"""
+    def generar_email_unico(self, nombre, apellido, emails_existentes):
+        """Genera un email único basado en el nombre"""
         dominios = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com']
         dominio = random.choice(dominios)
-        return f"{nombre.lower()}.{apellido.lower()}@{dominio}"
+        
+        # Diferentes formatos de email para evitar duplicados
+        formatos = [
+            f"{nombre.lower()}.{apellido.lower()}@{dominio}",
+            f"{nombre.lower()}{apellido.lower()}@{dominio}",
+            f"{nombre.lower()}_{apellido.lower()}@{dominio}",
+            f"{nombre.lower()}{random.randint(100, 999)}@{dominio}",
+            f"{nombre.lower()}.{apellido.lower()}{random.randint(10, 99)}@{dominio}",
+        ]
+        
+        # Probar cada formato hasta encontrar uno único
+        for formato in formatos:
+            if formato.lower() not in emails_existentes:
+                return formato
+        
+        # Si todos los formatos están ocupados, agregar un número aleatorio
+        return f"{nombre.lower()}.{apellido.lower()}{random.randint(1000, 9999)}@{dominio}"
 
     def generar_nombres(self):
         """Lista de nombres ecuatorianos comunes"""
@@ -133,14 +154,18 @@ class Command(BaseCommand):
             "Unidad Educativa San Francisco de Sales"
         ]
         
+        # Generar correos únicos para representantes
+        correo_institucional = f"info{random.randint(100, 999)}@{random.choice(['colegio.edu.ec', 'instituto.edu.ec', 'escuela.edu.ec'])}"
+        correo_representante = f"representante{random.randint(100, 999)}@{random.choice(['gmail.com', 'hotmail.com'])}"
+        
         representante = Representante.objects.create(
             NombreColegio=random.choice(nombres_colegios),
             DireccionColegio=f"Av. {random.choice(['Amazonas', '6 de Diciembre', '10 de Agosto', 'Naciones Unidas'])} #123",
             TelefonoInstitucional=self.generar_telefono(),
-            CorreoInstitucional=f"info@{random.choice(['colegio.edu.ec', 'instituto.edu.ec', 'escuela.edu.ec'])}",
+            CorreoInstitucional=correo_institucional,
             NombresRepresentante=f"{self.generar_nombres()} {self.generar_apellidos()}",
             TelefonoRepresentante=self.generar_telefono(),
-            CorreoRepresentante=f"representante@{random.choice(['gmail.com', 'hotmail.com'])}"
+            CorreoRepresentante=correo_representante
         )
         return representante
 

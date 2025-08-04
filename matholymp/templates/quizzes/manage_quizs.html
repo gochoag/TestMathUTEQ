@@ -4,163 +4,37 @@
 {% block title %}Gestionar Evaluaciones{% endblock %}
 
 {% block extra_css %}
-<style>
-/* CSS para que SweetAlert2 aparezca por encima del modal */
-.swal-over-modal {
-    z-index: 9999 !important;
-}
-
-/* Estilos para las etapas */
-.etapa-badge {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 1.5rem;
-    color: white;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-}
-
-.etapa-1 {
-    background: linear-gradient(135deg, #007bff, #0056b3);
-}
-
-.etapa-2 {
-    background: linear-gradient(135deg, #ffc107, #e0a800);
-}
-
-.etapa-3 {
-    background: linear-gradient(135deg, #28a745, #1e7e34);
-}
-
-.etapa-number {
-    font-size: 1.8rem;
-    font-weight: 900;
-}
-
-/* Separadores entre etapas */
-.etapa-separator {
-    border: none;
-    height: 3px;
-    background: linear-gradient(to right, #007bff, #ffc107, #28a745);
-    border-radius: 2px;
-    margin: 2rem 0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-/* Estilos para las cards de evaluaciones */
-.evaluacion-card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    border: none;
-    min-height: 450px; /* Altura mínima para consistencia */
-    position: relative; /* Necesario para z-index */
-}
-
-.evaluacion-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
-    z-index: 10; /* Elevar la card al hacer hover */
-}
-
-/* Fix para dropdown z-index */
-.evaluacion-card .dropdown {
-    position: relative;
-    z-index: 1000; /* Alto z-index para el dropdown */
-}
-
-.evaluacion-card .dropdown-menu {
-    z-index: 1001 !important; /* Z-index más alto para el menú */
-    position: absolute !important;
-}
-
-/* Asegurar que el dropdown aparezca sobre otras cards */
-.evaluacion-card:hover .dropdown-menu {
-    z-index: 1002 !important;
-}
-
-.etapa-1-card {
-    border-left: 4px solid #007bff;
-}
-
-.etapa-2-card {
-    border-left: 4px solid #ffc107;
-}
-
-.etapa-3-card {
-    border-left: 4px solid #28a745;
-}
-
-/* Responsive */
-@media (max-width: 576px) {
-    .evaluacion-card {
-        min-height: 400px;
-    }
-    
-    .etapa-badge {
-        width: 50px;
-        height: 50px;
-    }
-    
-    .etapa-number {
-        font-size: 1.5rem;
-    }
-    
-    .connector-line {
-        height: 40px;
-    }
-    
-    .connector-arrow {
-        width: 35px;
-        height: 35px;
-    }
-}
-
-@media (min-width: 1200px) {
-    .evaluacion-card {
-        min-height: 500px;
-    }
-}
-
-/* Grid layout improvements */
-.row {
-    margin-left: -10px;
-    margin-right: -10px;
-}
-
-.col-12, .col-md-6, .col-lg-4 {
-    padding-left: 10px;
-    padding-right: 10px;
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/manage_quizs.css' %}">
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2 class="mb-0">
-                        <i class="bi bi-clipboard-check me-2"></i>
-                        Gestionar Evaluaciones
-                    </h2>
-                    <small class="text-muted">
-                        {% if admin_type == 'superuser' %}
-                            <i class="bi bi-shield-fill text-danger me-1"></i>Super Administrador
-                        {% elif admin_type == 'admin_full' %}
-                            <i class="bi bi-shield-check text-success me-1"></i>Administrador con Acceso Total
-                        {% elif admin_type == 'admin_limited' %}
-                            <i class="bi bi-shield text-warning me-1"></i>Administrador
-                        {% endif %}
-                    </small>
+            <div class="page-header mb-4">
+                <div class="header-content">
+                    <div class="title-section">
+                        <h2 class="mb-0">
+                            <i class="bi bi-clipboard-check me-2"></i>
+                            Gestionar Evaluaciones
+                        </h2>
+                        <small class="text-muted">
+                            {% if admin_type == 'superuser' %}
+                                <i class="bi bi-shield-fill text-danger me-1"></i>Super Administrador
+                            {% elif admin_type == 'admin_full' %}
+                                <i class="bi bi-shield-check text-success me-1"></i>Administrador con Acceso Total
+                            {% elif admin_type == 'admin_limited' %}
+                                <i class="bi bi-shield text-warning me-1"></i>Administrador
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div class="actions-section">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
+                            <i class="bi bi-plus-circle me-2"></i>
+                            Crear Evaluación
+                        </button>
+                    </div>
                 </div>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
-                    <i class="bi bi-plus-circle me-2"></i>
-                    Crear Evaluación
-                </button>
             </div>
 
             {% if messages %}
@@ -174,9 +48,9 @@
 
             {% if evaluaciones %}
             <!-- Etapa 1 - Clasificatoria -->
-            <div class="row mb-5">
+            <div class="row mb-2">
                 <div class="col-12">
-                    <div class="d-flex align-items-center mb-4">
+                    <div class="d-flex align-items-center mb-2">
                         <div class="etapa-badge etapa-1 me-3">
                             <span class="etapa-number">1</span>
                         </div>
@@ -188,11 +62,11 @@
                 </div>
             </div>
             
-            <div class="row mb-5">
+            <div class="row mb-2">
                 {% with evaluaciones_etapa1=evaluaciones|dictsort:"etapa" %}
                     {% for evaluacion in evaluaciones_etapa1 %}
                         {% if evaluacion.etapa == 1 %}
-                            <div class="col-12 col-md-6 col-lg-4 mb-4">
+                            <div class="col-12 col-md-6 col-lg-4 mb-2">
                                     <div class="card h-100 shadow-sm evaluacion-card etapa-1-card">
                                         <div class="card-header bg-primary text-white">
                                             <div class="d-flex justify-content-between align-items-center">
@@ -281,16 +155,16 @@
             </div>
 
             <!-- Separador entre etapas -->
-            <div class="row mb-5">
+            <div class="row mb-2">
                 <div class="col-12">
                     <hr class="etapa-separator">
                 </div>
             </div>
 
             <!-- Etapa 2 - Semifinal -->
-            <div class="row mb-5">
+            <div class="row mb-2">
                 <div class="col-12">
-                    <div class="d-flex align-items-center mb-4">
+                    <div class="d-flex align-items-center mb-2">
                         <div class="etapa-badge etapa-2 me-3">
                             <span class="etapa-number">2</span>
                         </div>
@@ -302,10 +176,10 @@
                 </div>
             </div>
             
-            <div class="row mb-5">
+            <div class="row mb-2">
                 {% for evaluacion in evaluaciones %}
                     {% if evaluacion.etapa == 2 %}
-                        <div class="col-12 col-md-6 col-lg-4 mb-4">
+                        <div class="col-12 col-md-6 col-lg-4 mb-2">
                                 <div class="card h-100 shadow-sm evaluacion-card etapa-2-card">
                                     <div class="card-header bg-warning text-dark">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -397,16 +271,16 @@
             </div>
 
             <!-- Separador entre etapas -->
-            <div class="row mb-5">
+            <div class="row mb-2">
                 <div class="col-12">
                     <hr class="etapa-separator">
                 </div>
             </div>
 
             <!-- Etapa 3 - Final -->
-            <div class="row mb-5">
+            <div class="row mb-2">
                 <div class="col-12">
-                    <div class="d-flex align-items-center mb-4">
+                    <div class="d-flex align-items-center mb-2">
                         <div class="etapa-badge etapa-3 me-3">
                             <span class="etapa-number">3</span>
                         </div>
@@ -418,10 +292,10 @@
                 </div>
             </div>
             
-            <div class="row mb-5">
+            <div class="row mb-2">
                 {% for evaluacion in evaluaciones %}
                     {% if evaluacion.etapa == 3 %}
-                        <div class="col-12 col-md-6 col-lg-4 mb-4">
+                        <div class="col-12 col-md-6 col-lg-4 mb-2">
                                 <div class="card h-100 shadow-sm evaluacion-card etapa-3-card">
                                     <div class="card-header bg-success text-white">
                                         <div class="d-flex justify-content-between align-items-center">

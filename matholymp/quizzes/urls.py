@@ -55,4 +55,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/monitoreo/finalizar/', views.finalizar_evaluacion_admin, name='finalizar_evaluacion_admin'),
     path('monitoreo/<int:monitoreo_id>/detalle/', views.detalle_monitoreo, name='detalle_monitoreo'),
     path('monitoreo/<int:monitoreo_id>/alerta/', views.agregar_alerta_manual, name='agregar_alerta_manual'),
+    
+    # URL para solicitud de clave temporal
+    path('solicitar-clave-temporal/', views.solicitar_clave_temporal, name='solicitar_clave_temporal'),
 ]

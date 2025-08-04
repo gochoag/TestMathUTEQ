@@ -1,0 +1,123 @@
+/* Estilos para el modal de solicitud de clave temporal */
+
+.modal-clave-temporal .modal-header {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    border-bottom: none;
+}
+
+.modal-clave-temporal .modal-title {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.modal-clave-temporal .btn-close-white {
+    filter: brightness(0) invert(1);
+}
+
+.modal-clave-temporal .alert-info {
+    background-color: #e7f3ff;
+    border-color: #b3d9ff;
+    color: #0c5460;
+}
+
+.modal-clave-temporal .form-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.modal-clave-temporal .form-control {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.modal-clave-temporal .form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.modal-clave-temporal .form-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.modal-clave-temporal .btn-primary {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.modal-clave-temporal .btn-primary:hover {
+    background: linear-gradient(135deg, #0056b3, #004085);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+
+.modal-clave-temporal .btn-secondary {
+    background: linear-gradient(135deg, #6c757d, #545b62);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.modal-clave-temporal .btn-secondary:hover {
+    background: linear-gradient(135deg, #545b62, #3d4449);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
+}
+
+/* Animaciones para el modal */
+.modal-clave-temporal.fade .modal-dialog {
+    transition: transform 0.3s ease-out;
+    transform: translate(0, -50px);
+}
+
+.modal-clave-temporal.show .modal-dialog {
+    transform: none;
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+    .modal-clave-temporal .modal-dialog {
+        margin: 1rem;
+    }
+    
+    .modal-clave-temporal .modal-title {
+        font-size: 1.1rem;
+    }
+    
+    .modal-clave-temporal .btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Estilos para SweetAlert2 personalizados */
+.swal2-popup {
+    border-radius: 12px !important;
+}
+
+.swal2-title {
+    color: #495057 !important;
+    font-weight: 600 !important;
+}
+
+.swal2-content {
+    color: #6c757d !important;
+}
+
+.swal2-confirm {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+
+.swal2-cancel {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+} 

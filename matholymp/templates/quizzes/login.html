@@ -1,4 +1,10 @@
-{% extends 'base.html' %} {% load static %} {% block content %}
+{% extends 'base.html' %} {% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/modal_clave_temporal.css' %}">
+{% endblock %}
+
+{% block content %}
 <div
   class="login-bg-white d-flex justify-content-center align-items-center"
   style="min-height: 100vh; width: 100vw; position: fixed; top: 0; left: 0"
@@ -71,7 +77,7 @@
           </div>
         </div>
         <div class="mb-3">
-          <a href="#" class="text-success small fw-semibold"
+          <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalClaveTemporal"
             >Solicitar Clave Temporal</a
           >
         </div>
@@ -85,6 +91,9 @@
     </div>
   </div>
 </div>
+
+<!-- Incluir el modal de solicitud de clave temporal -->
+{% include 'quizzes/_modalClaveTemporal.html' %}
 
 {% endblock %}
 

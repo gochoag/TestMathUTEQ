@@ -21,6 +21,95 @@ def validate_phone(value):
         raise ValidationError('El teléfono debe tener exactamente 10 dígitos numéricos.')
     return value
 
+def validate_unique_email(value, model_class, instance=None):
+    """Valida que el correo electrónico sea único en el modelo especificado"""
+    # Normalizar el correo (convertir a minúsculas)
+    email_normalized = value.lower().strip()
+    
+    # Buscar si ya existe un registro con este correo
+    queryset = model_class.objects.filter(email__iexact=email_normalized)
+    
+    # Si estamos editando un registro existente, excluirlo de la búsqueda
+    if instance and instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+    
+    if queryset.exists():
+        raise ValidationError(f'Ya existe un registro con el correo electrónico "{value}".')
+    
+    return email_normalized
+
+def validate_unique_correo_institucional(value, model_class, instance=None):
+    """Valida que el correo institucional sea único"""
+    email_normalized = value.lower().strip()
+    
+    queryset = model_class.objects.filter(CorreoInstitucional__iexact=email_normalized)
+    
+    if instance and instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+    
+    if queryset.exists():
+        raise ValidationError(f'Ya existe un representante con el correo institucional "{value}".')
+    
+    return email_normalized
+
+def validate_unique_correo_representante(value, model_class, instance=None):
+    """Valida que el correo del representante sea único"""
+    email_normalized = value.lower().strip()
+    
+    queryset = model_class.objects.filter(CorreoRepresentante__iexact=email_normalized)
+    
+    if instance and instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+    
+    if queryset.exists():
+        raise ValidationError(f'Ya existe un representante con el correo "{value}".')
+    
+    return email_normalized
+
+def validate_email_across_all_models(value, exclude_user_id=None, exclude_participante_id=None, exclude_representante_id=None):
+    """
+    Valida que el correo sea único en todos los modelos (User, Participantes, Representante)
+    
+    Args:
+        value: El correo a validar
+        exclude_user_id: ID del usuario a excluir de la validación
+        exclude_participante_id: ID del participante a excluir de la validación
+        exclude_representante_id: ID del representante a excluir de la validación
+    
+    Returns:
+        str: El correo normalizado si es válido
+    
+    Raises:
+        ValidationError: Si el correo ya existe en algún modelo
+    """
+    email_normalized = value.lower().strip()
+    
+    # Verificar en User
+    user_queryset = User.objects.filter(email__iexact=email_normalized)
+    if exclude_user_id:
+        user_queryset = user_queryset.exclude(id=exclude_user_id)
+    if user_queryset.exists():
+        raise ValidationError(f'El correo "{value}" ya está registrado por otro usuario.')
+    
+    # Verificar en Participantes
+    participante_queryset = Participantes.objects.filter(email__iexact=email_normalized)
+    if exclude_participante_id:
+        participante_queryset = participante_queryset.exclude(id=exclude_participante_id)
+    if participante_queryset.exists():
+        raise ValidationError(f'El correo "{value}" ya está registrado por un participante.')
+    
+    # Verificar en Representante
+    representante_queryset = Representante.objects.filter(
+        models.Q(CorreoInstitucional__iexact=email_normalized) | 
+        models.Q(CorreoRepresentante__iexact=email_normalized)
+    )
+    if exclude_representante_id:
+        representante_queryset = representante_queryset.exclude(id=exclude_representante_id)
+    if representante_queryset.exists():
+        raise ValidationError(f'El correo "{value}" ya está siendo usado por un representante.')
+    
+    return email_normalized
+
 def upload_to_avatar(instance, filename):
     """
     Genera un nombre único para las imágenes de avatar basado en el username del usuario
@@ -46,10 +135,37 @@ class Representante(models.Model):
     NombreColegio = models.CharField(max_length=200)
     DireccionColegio = models.CharField(max_length=300)
     TelefonoInstitucional = models.CharField(max_length=10, validators=[validate_phone])
-    CorreoInstitucional = models.EmailField()
+    CorreoInstitucional = models.EmailField(unique=True, help_text='Correo institucional único')
     NombresRepresentante = models.CharField(max_length=200)
     TelefonoRepresentante = models.CharField(max_length=10, validators=[validate_phone])
-    CorreoRepresentante = models.EmailField()
+    CorreoRepresentante = models.EmailField(unique=True, help_text='Correo del representante único')
+
+    def clean(self):
+        """Validación personalizada para evitar correos duplicados"""
+        super().clean()
+        
+        if self.CorreoInstitucional:
+            self.CorreoInstitucional = validate_unique_correo_institucional(
+                self.CorreoInstitucional, 
+                Representante, 
+                self
+            )
+        
+        if self.CorreoRepresentante:
+            self.CorreoRepresentante = validate_unique_correo_representante(
+                self.CorreoRepresentante, 
+                Representante, 
+                self
+            )
+        
+        # Validar que los correos institucional y del representante no sean iguales
+        if (self.CorreoInstitucional and self.CorreoRepresentante and 
+            self.CorreoInstitucional.lower().strip() == self.CorreoRepresentante.lower().strip()):
+            raise ValidationError('El correo institucional y el correo del representante no pueden ser iguales.')
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.NombresRepresentante} - {self.NombreColegio}"
@@ -94,23 +210,57 @@ class Participantes(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     cedula = models.CharField(max_length=10, unique=True, validators=[validate_cedula])
     NombresCompletos = models.CharField(max_length=200)
-    email = models.EmailField()
+    email = models.EmailField(unique=True, help_text='Correo electrónico único')
     phone = models.CharField(max_length=10, blank=True, validators=[validate_phone])
     edad = models.IntegerField(null=True, blank=True)
     password_temporal = models.CharField(max_length=50, blank=True, help_text='Contraseña temporal para mostrar en correos')
+
+    def clean(self):
+        """Validación personalizada para evitar correos duplicados"""
+        super().clean()
+        
+        if self.email:
+            self.email = validate_unique_email(self.email, Participantes, self)
+        
+        # Validar que el correo no esté siendo usado por un representante
+        if self.email:
+            email_normalized = self.email.lower().strip()
+            if Representante.objects.filter(
+                models.Q(CorreoInstitucional__iexact=email_normalized) |
+                models.Q(CorreoRepresentante__iexact=email_normalized)
+            ).exists():
+                raise ValidationError(f'El correo "{self.email}" ya está siendo usado por un representante.')
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.NombresCompletos} ({self.cedula})"
 
     @staticmethod
     def create_participant(cedula, NombresCompletos, email, phone=None, edad=None):
+        # Validar que el correo no esté duplicado antes de crear
+        email_normalized = email.lower().strip()
+        
+        # Verificar si ya existe un participante con este correo
+        if Participantes.objects.filter(email__iexact=email_normalized).exists():
+            raise ValidationError(f'Ya existe un participante con el correo "{email}".')
+        
+        # Verificar si el correo está siendo usado por un representante
+        if Representante.objects.filter(
+            models.Q(CorreoInstitucional__iexact=email_normalized) |
+            models.Q(CorreoRepresentante__iexact=email_normalized)
+        ).exists():
+            raise ValidationError(f'El correo "{email}" ya está siendo usado por un representante.')
+        
         password = get_random_string(length=6)
-        user = User.objects.create_user(username=cedula, password=password, first_name=NombresCompletos, email=email)
+        user = User.objects.create_user(username=cedula, password=password, first_name=NombresCompletos, email=email_normalized)
         participante = Participantes.objects.create(
             user=user, 
             cedula=cedula, 
             NombresCompletos=NombresCompletos, 
-            email=email, 
+            email=email_normalized, 
             phone=phone or "", 
             edad=edad,
             password_temporal=password  # Guardar la contraseña temporal
@@ -536,4 +686,58 @@ class MonitoreoEvaluacion(models.Model):
         elif self.estado == 'suspendido':
             return 'danger'
         return 'info'
+
+class SolicitudClaveTemporal(models.Model):
+    """
+    Modelo para rastrear las solicitudes de clave temporal
+    Permite validar que un usuario no envíe más de 3 solicitudes por semana
+    """
+    TIPO_USUARIO_CHOICES = [
+        ('admin', 'Administrador'),
+        ('participante', 'Participante'),
+    ]
+    
+    # Información del usuario que solicita
+    username = models.CharField(max_length=150, help_text='Nombre de usuario o cédula del solicitante')
+    tipo_usuario = models.CharField(max_length=20, choices=TIPO_USUARIO_CHOICES, help_text='Tipo de usuario que solicita')
+    email = models.EmailField(help_text='Correo electrónico del usuario')
+    
+    # Información de la solicitud
+    fecha_solicitud = models.DateTimeField(auto_now_add=True, help_text='Fecha y hora de la solicitud')
+    
+    # Estado de la solicitud
+    procesada = models.BooleanField(default=False, help_text='Indica si la solicitud fue procesada exitosamente')
+    mensaje_error = models.TextField(blank=True, help_text='Mensaje de error si la solicitud falló')
+    
+    class Meta:
+        verbose_name = 'Solicitud de Clave Temporal'
+        verbose_name_plural = 'Solicitudes de Clave Temporal'
+        ordering = ['-fecha_solicitud']
+        indexes = [
+            models.Index(fields=['username', 'fecha_solicitud']),
+            models.Index(fields=['tipo_usuario', 'fecha_solicitud']),
+        ]
+    
+    def __str__(self):
+        return f"Solicitud de {self.username} ({self.tipo_usuario}) - {self.fecha_solicitud.strftime('%Y-%m-%d %H:%M')}"
+    
+    @classmethod
+    def contar_solicitudes_semana(cls, username, tipo_usuario):
+        """
+        Cuenta las solicitudes de un usuario en la última semana
+        """
+        una_semana_atras = timezone.now() - timezone.timedelta(days=7)
+        return cls.objects.filter(
+            username=username,
+            tipo_usuario=tipo_usuario,
+            fecha_solicitud__gte=una_semana_atras
+        ).count()
+    
+    @classmethod
+    def puede_solicitar(cls, username, tipo_usuario):
+        """
+        Verifica si un usuario puede solicitar una nueva clave temporal
+        (máximo 3 solicitudes por semana)
+        """
+        return cls.contar_solicitudes_semana(username, tipo_usuario) < 3
 

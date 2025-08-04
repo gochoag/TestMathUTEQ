@@ -1,0 +1,210 @@
+/* Estilos específicos para manage_quizs.html */
+
+.page-header {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border: 1px solid #e9ecef;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.title-section {
+    flex: 1;
+}
+
+.title-section h2 {
+    font-size: 1.75rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    margin: 0;
+}
+
+.title-section .text-primary {
+    display: inline;
+    word-break: break-word;
+}
+
+.actions-section {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.actions-section .btn {
+    white-space: nowrap;
+    min-width: fit-content;
+}
+
+/* Responsive para el header */
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+    
+    .title-section h2 {
+        font-size: 1.5rem;
+        text-align: left;
+    }
+    
+    .actions-section {
+        align-self: flex-end;
+        flex-wrap: wrap;
+    }
+    
+    .actions-section .btn {
+        flex: 0 0 auto;
+        min-width: 140px;
+    }
+}
+
+@media (max-width: 576px) {
+    .page-header {
+        padding: 15px;
+    }
+    
+    .title-section h2 {
+        font-size: 1.25rem;
+    }
+}
+
+/* CSS para que SweetAlert2 aparezca por encima del modal */
+.swal-over-modal {
+    z-index: 9999 !important;
+}
+
+/* Estilos para las etapas */
+.etapa-badge {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.5rem;
+    color: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.etapa-1 {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.etapa-2 {
+    background: linear-gradient(135deg, #ffc107, #e0a800);
+}
+
+.etapa-3 {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+}
+
+.etapa-number {
+    font-size: 1.8rem;
+    font-weight: 900;
+}
+
+/* Separadores entre etapas */
+.etapa-separator {
+    border: none;
+    height: 3px;
+    background: linear-gradient(to right, #007bff, #ffc107, #28a745);
+    border-radius: 2px;
+    margin: 2rem 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Estilos para las cards de evaluaciones */
+.evaluacion-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: none;
+    min-height: 450px; /* Altura mínima para consistencia */
+    position: relative; /* Necesario para z-index */
+}
+
+.evaluacion-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+    z-index: 10; /* Elevar la card al hacer hover */
+}
+
+/* Fix para dropdown z-index */
+.evaluacion-card .dropdown {
+    position: relative;
+    z-index: 1000; /* Alto z-index para el dropdown */
+}
+
+.evaluacion-card .dropdown-menu {
+    z-index: 1001 !important; /* Z-index más alto para el menú */
+    position: absolute !important;
+}
+
+/* Asegurar que el dropdown aparezca sobre otras cards */
+.evaluacion-card:hover .dropdown-menu {
+    z-index: 1002 !important;
+}
+
+.etapa-1-card {
+    border-left: 4px solid #007bff;
+}
+
+.etapa-2-card {
+    border-left: 4px solid #ffc107;
+}
+
+.etapa-3-card {
+    border-left: 4px solid #28a745;
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+    .evaluacion-card {
+        min-height: 400px;
+    }
+    
+    .etapa-badge {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .etapa-number {
+        font-size: 1.5rem;
+    }
+    
+    .connector-line {
+        height: 40px;
+    }
+    
+    .connector-arrow {
+        width: 35px;
+        height: 35px;
+    }
+}
+
+@media (min-width: 1200px) {
+    .evaluacion-card {
+        min-height: 500px;
+    }
+}
+
+/* Grid layout improvements */
+.row {
+    margin-left: -10px;
+    margin-right: -10px;
+}
+
+.col-12, .col-md-6, .col-lg-4 {
+    padding-left: 10px;
+    padding-right: 10px;
+} 
