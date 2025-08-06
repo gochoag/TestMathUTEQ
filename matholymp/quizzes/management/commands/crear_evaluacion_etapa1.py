@@ -20,7 +20,7 @@ class Command(BaseCommand):
         representante_a = Representante.objects.create(
             NombreColegio='Colegio San Francisco',
             DireccionColegio='Av. Principal 123, Quito',
-            TelefonoInstitucional='022345678',
+            TelefonoInstitucional='0223456781',
             CorreoInstitucional='colegio.sanfrancisco@edu.ec',
             NombresRepresentante='María González',
             TelefonoRepresentante='0987654321',
@@ -32,7 +32,7 @@ class Command(BaseCommand):
         representante_b = Representante.objects.create(
             NombreColegio='Instituto Tecnológico',
             DireccionColegio='Calle Secundaria 456, Guayaquil',
-            TelefonoInstitucional='042345678',
+            TelefonoInstitucional='0423456782',
             CorreoInstitucional='instituto.tecnologico@edu.ec',
             NombresRepresentante='Carlos Rodríguez',
             TelefonoRepresentante='0987654322',
