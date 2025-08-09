@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.db import models
+from django.db import models, transaction, IntegrityError
 from django.utils.crypto import get_random_string
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
@@ -240,33 +240,62 @@ class Participantes(models.Model):
 
     @staticmethod
     def create_participant(cedula, NombresCompletos, email, phone=None, edad=None):
-        # Validar que el correo no esté duplicado antes de crear
-        email_normalized = email.lower().strip()
-        
-        # Verificar si ya existe un participante con este correo
+        # Normalizar y validar datos antes de crear nada en BD
+        cedula = str(cedula).strip()
+        NombresCompletos = (NombresCompletos or '').strip()
+        email_normalized = (email or '').lower().strip()
+
+        # Validar correo único en participantes
         if Participantes.objects.filter(email__iexact=email_normalized).exists():
             raise ValidationError(f'Ya existe un participante con el correo "{email}".')
-        
-        # Verificar si el correo está siendo usado por un representante
+
+        # Validar correo contra representantes
         if Representante.objects.filter(
             models.Q(CorreoInstitucional__iexact=email_normalized) |
             models.Q(CorreoRepresentante__iexact=email_normalized)
         ).exists():
             raise ValidationError(f'El correo "{email}" ya está siendo usado por un representante.')
-        
-        password = get_random_string(length=6)
-        user = User.objects.create_user(username=cedula, password=password, first_name=NombresCompletos, email=email_normalized)
-        participante = Participantes.objects.create(
-            user=user, 
-            cedula=cedula, 
-            NombresCompletos=NombresCompletos, 
-            email=email_normalized, 
-            phone=phone or "", 
-            edad=edad,
-            password_temporal=password  # Guardar la contraseña temporal
-        )
-        # Aquí se puede agregar lógica para enviar el correo con la contraseña
-        return participante, password
+
+        # Validar que no exista ya un participante con esa cédula
+        if Participantes.objects.filter(cedula=cedula).exists():
+            raise ValidationError(f'La cédula {cedula} ya está registrada por otro participante.')
+
+        # Crear de forma atómica para evitar registros parciales
+        try:
+            with transaction.atomic():
+                password = get_random_string(length=6)
+
+                # Reutilizar usuario huérfano si existe (username=cedula) o crear uno nuevo
+                existing_user = User.objects.filter(username=cedula).first()
+                if existing_user:
+                    existing_user.first_name = NombresCompletos
+                    existing_user.email = email_normalized
+                    existing_user.set_password(password)
+                    existing_user.save()
+                    user = existing_user
+                else:
+                    user = User.objects.create_user(
+                        username=cedula,
+                        password=password,
+                        first_name=NombresCompletos,
+                        email=email_normalized,
+                    )
+
+                participante = Participantes.objects.create(
+                    user=user,
+                    cedula=cedula,
+                    NombresCompletos=NombresCompletos,
+                    email=email_normalized,
+                    phone=phone or "",
+                    edad=edad,
+                    password_temporal=password,
+                )
+
+                # Aquí se puede agregar lógica para enviar el correo con la contraseña
+                return participante, password
+        except IntegrityError as exc:
+            # Traducir errores de integridad a mensajes claros
+            raise ValidationError(f'No se pudo crear el participante: {str(exc)}')
 
 # Modelo Evaluacion para las evaluaciones
 class Evaluacion(models.Model):
@@ -465,7 +494,7 @@ class Pregunta(models.Model):
 # Modelo para las opciones de respuesta
 class Opcion(models.Model):
     pregunta = models.ForeignKey(Pregunta, related_name='opciones', on_delete=models.CASCADE)
-    text = models.CharField(max_length=255)
+    text = models.TextField(help_text='Use LaTeX para fórmulas')
     is_correct = models.BooleanField(default=False)
 
     def __str__(self):
@@ -640,37 +669,38 @@ class MonitoreoEvaluacion(models.Model):
     
     def finalizar_por_admin(self, admin_user, motivo):
         """Finaliza la evaluación por decisión administrativa"""
-        self.estado = 'finalizado'
-        self.finalizado_por_admin = admin_user
-        self.motivo_finalizacion = motivo
-        self.fecha_finalizacion_admin = timezone.now()
-        
-        # Obtener o crear el resultado de evaluación
-        if not self.resultado:
-            self.resultado, created = ResultadoEvaluacion.objects.get_or_create(
-                evaluacion=self.evaluacion,
-                participante=self.participante,
-                defaults={
-                    'puntaje': 0,
-                    'puntos_obtenidos': 0,
-                    'puntos_totales': 10,
-                    'tiempo_utilizado': 0,
-                    'completada': True,
-                    'fecha_fin': timezone.now(),
-                    'tiempo_restante': 0
-                }
-            )
-        else:
-            # Si ya existe un resultado, asignar nota de 0 por finalización administrativa
-            self.resultado.puntaje = 0
-            self.resultado.puntos_obtenidos = 0
-            self.resultado.puntos_totales = 10
-            self.resultado.completada = True
-            self.resultado.fecha_fin = timezone.now()
-            self.resultado.tiempo_restante = 0
-            self.resultado.save()
-        
-        self.save()
+        with transaction.atomic():
+            self.estado = 'finalizado'
+            self.finalizado_por_admin = admin_user
+            self.motivo_finalizacion = motivo
+            self.fecha_finalizacion_admin = timezone.now()
+
+            # Obtener o crear el resultado de evaluación
+            if not self.resultado:
+                self.resultado, created = ResultadoEvaluacion.objects.get_or_create(
+                    evaluacion=self.evaluacion,
+                    participante=self.participante,
+                    defaults={
+                        'puntaje': 0,
+                        'puntos_obtenidos': 0,
+                        'puntos_totales': 10,
+                        'tiempo_utilizado': 0,
+                        'completada': True,
+                        'fecha_fin': timezone.now(),
+                        'tiempo_restante': 0
+                    }
+                )
+            else:
+                # Si ya existe un resultado, asignar nota de 0 por finalización administrativa
+                self.resultado.puntaje = 0
+                self.resultado.puntos_obtenidos = 0
+                self.resultado.puntos_totales = 10
+                self.resultado.completada = True
+                self.resultado.fecha_fin = timezone.now()
+                self.resultado.tiempo_restante = 0
+                self.resultado.save()
+
+            self.save()
     
     def esta_activo(self):
         """Verifica si el estudiante está activo (última actividad en los últimos 5 minutos)"""
