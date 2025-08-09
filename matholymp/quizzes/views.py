@@ -2422,17 +2422,19 @@ def gestionar_participantes_evaluacion(request, pk):
             
             # Para etapa 1: actualizar grupos y participantes individuales
             if evaluacion.etapa == 1:
-                # Actualizar grupos asignados
-                evaluacion.grupos_participantes.clear()
-                if grupos_ids:
-                    grupos = GrupoParticipantes.objects.filter(id__in=grupos_ids)
-                    evaluacion.grupos_participantes.add(*grupos)
-                
-                # Actualizar participantes individuales asignados
-                evaluacion.participantes_individuales.clear()
-                if participantes_individuales_ids:
-                    participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
-                    evaluacion.participantes_individuales.add(*participantes)
+                from django.db import transaction
+                with transaction.atomic():
+                    # Actualizar grupos asignados
+                    evaluacion.grupos_participantes.clear()
+                    if grupos_ids:
+                        grupos = GrupoParticipantes.objects.filter(id__in=grupos_ids)
+                        evaluacion.grupos_participantes.add(*grupos)
+                    
+                    # Actualizar participantes individuales asignados
+                    evaluacion.participantes_individuales.clear()
+                    if participantes_individuales_ids:
+                        participantes = Participantes.objects.filter(id__in=participantes_individuales_ids)
+                        evaluacion.participantes_individuales.add(*participantes)
             
             # Para etapas 2 y 3: solo superusuarios y admins con acceso total pueden modificar
             elif evaluacion.etapa in [2, 3] and has_full_access(request.user):
