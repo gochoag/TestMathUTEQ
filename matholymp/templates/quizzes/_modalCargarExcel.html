@@ -1,6 +1,6 @@
 {% load static %}
 <!-- Modal Cargar Excel -->
-<div class="modal fade" id="loadExcelModal" tabindex="-1" aria-labelledby="loadExcelLabel" aria-hidden="true" 
+<div class="modal fade" id="loadExcelModal" tabindex="-1" aria-labelledby="loadExcelLabel" aria-hidden="true" data-bs-backdrop="static"
      data-process-url="{% url 'quizzes:process_excel_participants' %}" 
      data-save-url="{% url 'quizzes:save_excel_participants' %}">
     <div class="modal-dialog modal-xl">

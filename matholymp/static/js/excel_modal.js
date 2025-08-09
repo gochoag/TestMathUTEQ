@@ -2,6 +2,17 @@
 let excelHeaders = [];
 let columnMapping = {};
 let processedData = [];
+let excelProcessingErrors = [];
+
+// Utilidad para escapar HTML en textos dinámicos
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 // Función para procesar el archivo Excel
 function processExcelFile() {
@@ -169,6 +180,7 @@ function displayPreview(data) {
     const errorsDiv = document.getElementById('previewErrors');
     const tableBody = document.getElementById('previewTableBody');
     const saveBtn = document.getElementById('saveBtn');
+    excelProcessingErrors = Array.isArray(data.errors) ? data.errors : [];
     
     // Mostrar estadísticas
     statsDiv.innerHTML = `
@@ -178,16 +190,44 @@ function displayPreview(data) {
     `;
     
     // Mostrar errores si los hay
-    if (data.errors && data.errors.length > 0) {
+    if (excelProcessingErrors.length > 0) {
         errorsDiv.style.display = 'block';
+        const limitedList = excelProcessingErrors
+            .slice(0, 5)
+            .map(error => `<li>${escapeHtml(error)}</li>`) 
+            .join('');
+        const remainingCount = Math.max(0, excelProcessingErrors.length - 5);
+        const moreIndicator = remainingCount > 0
+            ? `<li>... y ${remainingCount} errores más <button type="button" id="showAllErrorsBtn" class="btn btn-link p-0 ms-1">Ver todos</button></li>`
+            : '';
         errorsDiv.innerHTML = `
             <i class="fas fa-exclamation-triangle"></i>
             <strong>Errores encontrados:</strong>
-            <ul class="mb-0 mt-2">
-                ${data.errors.slice(0, 5).map(error => `<li>${error}</li>`).join('')}
-                ${data.errors.length > 5 ? `<li>... y ${data.errors.length - 5} errores más</li>` : ''}
-            </ul>
+            <ul class="mb-0 mt-2">${limitedList}${moreIndicator}</ul>
         `;
+        if (remainingCount > 0) {
+            const btn = document.getElementById('showAllErrorsBtn');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Todos los errores',
+                        html: `
+                            <div style="max-height: 320px; overflow-y: auto; text-align: left;">
+                                <ul>
+                                    ${excelProcessingErrors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `,
+                        width: 700,
+                        customClass: {
+                            container: 'swal2-container-over-modal',
+                            popup: 'swal2-popup-over-modal'
+                        }
+                    });
+                });
+            }
+        }
     } else {
         errorsDiv.style.display = 'none';
     }
@@ -276,8 +316,14 @@ function saveParticipants() {
                 if (data.success) {
                     let errorHtml = '';
                     if (data.errors.length > 0) {
-                        const shownErrors = data.errors.slice(0, 5).map(err => `<li>${err}</li>`).join('');
-                        const moreErrors = data.errors.length > 5 ? `<li>...y ${data.errors.length - 5} errores más</li>` : '';
+                        const shownErrors = data.errors
+                            .slice(0, 5)
+                            .map(err => `<li>${escapeHtml(err)}</li>`) 
+                            .join('');
+                        const remainingCount = Math.max(0, data.errors.length - 5);
+                        const moreErrors = remainingCount > 0 
+                            ? `<li>...y ${remainingCount} errores más <button type="button" id="showAllSavedErrorsBtn" class="btn btn-link p-0 ms-1">Ver todos</button></li>`
+                            : '';
                         errorHtml = `
                             <div class="mt-3 text-start">
                                 <strong>Errores:</strong>
@@ -294,6 +340,29 @@ function saveParticipants() {
                         customClass: {
                             container: 'swal2-container-over-modal',
                             popup: 'swal2-popup-over-modal'
+                        },
+                        didOpen: () => {
+                            const btn = document.getElementById('showAllSavedErrorsBtn');
+                            if (btn) {
+                                btn.addEventListener('click', function() {
+                                    Swal.fire({
+                                        icon: 'info',
+                                        title: 'Todos los errores',
+                                        html: `
+                                            <div style="max-height: 320px; overflow-y: auto; text-align: left;">
+                                                <ul>
+                                                    ${data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                                                </ul>
+                                            </div>
+                                        `,
+                                        width: 700,
+                                        customClass: {
+                                            container: 'swal2-container-over-modal',
+                                            popup: 'swal2-popup-over-modal'
+                                        }
+                                    });
+                                });
+                            }
                         }
                     }).then(() => {
                         location.reload();
