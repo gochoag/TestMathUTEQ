@@ -621,8 +621,8 @@ def manage_participants(request):
             messages.error(request, f"Teléfono: {error_phone}")
             return redirect('quizzes:manage_participants')
         
-        # Verificar si la cédula ya existe como username
-        if User.objects.filter(username=cedula).exists():
+        # Verificar si la cédula ya existe (global)
+        if Participantes.objects.filter(cedula=cedula).exists():
             messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
             return redirect('quizzes:manage_participants')
         
@@ -636,10 +636,18 @@ def manage_participants(request):
                 messages.error(request, "La edad debe ser un número válido.")
                 return redirect('quizzes:manage_participants')
         
-        # Crear el participante
-        participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
-        messages.success(request, f"Participante {NombresCompletos} creado correctamente.")
-        return redirect('quizzes:manage_participants')
+        # Crear el participante con manejo de validaciones
+        try:
+            participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
+            messages.success(request, f"Participante {NombresCompletos} creado correctamente.")
+            return redirect('quizzes:manage_participants')
+        except ValidationError as e:
+            error_message = extract_validation_error_message(e)
+            messages.error(request, f"{error_message}")
+            return redirect('quizzes:manage_participants')
+        except Exception as e:
+            messages.error(request, f"Error inesperado al crear participante: {str(e)}")
+            return redirect('quizzes:manage_participants')
 
     # Editar participante
     if request.method == 'POST' and request.POST.get('edit_id'):
@@ -666,9 +674,9 @@ def manage_participants(request):
         participante = Participantes.objects.select_related('user').get(id=edit_id)
         user_obj = participante.user
         
-        # Verificar si la nueva cédula ya existe como username en otro usuario
-        if cedula != participante.cedula:  # Solo verificar si la cédula cambió
-            if User.objects.filter(username=cedula).exclude(id=user_obj.id).exists():
+        # Verificar si la nueva cédula ya existe en otro participante (global)
+        if cedula != participante.cedula:
+            if Participantes.objects.filter(cedula=cedula).exclude(id=participante.id).exists():
                 messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
                 return redirect('quizzes:manage_participants')
         
@@ -704,7 +712,8 @@ def manage_participants(request):
             # Usar transacción para asegurar consistencia
             from django.db import transaction
             with transaction.atomic():
-                user_obj.username = cedula  # Actualiza el username a la cédula
+                # Mantener username igual a la cédula
+                user_obj.username = cedula
                 user_obj.first_name = NombresCompletos
                 user_obj.email = email.lower().strip()  # Normalizar correo
                 participante.cedula = cedula
@@ -1182,7 +1191,8 @@ def manage_representantes(request):
                 messages.error(request, f'Error inesperado al actualizar representante: {str(e)}')
                 return redirect('quizzes:manage_representantes')
 
-    representantes = Representante.objects.all()
+    from .models import SystemConfig
+    representantes = Representante.objects.filter(anio=SystemConfig.get_active_year())
     
     # Paginación
     paginator = Paginator(representantes, 10)  # 10 elementos por página
@@ -1269,13 +1279,14 @@ def manage_grupos(request):
             messages.success(request, 'Grupo actualizado exitosamente.')
             return redirect('quizzes:manage_grupos')
 
-    grupos = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').all()
+    from .models import SystemConfig
+    grupos = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').filter(anio=SystemConfig.get_active_year())
     
     # Obtener representantes disponibles (que no están en ningún grupo)
-    representantes_disponibles = Representante.objects.filter(grupos__isnull=True)
+    representantes_disponibles = Representante.objects.filter(grupos__isnull=True, anio=SystemConfig.get_active_year())
     
     # Obtener todos los representantes para mostrar en modales de edición
-    representantes_todos = Representante.objects.all()
+    representantes_todos = Representante.objects.filter(anio=SystemConfig.get_active_year())
     
     # Obtener participantes disponibles (que no están en ningún grupo)
     participantes_disponibles = Participantes.objects.filter(grupos__isnull=True)
@@ -1496,8 +1507,9 @@ def manage_quizs(request):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Obtener todas las evaluaciones
-    evaluaciones = Evaluacion.objects.all().order_by('-start_time')
+    # Obtener evaluaciones del año activo
+    from .models import SystemConfig
+    evaluaciones = Evaluacion.objects.filter(anio=SystemConfig.get_active_year()).order_by('-start_time')
     
     # Determinar el tipo específico de admin para el contexto
     if is_superuser:
@@ -1516,6 +1528,7 @@ def manage_quizs(request):
         'role': 'admin',
         'admin_type': admin_type,
         'has_full_access': has_full_access,
+        'num_etapas': SystemConfig.get_num_etapas(),
         'now': timezone.now(),
         'user': user
     }
@@ -1534,8 +1547,9 @@ def student_quizs(request):
     
     participante = Participantes.objects.get(user=request.user)
     
-    # Obtener todas las evaluaciones
-    todas_evaluaciones = Evaluacion.objects.all().order_by('etapa', 'start_time')
+    # Obtener evaluaciones del año activo
+    from .models import SystemConfig
+    todas_evaluaciones = Evaluacion.objects.filter(anio=SystemConfig.get_active_year()).order_by('etapa', 'start_time')
     
     # Filtrar evaluaciones autorizadas para este participante y agregar información de estado
     evaluaciones_autorizadas = []
@@ -1645,9 +1659,11 @@ def create_evaluacion(request):
         
         # Validar etapa
         try:
+            from .models import SystemConfig
             etapa = int(etapa)
-            if etapa not in [1, 2, 3]:
-                return JsonResponse({'success': False, 'error': 'Etapa inválida.'}, status=400)
+            allowed_etapas = [1, 3] if SystemConfig.get_num_etapas() == 2 else [1, 2, 3]
+            if etapa not in allowed_etapas:
+                return JsonResponse({'success': False, 'error': 'Etapa inválida para la configuración actual.'}, status=400)
         except ValueError:
             return JsonResponse({'success': False, 'error': 'Etapa debe ser un número.'}, status=400)
         
@@ -2222,14 +2238,20 @@ def ranking_evaluacion(request, pk):
     
     promedio_tiempo = tiempo_total_minutos / resultados_con_tiempo_real if resultados_con_tiempo_real > 0 else 0
     
-    # Determinar ganadores según la etapa
+    # Determinar ganadores según la etapa y configuración
     ganadores = []
-    if evaluacion.etapa == 1 and total_participantes >= 15:
-        ganadores = resultados[:15]
-    elif evaluacion.etapa == 2 and total_participantes >= 5:
-        ganadores = resultados[:5]
+    from .models import SystemConfig
+    num_etapas = SystemConfig.get_num_etapas()
+    if evaluacion.etapa == 1:
+        top_n = 15 if num_etapas == 3 else 5
+        if total_participantes >= top_n:
+            ganadores = resultados[:top_n]
+    elif evaluacion.etapa == 2:
+        # En flujo de 3 etapas, etapa 2 muestra top 5; en flujo de 2 etapas no debería usarse
+        if num_etapas == 3 and total_participantes >= 5:
+            ganadores = resultados[:5]
     elif evaluacion.etapa == 3 and total_participantes >= 5:
-        ganadores = resultados[:5]  # Mostrar los 5 primeros en la final
+        ganadores = resultados[:5]
     
     context = {
         'evaluacion': evaluacion,
@@ -2237,7 +2259,8 @@ def ranking_evaluacion(request, pk):
         'total_participantes': total_participantes,
         'promedio_puntaje': round(promedio_puntos, 3),  # Mostrar como número con 3 decimales
         'promedio_tiempo': round(promedio_tiempo, 1),   # Mostrar tiempo en minutos con 1 decimal
-        'ganadores': ganadores
+        'ganadores': ganadores,
+        'num_etapas': num_etapas
     }
     
     return render(request, 'quizzes/ranking_evaluacion.html', context)
@@ -2281,60 +2304,50 @@ def gestionar_participantes_evaluacion(request, pk):
                             'cedula': participante.cedula
                         })
             elif evaluacion.etapa == 2:
-                # Para etapa 2: comportamiento diferente según permisos
-                if has_full_access(request.user):
-                    # Superuser y Admin con acceso total: ven todos los participantes
-                    # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
-                    participantes_automaticos = evaluacion.get_participantes_etapa2()
-                    participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
-                    
-                    # Primero agregar los participantes automáticos
-                    for participante in participantes_automaticos:
-                        participantes_individuales.append({
-                            'id': participante.id,
-                            'NombresCompletos': participante.NombresCompletos,
-                            'cedula': participante.cedula
-                        })
-                    
-                    # Luego agregar TODOS los participantes (individuales y de grupos) que no están en automáticos
-                    for participante in Participantes.objects.all():
-                        if participante.id not in participantes_automaticos_ids:
+                # Para etapa 2: solo aplica si el sistema está en 3 etapas
+                from .models import SystemConfig
+                if SystemConfig.get_num_etapas() == 3:
+                    if has_full_access(request.user):
+                        participantes_automaticos = evaluacion.get_participantes_etapa2()
+                        participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
+                        # Primero automáticos
+                        for participante in participantes_automaticos:
                             participantes_individuales.append({
                                 'id': participante.id,
                                 'NombresCompletos': participante.NombresCompletos,
                                 'cedula': participante.cedula
                             })
-                else:
-                    # Admin sin acceso total: ven solo los participantes asignados actualmente
-                    # Si no hay participantes asignados, mostrar los automáticos
-                    if evaluacion.participantes_individuales.exists():
-                        participantes_actuales = evaluacion.participantes_individuales.all()
+                        # Luego el resto
+                        for participante in Participantes.objects.all():
+                            if participante.id not in participantes_automaticos_ids:
+                                participantes_individuales.append({
+                                    'id': participante.id,
+                                    'NombresCompletos': participante.NombresCompletos,
+                                    'cedula': participante.cedula
+                                })
                     else:
-                        participantes_actuales = evaluacion.get_participantes_etapa2()
-                    
-                    for participante in participantes_actuales:
-                        participantes_individuales.append({
-                            'id': participante.id,
-                            'NombresCompletos': participante.NombresCompletos,
-                            'cedula': participante.cedula
-                        })
+                        if evaluacion.participantes_individuales.exists():
+                            participantes_actuales = evaluacion.participantes_individuales.all()
+                        else:
+                            participantes_actuales = evaluacion.get_participantes_etapa2()
+                        for participante in participantes_actuales:
+                            participantes_individuales.append({
+                                'id': participante.id,
+                                'NombresCompletos': participante.NombresCompletos,
+                                'cedula': participante.cedula
+                            })
             elif evaluacion.etapa == 3:
-                # Para etapa 3: comportamiento diferente según permisos
+                # Para etapa 3: soportar flujo de 3 etapas y de 2 etapas (saltando etapa 2)
+                from .models import SystemConfig
                 if has_full_access(request.user):
-                    # Superuser y Admin con acceso total: ven todos los participantes
-                    # Pero primero mostrar los automáticos para que aparezcan al inicio de la lista
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
                     participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
-                    
-                    # Primero agregar los participantes automáticos
                     for participante in participantes_automaticos:
                         participantes_individuales.append({
                             'id': participante.id,
                             'NombresCompletos': participante.NombresCompletos,
                             'cedula': participante.cedula
                         })
-                    
-                    # Luego agregar TODOS los participantes (individuales y de grupos) que no están en automáticos
                     for participante in Participantes.objects.all():
                         if participante.id not in participantes_automaticos_ids:
                             participantes_individuales.append({
@@ -2343,13 +2356,10 @@ def gestionar_participantes_evaluacion(request, pk):
                                 'cedula': participante.cedula
                             })
                 else:
-                    # Admin sin acceso total: ven solo los participantes asignados actualmente
-                    # Si no hay participantes asignados, mostrar los automáticos
                     if evaluacion.participantes_individuales.exists():
                         participantes_actuales = evaluacion.participantes_individuales.all()
                     else:
                         participantes_actuales = evaluacion.get_participantes_etapa3()
-                    
                     for participante in participantes_actuales:
                         participantes_individuales.append({
                             'id': participante.id,
@@ -2376,12 +2386,15 @@ def gestionar_participantes_evaluacion(request, pk):
                     'cedula': participante.cedula
                 })
             
-            # Para superusuarios en etapas 2 y 3, incluir participantes automáticos si no hay asignados manualmente
+            # Para superusuarios en etapas avanzadas, incluir automáticos si no hay asignados manualmente
             if has_full_access(request.user) and evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.exists():
-                if evaluacion.etapa == 2:
+                from .models import SystemConfig
+                if evaluacion.etapa == 2 and SystemConfig.get_num_etapas() == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa2()
-                else:  # etapa 3
+                elif evaluacion.etapa == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
+                else:
+                    participantes_automaticos = []
                 
                 for participante in participantes_automaticos:
                     participantes_asignados.append({
@@ -3273,10 +3286,12 @@ def exportar_ranking_pdf(request, pk):
     table_data = [['Posición', 'Participante', 'Cédula', 'Puntaje', 'Tiempo', 'Estado']]
     
     for i, resultado in enumerate(resultados, 1):
-        # Determinar estado según la etapa
-        if evaluacion.etapa == 1 and i <= 15:
+        # Determinar estado según la etapa y configuración
+        from .models import SystemConfig
+        num_etapas = SystemConfig.get_num_etapas()
+        if evaluacion.etapa == 1 and i <= (15 if num_etapas == 3 else 5):
             estado = "Clasificado"
-        elif evaluacion.etapa == 2 and i <= 5:
+        elif evaluacion.etapa == 2 and num_etapas == 3 and i <= 5:
             estado = "Finalista"
         elif evaluacion.etapa == 3:
             if i == 1:
@@ -3354,11 +3369,11 @@ def exportar_ranking_pdf(request, pk):
                 table_style.add('BACKGROUND', (5, row_index), (5, row_index), bronze_color)
                 table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
                 table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-        elif evaluacion.etapa == 1 and i <= 15:
+        elif evaluacion.etapa == 1 and i <= (15 if SystemConfig.get_num_etapas() == 3 else 5):
             table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
             table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
             table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-        elif evaluacion.etapa == 2 and i <= 5:
+        elif evaluacion.etapa == 2 and SystemConfig.get_num_etapas() == 3 and i <= 5:
             table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
             table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
             table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
@@ -3797,3 +3812,51 @@ def solicitar_clave_temporal(request):
             'message': f'Error: {str(e)}'
         })
 
+
+@login_required
+def settings_view(request):
+    """Vista de configuración general."""
+    # Permitir solo superusuarios o administradores con acceso total
+    if not (request.user.is_superuser or has_full_access(request.user)):
+        messages.error(request, 'No tiene permisos para acceder a Configuración.')
+        return redirect('quizzes:dashboard')
+    from .models import SystemConfig
+    if request.method == 'POST':
+        try:
+            if 'num_etapas' in request.POST:
+                num_etapas_val = int(request.POST.get('num_etapas'))
+                if num_etapas_val not in [2, 3]:
+                    messages.error(request, 'Valor de etapas inválido. Debe ser 2 o 3.')
+                    return redirect('quizzes:settings')
+                obj = SystemConfig.objects.first()
+                if obj is None:
+                    obj = SystemConfig(num_etapas=num_etapas_val)
+                else:
+                    obj.num_etapas = num_etapas_val
+                obj.save()
+                messages.success(request, f'Configuración actualizada a {num_etapas_val} etapas.')
+                return redirect('quizzes:settings')
+            if 'anio_concurso' in request.POST:
+                anio_val = int(request.POST.get('anio_concurso'))
+                current_year = timezone.now().year
+                if anio_val > current_year:
+                    messages.error(request, 'El año no puede ser superior al año actual.')
+                    return redirect('quizzes:settings')
+                obj = SystemConfig.objects.first()
+                if obj is None:
+                    obj = SystemConfig(active_year=anio_val)
+                else:
+                    obj.active_year = anio_val
+                obj.save()
+                messages.success(request, f'Año activo actualizado a {anio_val}.')
+                return redirect('quizzes:settings')
+        except Exception as e:
+            messages.error(request, f'No se pudo guardar la configuración: {str(e)}')
+            return redirect('quizzes:settings')
+    # GET
+    context = {
+        'num_etapas': SystemConfig.get_num_etapas(),
+        'active_year': SystemConfig.get_active_year(),
+        'now': timezone.now(),
+    }
+    return render(request, 'quizzes/settings.html', context)

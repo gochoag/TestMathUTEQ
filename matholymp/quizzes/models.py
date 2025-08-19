@@ -8,6 +8,39 @@ import re
 import os
 from datetime import datetime
 
+# Configuración global del sistema
+class SystemConfig(models.Model):
+    NUM_ETAPAS_CHOICES = [
+        (2, 'Dos etapas'),
+        (3, 'Tres etapas'),
+    ]
+    num_etapas = models.IntegerField(choices=NUM_ETAPAS_CHOICES, default=3, help_text='Cantidad de etapas del concurso')
+    active_year = models.IntegerField(default=datetime.now().year, help_text='Año activo del concurso')
+
+    class Meta:
+        verbose_name = 'Configuración del Sistema'
+        verbose_name_plural = 'Configuración del Sistema'
+
+    def __str__(self):
+        return f"Config: {self.num_etapas} etapas, año {self.active_year}"
+
+    @classmethod
+    def get_num_etapas(cls) -> int:
+        try:
+            obj = cls.objects.first()
+            return obj.num_etapas if obj else 3
+        except Exception:
+            # Si la tabla aún no existe o hay cualquier problema, usar 3 por defecto
+            return 3
+
+    @classmethod
+    def get_active_year(cls) -> int:
+        try:
+            obj = cls.objects.first()
+            return obj.active_year if obj else datetime.now().year
+        except Exception:
+            return datetime.now().year
+
 # Validadores personalizados
 def validate_cedula(value):
     """Valida que la cédula tenga exactamente 10 dígitos numéricos"""
@@ -135,10 +168,11 @@ class Representante(models.Model):
     NombreColegio = models.CharField(max_length=200)
     DireccionColegio = models.CharField(max_length=300)
     TelefonoInstitucional = models.CharField(max_length=10, validators=[validate_phone])
-    CorreoInstitucional = models.EmailField(unique=True, help_text='Correo institucional único')
+    CorreoInstitucional = models.EmailField(help_text='Correo institucional (único por año)')
     NombresRepresentante = models.CharField(max_length=200)
     TelefonoRepresentante = models.CharField(max_length=10, validators=[validate_phone])
-    CorreoRepresentante = models.EmailField(unique=True, help_text='Correo del representante único')
+    CorreoRepresentante = models.EmailField(help_text='Correo del representante (único por año)')
+    anio = models.IntegerField(default=datetime.now().year, help_text='Año del concurso al que pertenece')
 
     def clean(self):
         """Validación personalizada para evitar correos duplicados"""
@@ -146,15 +180,15 @@ class Representante(models.Model):
         
         if self.CorreoInstitucional:
             self.CorreoInstitucional = validate_unique_correo_institucional(
-                self.CorreoInstitucional, 
-                Representante, 
+                self.CorreoInstitucional,
+                Representante,
                 self
             )
         
         if self.CorreoRepresentante:
             self.CorreoRepresentante = validate_unique_correo_representante(
-                self.CorreoRepresentante, 
-                Representante, 
+                self.CorreoRepresentante,
+                Representante,
                 self
             )
         
@@ -170,11 +204,18 @@ class Representante(models.Model):
     def __str__(self):
         return f"{self.NombresRepresentante} - {self.NombreColegio}"
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['CorreoInstitucional', 'anio'], name='unique_correo_institucional_por_anio'),
+            models.UniqueConstraint(fields=['CorreoRepresentante', 'anio'], name='unique_correo_representante_por_anio'),
+        ]
+
 # Modelo para grupos de participantes
 class GrupoParticipantes(models.Model):
     name = models.CharField(max_length=100)
     representante = models.ForeignKey(Representante, on_delete=models.SET_NULL, null=True, blank=True, related_name='grupos')
     participantes = models.ManyToManyField('Participantes', related_name='grupos', blank=True)
+    anio = models.IntegerField(default=datetime.now().year, help_text='Año del concurso al que pertenece')
 
     def __str__(self):
         return self.name
@@ -214,6 +255,7 @@ class Participantes(models.Model):
     phone = models.CharField(max_length=10, blank=True, validators=[validate_phone])
     edad = models.IntegerField(null=True, blank=True)
     password_temporal = models.CharField(max_length=50, blank=True, help_text='Contraseña temporal para mostrar en correos')
+    
 
     def clean(self):
         """Validación personalizada para evitar correos duplicados"""
@@ -310,6 +352,7 @@ class Evaluacion(models.Model):
     start_time = models.DateTimeField(help_text='Fecha y hora de inicio de la ventana de acceso')
     end_time = models.DateTimeField(help_text='Fecha y hora de finalización de la ventana de acceso')
     duration_minutes = models.PositiveIntegerField(help_text='Tiempo disponible para completar la evaluación (en minutos)')
+    anio = models.IntegerField(default=datetime.now().year, help_text='Año del concurso al que pertenece esta evaluación')
     
     # Nuevo campo para configurar preguntas
     preguntas_a_mostrar = models.PositiveIntegerField(
@@ -380,38 +423,54 @@ class Evaluacion(models.Model):
         return list(participantes)
     
     def get_participantes_etapa2(self):
-        """Obtiene los 15 mejores de la etapa 1"""
+        """Obtiene los mejores de la etapa 1 según configuración (15 si hay 3 etapas, 5 si hay 2)."""
         if self.etapa != 2:
             return []
         
         # Buscar la evaluación de la etapa 1
-        evaluacion_etapa1 = Evaluacion.objects.filter(etapa=1).first()
+        evaluacion_etapa1 = Evaluacion.objects.filter(etapa=1, anio=self.anio).first()
         if not evaluacion_etapa1:
             return []
         
-        # Obtener los 15 mejores resultados de la etapa 1
+        # Determinar cuántos pasan desde etapa 1
+        from .models import SystemConfig
+        num_etapas = SystemConfig.get_num_etapas()
+        top_n = 15 if num_etapas == 3 else 5
+
+        # Obtener los mejores resultados de la etapa 1
         mejores_resultados = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion_etapa1,
             completada=True
-        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:15]
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:top_n]
         
         return [resultado.participante for resultado in mejores_resultados]
     
     def get_participantes_etapa3(self):
-        """Obtiene los 5 mejores de la etapa 2"""
+        """Obtiene los 5 mejores de la etapa 2 (flujo actual) o directamente de etapa 1 si hay solo 2 etapas."""
         if self.etapa != 3:
             return []
         
-        # Buscar la evaluación de la etapa 2
-        evaluacion_etapa2 = Evaluacion.objects.filter(etapa=2).first()
-        if not evaluacion_etapa2:
-            return []
+        from .models import SystemConfig
+        num_etapas = SystemConfig.get_num_etapas()
         
-        # Obtener los 5 mejores resultados de la etapa 2
-        mejores_resultados = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion_etapa2,
-            completada=True
-        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
+        if num_etapas == 3:
+            # Flujo actual: top 5 desde etapa 2
+            evaluacion_etapa2 = Evaluacion.objects.filter(etapa=2, anio=self.anio).first()
+            if not evaluacion_etapa2:
+                return []
+            mejores_resultados = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion_etapa2,
+                completada=True
+            ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
+        else:
+            # Flujo de 2 etapas: tomar top 5 directamente desde etapa 1 (saltando etapa 2)
+            evaluacion_etapa1 = Evaluacion.objects.filter(etapa=1, anio=self.anio).first()
+            if not evaluacion_etapa1:
+                return []
+            mejores_resultados = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion_etapa1,
+                completada=True
+            ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
         
         return [resultado.participante for resultado in mejores_resultados]
     

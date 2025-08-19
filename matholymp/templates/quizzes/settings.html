@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <h1 class="h3 mb-0">
+        <i class="bi bi-gear-wide-connected me-2"></i>
+        Configuración General
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><a href="{% url 'quizzes:dashboard' %}">Dashboard</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Configuración</li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Cantidad de Etapas de Evaluaciones -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white d-flex align-items-center">
+          <i class="bi bi-diagram-3 me-2"></i>
+          <h5 class="card-title mb-0">Cantidad de Etapas de Evaluaciones</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Define cuántas etapas componen el proceso de evaluación del concurso.</p>
+          <form method="post" class="row align-items-end g-2" id="form_etapas">
+            {% csrf_token %}
+            <div class="col-7">
+              <label class="form-label" for="num_etapas">Número de etapas</label>
+              <select id="num_etapas" name="num_etapas" class="form-select">
+                <option value="2" {% if num_etapas == 2 %}selected{% endif %}>Dos</option>
+                <option value="3" {% if num_etapas == 3 %}selected{% endif %}>Tres</option>
+              </select>
+            </div>
+            <div class="col-5 d-grid">
+              <button class="btn btn-primary" type="submit" id="btn_guardar_etapas">
+                <i class="bi bi-check2-circle me-1"></i>
+                Guardar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Año de concurso -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-secondary text-white d-flex align-items-center">
+          <i class="bi bi-calendar3 me-2"></i>
+          <h5 class="card-title mb-0">Año de concurso</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Selecciona el año activo del concurso para las evaluaciones o revisa años anteriores.</p>
+          <form method="post" class="row align-items-end g-2" id="form_anio">
+            {% csrf_token %}
+            <div class="col-7">
+              <label class="form-label" for="anio_concurso">Año</label>
+              <input name="anio_concurso" type="number" min="2024" max="{{ now|date:'Y' }}" step="1" id="anio_concurso" class="form-control" value="{% if active_year %}{{ active_year }}{% else %}{% now 'Y' %}{% endif %}">
+            </div>
+            <div class="col-5 d-grid">
+              <button class="btn btn-secondary" type="submit" id="btn_guardar_anio">
+                <i class="bi bi-check2-circle me-1"></i>
+                Guardar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-info mt-3 mb-0" role="alert">
+    <i class="bi bi-info-circle me-2"></i>
+    La configuración se guarda en el sistema. No se permiten años futuros.
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const formAnio = document.getElementById('form_anio');
+  const formEtapas = document.getElementById('form_etapas');
+  const maxYear = parseInt('{{ now|date:"Y" }}');
+
+  if (formAnio) {
+    formAnio.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const anioInput = document.getElementById('anio_concurso');
+      const val = parseInt(anioInput.value || anioInput.placeholder || maxYear);
+      if (val > maxYear) {
+        Swal.fire('Año inválido', 'No puede seleccionar un año futuro.', 'error');
+        return;
+      }
+      Swal.fire({
+        title: '¿Confirmar cambio de año?',
+        text: 'Esto filtrará toda la información por el año seleccionado.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cambiar',
+        cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          formAnio.submit();
+        }
+      });
+    });
+  }
+
+  if (formEtapas) {
+    formEtapas.addEventListener('submit', function(e) {
+      e.preventDefault();
+      Swal.fire({
+        title: '¿Confirmar cambio de etapas?',
+        text: 'Esto afectará la progresión entre etapas.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cambiar',
+        cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          formEtapas.submit();
+        }
+      });
+    });
+  }
+});
+</script>
+{% endblock %}
+
+
+

@@ -47,6 +47,7 @@ urlpatterns = [
     path('guardar-excel-participantes/', views.save_excel_participants, name='save_excel_participants'),
     path('upload-image/', views.upload_image, name='upload_image'),
     path('perfil/', views.profile_view, name='profile'),
+    path('configuracion/', views.settings_view, name='settings'),
     
     # URLs para monitoreo en tiempo real
     path('evaluacion/<int:pk>/monitoreo/', views.monitoreo_evaluacion, name='monitoreo_evaluacion'),

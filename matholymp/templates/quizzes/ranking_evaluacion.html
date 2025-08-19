@@ -75,9 +75,9 @@
                             <h5 class="mb-0">
                                 <i class="bi bi-award me-2"></i>
                                 {% if evaluacion.etapa == 1 %}
-                                    Los 15 mejores pasan a la Etapa 2
+                                    Los {% if num_etapas == 3 %}15{% else %}5{% endif %} mejores pasan a la {% if num_etapas == 3 %}Etapa 2{% else %}Final{% endif %}
                                 {% elif evaluacion.etapa == 2 %}
-                                    Los 5 mejores pasan a la Final
+                                    {% if num_etapas == 3 %}Los 5 mejores pasan a la Final{% else %}Flujo de 2 etapas: no aplica{% endif %}
                                 {% elif evaluacion.etapa == 3 %}
                                     Ganadores Finales
                                 {% endif %}
