@@ -26,12 +26,7 @@
                                     <small>Última actualización:</small><br>
                                     <span id="last-update">Cargando...</span>
                                 </div>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
-                                    <label class="form-check-label" for="auto-refresh">
-                                        Auto-refresh
-                                    </label>
-                                </div>
+                                <!-- Auto-refresh eliminado - ya no es necesario -->
                             </div>
                         </div>
                     </div>
@@ -93,11 +88,10 @@
                                 <tr>
                                     <th>Participante</th>
                                     <th>Estado</th>
+                                    <th>Intentos</th>
                                     <th>Página</th>
-                                    <th>Progreso/Puntaje</th>
-                                    <th>Tiempo Activo</th>
-                                    <th>Última Actividad</th>
-                                    <th>Alertas</th>
+                                                                         <th>Progreso/Puntaje</th>
+                                     <th>Alertas</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -206,13 +200,77 @@
     </div>
 </div>
 
+<!-- Modal para gestionar intentos -->
+<div class="modal fade" id="modalIntentos" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-repeat"></i>
+                    Gestionar Intentos
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6><strong>Participante:</strong> <span id="intentos-participante-nombre"></span></h6>
+                    <p class="text-muted mb-1">Cédula: <span id="intentos-participante-cedula"></span></p>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title text-primary">Intentos Utilizados</h5>
+                                <h3 class="text-primary" id="intentos-utilizados-display">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title text-success">Intentos Permitidos</h5>
+                                <h3 class="text-success" id="intentos-permitidos-display">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="nuevos-intentos" class="form-label">Nuevos Intentos Permitidos:</label>
+                    <input type="number" class="form-control" id="nuevos-intentos" min="1" max="10" placeholder="Ej: 3">
+                    <div class="form-text">Especifica el total de intentos que tendrá este participante.</div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Nota:</strong> Al cambiar los intentos, el participante podrá realizar evaluaciones adicionales. La nota final será siempre la más alta obtenida.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-intentos">
+                    <i class="bi bi-check-circle"></i>
+                    Actualizar Intentos
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let evaluacionId = {{ evaluacion.id }};
-let autoRefreshInterval;
+let monitoreoSocket = null;
 let currentMonitoreoId = null;
+let currentParticipanteId = null;
+let reconnectInterval = null;
+let connectionStatus = 'disconnected';
 
 // Función para formatear tiempo
 function formatTime(seconds) {
@@ -243,102 +301,346 @@ function getEstadoText(estaActivo, estado) {
     return estaActivo ? 'Activo' : 'Inactivo';
 }
 
-// Función para cargar los datos del monitoreo
-function cargarMonitoreo() {
-    fetch(`/evaluacion/${evaluacionId}/monitoreo/estado/`)
-        .then(response => response.json())
-        .then(data => {
-            const tbody = document.getElementById('tbody-monitoreo');
-            tbody.innerHTML = '';
-            
-            data.monitoreos.forEach(monitoreo => {
-                const row = document.createElement('tr');
+// Función para conectar WebSocket
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = `${protocol}//${window.location.host}/ws/monitoreo/evaluacion/${evaluacionId}/`;
+    
+    monitoreoSocket = new WebSocket(socketUrl);
+    
+    monitoreoSocket.onopen = function(event) {
+        console.log('WebSocket conectado para monitoreo');
+        connectionStatus = 'connected';
+        updateConnectionStatus(true);
+        
+        // Limpiar intervalo de reconexión si existe
+        if (reconnectInterval) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+        }
+    };
+    
+    monitoreoSocket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        switch (data.type) {
+            case 'initial_data':
+            case 'monitoring_update':
+                updateMonitoringTable(data.data);
+                updateLastUpdate();
+                break;
+            case 'participant_update':
+                handleParticipantUpdate(data);
+                break;
+            case 'success':
+                showDynamicToast({
+                    type: 'success',
+                    title: 'Éxito',
+                    message: data.message
+                });
+                break;
+            case 'error':
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: data.message
+                });
+                break;
+        }
+    };
+    
+    monitoreoSocket.onclose = function(event) {
+        console.log('WebSocket desconectado para monitoreo');
+        connectionStatus = 'disconnected';
+        updateConnectionStatus(false);
+        
+        // Intentar reconectar cada 5 segundos
+        if (!reconnectInterval) {
+            reconnectInterval = setInterval(() => {
+                console.log('Intentando reconectar WebSocket...');
+                connectWebSocket();
+            }, 5000);
+        }
+    };
+    
+    monitoreoSocket.onerror = function(error) {
+        console.error('Error en WebSocket:', error);
+        connectionStatus = 'error';
+        updateConnectionStatus(false);
+    };
+}
+
+// Función para actualizar el estado de conexión en la UI
+function updateConnectionStatus(connected) {
+    const statusElement = document.getElementById('last-update');
+    
+    if (connected) {
+        statusElement.innerHTML = '<span class="text-success"><i class="bi bi-wifi"></i> Conectado en tiempo real</span>';
+    } else {
+        statusElement.innerHTML = '<span class="text-danger"><i class="bi-wifi-off"></i> Desconectado - Reconectando...</span>';
+    }
+}
+
+// Función para actualizar la última actualización
+function updateLastUpdate() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('es-EC');
+    const dateString = now.toLocaleDateString('es-EC');
+    
+    const statusElement = document.getElementById('last-update');
+    if (statusElement.innerHTML.includes('Conectado en tiempo real')) {
+        statusElement.innerHTML = `<span class="text-success"><i class="bi bi-wifi"></i> Conectado en tiempo real</span><br><small class="text-muted">Última actualización: ${dateString} ${timeString}</small>`;
+    }
+}
+
+// Función para actualizar la tabla de monitoreo
+function updateMonitoringTable(data) {
+    if (data.error) {
+        showDynamicToast({
+            type: 'danger',
+            title: 'Error',
+            message: data.error
+        });
+        return;
+    }
+    
+    // Actualizar estadísticas
+    if (data.estadisticas) {
+        updateStatistics(data.estadisticas);
+    }
+    
+    // Actualizar tabla
+    if (data.monitoreos) {
+        const tbody = document.getElementById('tbody-monitoreo');
+        tbody.innerHTML = '';
+        
+        data.monitoreos.forEach(monitoreo => {
+            const row = createMonitoringRow(monitoreo);
+            tbody.appendChild(row);
+        });
+    }
+    
+    // Actualizar timestamp
+    if (data.timestamp) {
+        const updateTime = new Date(data.timestamp).toLocaleTimeString();
+        document.getElementById('last-update').innerHTML = 
+            `<span class="text-success"><i class="bi bi-wifi"></i> ${updateTime}</span>`;
+    }
+}
+
+// Función para actualizar estadísticas
+function updateStatistics(stats) {
+    // Actualizar tarjetas de estadísticas si existen elementos en el DOM
+    const activosElement = document.querySelector('.card.bg-success .card-body h3');
+    const pendientesElement = document.querySelector('.card.bg-warning .card-body h3');
+    const finalizadosElement = document.querySelector('.card.bg-secondary .card-body h3');
+    const totalElement = document.querySelector('.card.bg-info .card-body h3');
+    
+    if (activosElement) activosElement.textContent = stats.participantes_activos;
+    if (pendientesElement) pendientesElement.textContent = stats.participantes_pendientes;
+    if (finalizadosElement) finalizadosElement.textContent = stats.participantes_finalizados;
+    if (totalElement) totalElement.textContent = stats.total_participantes;
+}
+
+// Función para crear una fila de monitoreo
+function createMonitoringRow(monitoreo) {
+    const row = document.createElement('tr');
+    
+    // Determinar el contenido de la columna de progreso/puntaje
+    let progresoPuntajeContent = '';
+    if (monitoreo.estado === 'finalizado' && monitoreo.tiene_resultado_completado) {
+        // Mostrar puntaje para evaluaciones finalizadas
+        const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
+                            monitoreo.puntaje >= 5 ? 'warning' : 'danger';
+        progresoPuntajeContent = `
+            <div class="text-center">
+                <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
+                <small class="text-muted">${monitoreo.puntaje.toFixed(1)}%</small>
+            </div>
+        `;
+    } else {
+        // Mostrar progreso para evaluaciones activas
+        const porcentaje = Math.max(0, Math.min(100, monitoreo.porcentaje_avance));
+        progresoPuntajeContent = `
+            <div class="progress" style="height: 20px;">
+                <div class="progress-bar" role="progressbar" 
+                     style="width: ${porcentaje}%" 
+                     aria-valuenow="${porcentaje}" 
+                     aria-valuemin="0" aria-valuemax="100">
+                    ${porcentaje.toFixed(1)}%
+                </div>
+            </div>
+            <small class="text-muted">
+                ${monitoreo.preguntas_respondidas} respondidas / ${monitoreo.preguntas_revisadas} revisadas
+            </small>
+        `;
+    }
+    
+    // Determinar el color y contenido de la columna de intentos
+    let intentosContent = '';
+    const intentosColor = monitoreo.puede_realizar_intento ? 'success' : 'danger';
+    const intentosText = monitoreo.puede_realizar_intento ? 'Disponibles' : 'Agotados';
+    
+    intentosContent = `
+        <div class="text-center">
+            <span class="badge bg-${intentosColor}">${monitoreo.intentos_utilizados}/${monitoreo.intentos_permitidos}</span><br>
+            <small class="text-muted">${intentosText}</small>
+                         ${monitoreo.estado !== 'finalizado' ? `<br><small class="text-info">Intento ${monitoreo.numero_intento_actual}</small>` : ''}
+        </div>
+    `;
+
+    // Agregar atributo data-participante-id para identificar la fila
+    row.setAttribute('data-participante-id', monitoreo.participante_id);
+    
+    row.innerHTML = `
+        <td>
+            <strong>${monitoreo.participante_nombre}</strong><br>
+            <small class="text-muted">${monitoreo.participante_cedula}</small>
+        </td>
+        <td class="estado-cell">
+            <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado)}">
+                ${getEstadoText(monitoreo.esta_activo, monitoreo.estado)}
+            </span>
+        </td>
+        <td>${intentosContent}</td>
+        <td class="pagina-cell">${monitoreo.estado === 'finalizado' ? '-' : monitoreo.pagina_actual}</td>
+        <td class="progreso-cell">${progresoPuntajeContent}</td>
+        <td>
+            ${monitoreo.alertas_count > 0 ? 
+                `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
+                '<span class="badge bg-success">0</span>'
+            }
+        </td>
+        <td>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-info" 
+                        onclick="verDetalles(${monitoreo.id})" 
+                        title="Ver detalles">
+                    <i class="bi bi-eye"></i>
+                </button>
+                <button type="button" class="btn btn-outline-primary" 
+                        onclick="gestionarIntentos(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', '${monitoreo.participante_cedula}', ${monitoreo.intentos_utilizados}, ${monitoreo.intentos_permitidos})" 
+                        title="Gestionar intentos">
+                    <i class="bi bi-arrow-repeat"></i>
+                </button>
+                ${monitoreo.estado !== 'finalizado' ? `
+                    <button type="button" class="btn btn-outline-warning" 
+                            onclick="agregarAlerta(${monitoreo.id})" 
+                            title="Agregar alerta">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" 
+                             onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
+                             title="Finalizar evaluación">
+                        <i class="bi bi-stop-circle"></i>
+                    </button>
+                ` : ''}
+            </div>
+        </td>
+    `;
+    
+    return row;
+}
+
+// Función para manejar actualizaciones específicas de participantes
+function handleParticipantUpdate(data) {
+    const participantId = data.participante_id || data.participant_id;
+    const participantData = data.data;
+    const eventType = data.event_type || 'update';
+    
+    console.log('Actualización de participante:', data);
+    
+    // Buscar la fila del participante en la tabla
+    const row = document.querySelector(`tr[data-participante-id="${participantId}"]`);
+    if (row) {
+        // Actualizar la fila con los nuevos datos
+        updateParticipantRow(row, participantData);
+        
+        // Si es finalización de evaluación, nuevo intento o cambio de estado, actualizar el estado completo
+        if (eventType === 'evaluation_completed' || eventType === 'new_attempt' || eventType === 'auto_save') {
+            // Forzar actualización completa del estado para cambios importantes
+            if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+                monitoreoSocket.send(JSON.stringify({
+                    type: 'request_update'
+                }));
+            }
+        }
+        
+        // Destacar la fila temporalmente para mostrar que se actualizó
+        highlightRow(row);
+    } else {
+        // Si no se encuentra la fila, solicitar actualización completa
+        if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+            monitoreoSocket.send(JSON.stringify({
+                type: 'request_update'
+            }));
+        }
+    }
+}
+
+// Función para destacar una fila temporalmente
+function highlightRow(row) {
+    row.classList.add('table-warning');
+    setTimeout(() => {
+        row.classList.remove('table-warning');
+    }, 2000);
+}
+
+// Función para actualizar una fila específica de participante
+function updateParticipantRow(row, data) {
+    try {
+        // Solo actualizar campos que realmente cambiaron para evitar parpadeos
+        
+        // Actualizar progreso solo si es necesario
+        if (data.porcentaje_avance !== undefined) {
+            const progresoCell = row.querySelector('.progreso-cell');
+            if (progresoCell) {
+                // Verificar si la evaluación está finalizada
+                const estadoCell = row.querySelector('.estado-cell');
+                const estaFinalizada = estadoCell && estadoCell.textContent.includes('Finalizado');
                 
-                // Determinar el contenido de la columna de progreso/puntaje
-                let progresoPuntajeContent = '';
-                if (monitoreo.estado === 'finalizado' && monitoreo.tiene_resultado_completado) {
-                    // Mostrar puntaje para evaluaciones finalizadas
-                    const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
-                                        monitoreo.puntaje >= 5 ? 'warning' : 'danger';
-                    progresoPuntajeContent = `
-                        <div class="text-center">
-                            <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
-                            <small class="text-muted">${monitoreo.puntaje}%</small>
-                        </div>
-                    `;
+                if (estaFinalizada) {
+                    // Si está finalizada, no mostrar barra de progreso
+                    // Mantener el puntaje que ya se mostró
+                    return;
                 } else {
-                    // Mostrar progreso para evaluaciones activas
-                    progresoPuntajeContent = `
+                    // Si está activa, mostrar barra de progreso con validación
+                    const porcentaje = Math.max(0, Math.min(100, data.porcentaje_avance));
+                    progresoCell.innerHTML = `
                         <div class="progress" style="height: 20px;">
                             <div class="progress-bar" role="progressbar" 
-                                 style="width: ${monitoreo.porcentaje_avance}%" 
-                                 aria-valuenow="${monitoreo.porcentaje_avance}" 
-                                 aria-valuemin="0" aria-valuemax="100">
-                                ${monitoreo.porcentaje_avance}%
+                                 style="width: ${porcentaje}%" 
+                                 aria-valuenow="${porcentaje}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                ${porcentaje.toFixed(1)}%
                             </div>
                         </div>
-                        <small class="text-muted">
-                            ${monitoreo.preguntas_respondidas} respondidas / ${monitoreo.preguntas_revisadas} revisadas
-                        </small>
                     `;
                 }
-                
-                row.innerHTML = `
-                    <td>
-                        <strong>${monitoreo.participante_nombre}</strong><br>
-                        <small class="text-muted">${monitoreo.participante_cedula}</small>
-                    </td>
-                    <td>
-                        <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado)}">
-                            ${getEstadoText(monitoreo.esta_activo, monitoreo.estado)}
-                        </span>
-                    </td>
-                    <td>${monitoreo.estado === 'finalizado' ? '-' : monitoreo.pagina_actual}</td>
-                    <td>${progresoPuntajeContent}</td>
-                    <td>${monitoreo.tiempo_activo}</td>
-                    <td>
-                        <span class="text-${monitoreo.esta_activo ? 'success' : 'warning'}">
-                            ${new Date(monitoreo.ultima_actividad).toLocaleTimeString()}
-                        </span>
-                    </td>
-                    <td>
-                        ${monitoreo.alertas_count > 0 ? 
-                            `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
-                            '<span class="badge bg-success">0</span>'
-                        }
-                    </td>
-                    <td>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-info" 
-                                    onclick="verDetalles(${monitoreo.id})" 
-                                    title="Ver detalles">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            ${monitoreo.estado !== 'finalizado' ? `
-                                <button type="button" class="btn btn-outline-warning" 
-                                        onclick="agregarAlerta(${monitoreo.id})" 
-                                        title="Agregar alerta">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                </button>
-                                <button type="button" class="btn btn-outline-danger" 
-                                         onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
-                                         title="Finalizar evaluación">
-                                    <i class="bi bi-stop-circle"></i>
-                                </button>
-                            ` : ''}
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-            
-            // Actualizar timestamp
-            document.getElementById('last-update').textContent = 
-                new Date(data.timestamp).toLocaleTimeString();
-        })
-        .catch(error => {
-            console.error('Error al cargar monitoreo:', error);
-        });
+            }
+        }
+        
+        // Actualizar página actual solo si cambió
+        if (data.pagina_actual) {
+            const paginaCell = row.querySelector('.pagina-cell');
+            if (paginaCell) {
+                paginaCell.textContent = data.pagina_actual;
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error actualizando fila de participante:', error);
+    }
+}
+
+// Función para enviar solicitud de actualización manual
+function requestManualUpdate() {
+    if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+        monitoreoSocket.send(JSON.stringify({
+            type: 'request_update'
+        }));
+    }
 }
 
 // Función para finalizar evaluación
@@ -362,31 +664,34 @@ function agregarAlerta(monitoreoId) {
     modal.show();
 }
 
-    // Función para ver detalles
-    function verDetalles(monitoreoId) {
-        window.location.href = `/monitoreo/${monitoreoId}/detalle/`;
-    }
+// Función para ver detalles
+function verDetalles(monitoreoId) {
+    window.location.href = `/monitoreo/${monitoreoId}/detalle/`;
+}
+
+// Función para gestionar intentos
+function gestionarIntentos(participanteId, participanteNombre, participanteCedula, intentosUtilizados, intentosPermitidos) {
+    currentParticipanteId = participanteId;
+    
+    // Actualizar información en el modal
+    document.getElementById('intentos-participante-nombre').textContent = participanteNombre;
+    document.getElementById('intentos-participante-cedula').textContent = participanteCedula;
+    document.getElementById('intentos-utilizados-display').textContent = intentosUtilizados;
+    document.getElementById('intentos-permitidos-display').textContent = intentosPermitidos;
+    document.getElementById('nuevos-intentos').value = intentosPermitidos;
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalIntentos'));
+    modal.show();
+}
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
-    // Cargar datos iniciales
-    cargarMonitoreo();
+    // Conectar WebSocket
+    connectWebSocket();
     
-    // Configurar auto-refresh
-    const autoRefreshCheckbox = document.getElementById('auto-refresh');
+         // Auto-refresh eliminado - ya no es necesario
     
-    function toggleAutoRefresh() {
-        if (autoRefreshCheckbox.checked) {
-            autoRefreshInterval = setInterval(cargarMonitoreo, 5000); // 5 segundos
-        } else {
-            clearInterval(autoRefreshInterval);
-        }
-    }
-    
-    autoRefreshCheckbox.addEventListener('change', toggleAutoRefresh);
-    toggleAutoRefresh(); // Iniciar auto-refresh
-    
-    // Confirmar finalización
+    // Confirmar finalización via WebSocket
     document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
         const motivo = document.getElementById('motivo-finalizacion').value;
         if (!motivo.trim()) {
@@ -398,47 +703,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        fetch(`/evaluacion/${evaluacionId}/monitoreo/finalizar/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
+        if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+            monitoreoSocket.send(JSON.stringify({
+                type: 'finalizar_evaluacion',
                 monitoreo_id: currentMonitoreoId,
                 motivo: motivo
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                bootstrap.Modal.getInstance(document.getElementById('modalFinalizar')).hide();
-                cargarMonitoreo();
-                // Mostrar notificación de éxito usando la función global
-                showDynamicToast({
-                    type: 'success',
-                    title: 'Éxito',
-                    message: data.message
-                });
-            } else {
-                showDynamicToast({
-                    type: 'danger',
-                    title: 'Error',
-                    message: data.error
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
+            }));
+            bootstrap.Modal.getInstance(document.getElementById('modalFinalizar')).hide();
+        } else {
             showDynamicToast({
                 type: 'danger',
                 title: 'Error',
-                message: 'Error al finalizar la evaluación'
+                message: 'No hay conexión WebSocket disponible'
             });
-        });
+        }
     });
     
-    // Confirmar alerta
+    // Confirmar alerta via WebSocket
     document.getElementById('btn-confirmar-alerta').addEventListener('click', function() {
         const tipoAlerta = document.getElementById('tipo-alerta').value;
         const severidad = document.getElementById('severidad-alerta').value;
@@ -453,24 +734,67 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        fetch(`/monitoreo/${currentMonitoreoId}/alerta/`, {
+        if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+            monitoreoSocket.send(JSON.stringify({
+                type: 'agregar_alerta',
+                monitoreo_id: currentMonitoreoId,
+                tipo_alerta: tipoAlerta,
+                severidad: severidad,
+                descripcion: descripcion
+            }));
+            bootstrap.Modal.getInstance(document.getElementById('modalAlerta')).hide();
+        } else {
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'No hay conexión WebSocket disponible'
+            });
+        }
+    });
+    
+    // Confirmar actualización de intentos (seguimos usando AJAX para esta funcionalidad)
+    document.getElementById('btn-confirmar-intentos').addEventListener('click', function() {
+        const nuevosIntentos = parseInt(document.getElementById('nuevos-intentos').value);
+        
+        if (!nuevosIntentos || nuevosIntentos < 1) {
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese un número válido de intentos (mínimo 1).'
+            });
+            return;
+        }
+        
+        if (nuevosIntentos > 10) {
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'El número máximo de intentos permitidos es 10.'
+            });
+            return;
+        }
+        
+        fetch(`/evaluacion/${evaluacionId}/intentos/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
             body: JSON.stringify({
-                tipo_alerta: tipoAlerta,
-                severidad: severidad,
-                descripcion: descripcion
+                participante_id: currentParticipanteId,
+                nuevos_intentos: nuevosIntentos
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                bootstrap.Modal.getInstance(document.getElementById('modalAlerta')).hide();
-                cargarMonitoreo();
-                // Mostrar notificación de éxito usando la función global
+                bootstrap.Modal.getInstance(document.getElementById('modalIntentos')).hide();
+                // Solicitar actualización via WebSocket
+                if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+                    monitoreoSocket.send(JSON.stringify({
+                        type: 'request_update'
+                    }));
+                }
                 showDynamicToast({
                     type: 'success',
                     title: 'Éxito',
@@ -489,9 +813,16 @@ document.addEventListener('DOMContentLoaded', function() {
             showDynamicToast({
                 type: 'danger',
                 title: 'Error',
-                message: 'Error al agregar la alerta'
+                message: 'Error al actualizar los intentos del participante'
             });
         });
+    });
+    
+    // Limpiar conexión WebSocket al cerrar la página
+    window.addEventListener('beforeunload', function() {
+        if (monitoreoSocket) {
+            monitoreoSocket.close();
+        }
     });
 });
 

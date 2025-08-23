@@ -2,6 +2,7 @@ import os
 from decouple import config
 # Importar ImproperlyConfigured para manejar errores de configuración
 from django.core.exceptions import ImproperlyConfigured
+from django.db.models.expressions import F
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_KEY = config('SECRET_KEY')
@@ -11,12 +12,14 @@ DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'quizzes',
 ]
 
@@ -50,12 +53,27 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'olymp.wsgi.application'
+ASGI_APPLICATION = 'olymp.asgi.application'
+
+
 # Funcion para obtener las variables de entorno (Borrar si no se usa)
 def get_env(name, default=None):
     val = os.environ.get(name, default)
     if val is None:
         raise ImproperlyConfigured(f"Falta la variable de entorno {name}")
     return val
+
+    
+# Configuración de Channels
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [(get_env('REDIS_HOST', '127.0.0.1'), 6379)],
+        },
+    },
+}
+
 
 DATABASES = {
     'default': {
@@ -81,9 +99,9 @@ USE_L10N = True
 USE_TZ = True
 
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),  
+    os.path.join(BASE_DIR, 'static'),
 ]
 
 
@@ -125,3 +143,7 @@ MESSAGE_TAGS = {
 
 # Renovar la sesión con cada request
 SESSION_SAVE_EVERY_REQUEST = True
+
+# Control de páginas de error personalizadas
+# Cambiar a False para deshabilitar las páginas 404 personalizadas
+ENABLE_CUSTOM_ERROR_PAGES = True

@@ -360,6 +360,12 @@ class Evaluacion(models.Model):
         help_text='Número de preguntas que se mostrarán al estudiante (selección aleatoria)'
     )
     
+    # Campo para configurar intentos permitidos por defecto
+    intentos_permitidos_default = models.PositiveIntegerField(
+        default=1,
+        help_text='Número de intentos permitidos por defecto para todos los participantes'
+    )
+    
     # Campos para participantes de la etapa 1
     grupos_participantes = models.ManyToManyField('GrupoParticipantes', blank=True, related_name='evaluaciones_etapa1')
     participantes_individuales = models.ManyToManyField('Participantes', blank=True, related_name='evaluaciones_individuales')
@@ -484,6 +490,42 @@ class Evaluacion(models.Model):
             return self.get_participantes_etapa3()
         return []
     
+    def get_o_crear_intento_participante(self, participante, usuario_modificador=None):
+        """Obtiene o crea el registro de intentos para un participante específico"""
+        intento, created = IntentoEvaluacion.objects.get_or_create(
+            evaluacion=self,
+            participante=participante,
+            defaults={
+                'intentos_permitidos': self.intentos_permitidos_default,
+                'modificado_por': usuario_modificador
+            }
+        )
+        return intento
+    
+    def puede_participante_realizar_intento(self, participante):
+        """Verifica si un participante puede realizar otro intento en esta evaluación"""
+        intento = self.get_o_crear_intento_participante(participante)
+        return intento.puede_realizar_intento()
+    
+    def incrementar_intentos_participante(self, participante, nuevos_intentos, usuario_modificador):
+        """Incrementa los intentos permitidos para un participante específico"""
+        intento = self.get_o_crear_intento_participante(participante, usuario_modificador)
+        intento.intentos_permitidos = nuevos_intentos
+        intento.modificado_por = usuario_modificador
+        intento.save()
+        return intento
+    
+    def obtener_siguiente_numero_intento(self, participante):
+        """Obtiene el siguiente número de intento para un participante"""
+        ultimo_intento = ResultadoEvaluacion.objects.filter(
+            evaluacion=self,
+            participante=participante
+        ).order_by('-numero_intento').first()
+        
+        if ultimo_intento:
+            return ultimo_intento.numero_intento + 1
+        return 1
+    
     def get_preguntas_aleatorias(self):
         """Obtiene preguntas aleatorias según la configuración"""
         total_preguntas = self.preguntas.count()
@@ -559,15 +601,59 @@ class Opcion(models.Model):
     def __str__(self):
         return self.text
 
+# Modelo para manejar los intentos específicos de cada participante en cada evaluación
+class IntentoEvaluacion(models.Model):
+    evaluacion = models.ForeignKey(Evaluacion, on_delete=models.CASCADE, related_name='intentos_participantes')
+    participante = models.ForeignKey(Participantes, on_delete=models.CASCADE, related_name='intentos_evaluacion')
+    intentos_permitidos = models.PositiveIntegerField(
+        default=1,
+        help_text='Número de intentos permitidos para este participante en esta evaluación específica'
+    )
+    intentos_utilizados = models.PositiveIntegerField(
+        default=0,
+        help_text='Número de intentos que ha realizado el participante'
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    modificado_por = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        help_text='Usuario que modificó los intentos de este participante'
+    )
+    
+    class Meta:
+        unique_together = ['evaluacion', 'participante']
+        verbose_name = 'Intento de Evaluación'
+        verbose_name_plural = 'Intentos de Evaluaciones'
+    
+    def __str__(self):
+        return f"{self.participante.NombresCompletos} - {self.evaluacion.title} ({self.intentos_utilizados}/{self.intentos_permitidos})"
+    
+    def puede_realizar_intento(self):
+        """Verifica si el participante puede realizar otro intento"""
+        return self.intentos_utilizados < self.intentos_permitidos
+    
+    def registrar_nuevo_intento(self):
+        """Incrementa el contador de intentos utilizados"""
+        if self.puede_realizar_intento():
+            self.intentos_utilizados += 1
+            self.save()
+            return True
+        return False
+
 # Modelo para los resultados de las evaluaciones
 class ResultadoEvaluacion(models.Model):
     evaluacion = models.ForeignKey(Evaluacion, on_delete=models.CASCADE, related_name='resultados')
     participante = models.ForeignKey(Participantes, on_delete=models.CASCADE, related_name='resultados')
+    numero_intento = models.PositiveIntegerField(default=1, help_text='Número del intento (1, 2, 3, etc.)')
     puntaje = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     tiempo_utilizado = models.PositiveIntegerField(help_text='Tiempo utilizado en minutos', default=0)
     fecha_inicio = models.DateTimeField(auto_now_add=True)
     fecha_fin = models.DateTimeField(null=True, blank=True)
     completada = models.BooleanField(default=False)
+    es_mejor_intento = models.BooleanField(default=True, help_text='Indica si este es el mejor intento del participante')
     
     # Campos para guardado automático
     respuestas_guardadas = models.JSONField(default=dict, blank=True, help_text='Respuestas guardadas automáticamente')
@@ -579,8 +665,8 @@ class ResultadoEvaluacion(models.Model):
     puntos_totales = models.PositiveIntegerField(default=10, help_text='Puntos totales de la evaluación (siempre 10)')
     
     class Meta:
-        unique_together = ['evaluacion', 'participante']
-        ordering = ['-puntaje', 'tiempo_utilizado']
+        unique_together = ['evaluacion', 'participante', 'numero_intento']
+        ordering = ['-puntos_obtenidos', 'tiempo_utilizado']
     
     def get_tiempo_formateado(self):
         """Retorna el tiempo utilizado en formato legible"""
@@ -628,6 +714,56 @@ class ResultadoEvaluacion(models.Model):
         if self.puntos_totales > 0:
             return (self.puntos_obtenidos / self.puntos_totales) * 100
         return 0
+    
+    def actualizar_mejor_intento(self):
+        """Actualiza qué resultado es el mejor intento para este participante en esta evaluación"""
+        # Obtener todos los intentos completados de este participante en esta evaluación
+        intentos = ResultadoEvaluacion.objects.filter(
+            evaluacion=self.evaluacion,
+            participante=self.participante,
+            completada=True
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')
+        
+        # Marcar todos como no mejor intento
+        ResultadoEvaluacion.objects.filter(
+            evaluacion=self.evaluacion,
+            participante=self.participante
+        ).update(es_mejor_intento=False)
+        
+        # Marcar el mejor como mejor intento
+        if intentos.exists():
+            mejor_intento = intentos.first()
+            mejor_intento.es_mejor_intento = True
+            mejor_intento.save()  # Ahora es seguro porque ya está completada
+    
+    @classmethod
+    def get_mejor_resultado_participante(cls, evaluacion, participante):
+        """Obtiene el mejor resultado de un participante en una evaluación específica"""
+        return cls.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=True,
+            es_mejor_intento=True
+        ).first()
+    
+    def save(self, *args, **kwargs):
+        # Obtener el estado anterior para comparar
+        es_nuevo = self.pk is None
+        completada_antes = False
+        
+        if not es_nuevo:
+            try:
+                estado_anterior = ResultadoEvaluacion.objects.get(pk=self.pk)
+                completada_antes = estado_anterior.completada
+            except ResultadoEvaluacion.DoesNotExist:
+                completada_antes = False
+        
+        # Guardar el objeto
+        super().save(*args, **kwargs)
+        
+        # Solo actualizar mejor intento si se acaba de completar (no estaba completada antes)
+        if self.completada and not completada_antes:
+            self.actualizar_mejor_intento()
 
 # Modelo para el monitoreo en tiempo real de evaluaciones
 class MonitoreoEvaluacion(models.Model):

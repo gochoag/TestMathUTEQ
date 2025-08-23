@@ -1,5 +1,5 @@
 from django.contrib.auth.decorators import login_required
-from django.urls import path
+from django.urls import path, re_path
 from django.contrib.auth import views as auth_views
 from . import views
 from django.views.generic import RedirectView
@@ -35,6 +35,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/ranking/', views.ranking_evaluacion, name='ranking_evaluacion'),
     path('evaluacion/<int:pk>/ranking/pdf/', views.exportar_ranking_pdf, name='exportar_ranking_pdf'),
     path('evaluacion/<int:pk>/participantes/', views.gestionar_participantes_evaluacion, name='gestionar_participantes_evaluacion'),
+    path('evaluacion/<int:evaluacion_pk>/intentos/', views.gestionar_intentos_participante, name='gestionar_intentos_participante'),
     
     path('gestionar-participantes/', views.manage_participants, name='manage_participants'),
     path('gestionar-admins/', views.manage_admins, name='manage_admins'),
@@ -59,4 +60,8 @@ urlpatterns = [
     
     # URL para solicitud de clave temporal
     path('solicitar-clave-temporal/', views.solicitar_clave_temporal, name='solicitar_clave_temporal'),
+    
+    # Catch-all para URLs no encontradas (debe ir al final)
+    # Excluye rutas que empiecen con 'media/' o 'static/' para evitar conflictos
+    re_path(r'^(?!media/|static/).*', views.custom_404_view, name='catch_all_404'),
 ]

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import GrupoParticipantes, Participantes, Evaluacion, Pregunta, Opcion, AdminProfile, SolicitudClaveTemporal
+from .models import GrupoParticipantes, Participantes, Evaluacion, Pregunta, Opcion, AdminProfile, SolicitudClaveTemporal, IntentoEvaluacion, ResultadoEvaluacion
 
 
 class OpcionInline(admin.TabularInline):
@@ -44,5 +44,55 @@ class SolicitudClaveTemporalAdmin(admin.ModelAdmin):
         }),
         ('Estado', {
             'fields': ('procesada', 'mensaje_error')
+        }),
+    )
+
+@admin.register(IntentoEvaluacion)
+class IntentoEvaluacionAdmin(admin.ModelAdmin):
+    list_display = ('participante', 'evaluacion', 'intentos_utilizados', 'intentos_permitidos', 'puede_realizar_intento', 'fecha_modificacion', 'modificado_por')
+    list_filter = ('evaluacion__etapa', 'evaluacion__anio', 'fecha_modificacion')
+    search_fields = ('participante__NombresCompletos', 'participante__cedula', 'evaluacion__title')
+    readonly_fields = ('fecha_creacion', 'fecha_modificacion')
+    list_editable = ('intentos_permitidos',)
+    ordering = ('-fecha_modificacion',)
+    
+    fieldsets = (
+        ('Información General', {
+            'fields': ('evaluacion', 'participante')
+        }),
+        ('Configuración de Intentos', {
+            'fields': ('intentos_permitidos', 'intentos_utilizados')
+        }),
+        ('Información de Seguimiento', {
+            'fields': ('fecha_creacion', 'fecha_modificacion', 'modificado_por')
+        }),
+    )
+    
+    def puede_realizar_intento(self, obj):
+        return obj.puede_realizar_intento()
+    puede_realizar_intento.boolean = True
+    puede_realizar_intento.short_description = 'Puede Realizar Intento'
+
+@admin.register(ResultadoEvaluacion)
+class ResultadoEvaluacionAdmin(admin.ModelAdmin):
+    list_display = ('participante', 'evaluacion', 'numero_intento', 'puntos_obtenidos', 'es_mejor_intento', 'completada', 'fecha_fin')
+    list_filter = ('evaluacion__etapa', 'evaluacion__anio', 'completada', 'es_mejor_intento', 'fecha_fin')
+    search_fields = ('participante__NombresCompletos', 'participante__cedula', 'evaluacion__title')
+    readonly_fields = ('fecha_inicio', 'fecha_fin', 'ultima_actividad')
+    ordering = ('-fecha_fin', '-puntos_obtenidos')
+    
+    fieldsets = (
+        ('Información General', {
+            'fields': ('evaluacion', 'participante', 'numero_intento')
+        }),
+        ('Puntuación', {
+            'fields': ('puntos_obtenidos', 'puntos_totales', 'puntaje', 'es_mejor_intento')
+        }),
+        ('Tiempo y Estado', {
+            'fields': ('fecha_inicio', 'fecha_fin', 'tiempo_utilizado', 'completada', 'ultima_actividad')
+        }),
+        ('Datos Adicionales', {
+            'fields': ('tiempo_restante', 'respuestas_guardadas'),
+            'classes': ('collapse',)
         }),
     )

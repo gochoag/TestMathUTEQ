@@ -228,16 +228,205 @@ let evaluacionFinalizadaAdmin = false; // Variable para controlar si ya se mostr
 let verificacionInterval; // Variable para el intervalo de verificación
 let modalMostrandose = false; // Variable para controlar si el modal ya se está mostrando
 
+// Variables para WebSocket
+let participanteSocket = null;
+let heartbeatInterval = null;
+let lastActivity = Date.now();
+let currentPage = 1;
+let answeredQuestions = 0;
+let reviewedQuestions = 0;
+let heartbeatCount = 0; // Contador para heartbeats
+
+// Función para confirmar envío (definida globalmente)
+function confirmarEnvio() {
+    const totalPreguntas = {{ preguntas|length }};
+    const respuestas = document.querySelectorAll('input[type="radio"]:checked');
+    const respondidas = respuestas.length;
+    const sinResponder = totalPreguntas - respondidas;
+    
+    const minutos = Math.floor(tiempoRestante / 60);
+    const segundos = tiempoRestante % 60;
+    const tiempoFormateado = `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
+    
+    document.getElementById('modalAnsweredCount').textContent = respondidas;
+    document.getElementById('modalUnansweredCount').textContent = sinResponder;
+    document.getElementById('modalTimeRemaining').textContent = tiempoFormateado;
+    
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    modal.show();
+}
+
+// Función para conectar WebSocket del participante
+function connectParticipanteWebSocket() {
+    const evaluacionId = {{ evaluacion.id }};
+    const participanteId = {% if participante.id %}{{ participante.id }}{% else %}null{% endif %};
+    
+    if (!participanteId) {
+        console.error('No se pudo obtener el ID del participante');
+        return;
+    }
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = `${protocol}//${window.location.host}/ws/evaluacion/${evaluacionId}/participante/${participanteId}/`;
+    
+    participanteSocket = new WebSocket(socketUrl);
+    
+    participanteSocket.onopen = function(event) {
+        console.log('WebSocket conectado para participante');
+        
+        // Iniciar heartbeat cada 30 segundos
+        heartbeatInterval = setInterval(() => {
+            sendHeartbeat();
+        }, 30000);
+        
+        // Enviar actualización inicial
+        sendProgressUpdate();
+    };
+    
+    participanteSocket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        switch (data.type) {
+            case 'heartbeat_ack':
+                // Confirmación del heartbeat
+                console.log('Heartbeat confirmado');
+                break;
+            case 'evaluation_terminated':
+                // Evaluación terminada por administrador
+                handleEvaluationTerminated(data);
+                break;
+            case 'auto_save_confirmed':
+                // Confirmación de guardado automático
+                handleAutoSaveConfirmed(data);
+                break;
+        }
+    };
+    
+    participanteSocket.onclose = function(event) {
+        console.log('WebSocket desconectado para participante');
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        
+        // Intentar reconectar si la evaluación aún está activa
+        if (!evaluacionEnviandose && !evaluacionFinalizadaAdmin) {
+            setTimeout(() => {
+                connectParticipanteWebSocket();
+            }, 5000);
+        }
+    };
+    
+    participanteSocket.onerror = function(error) {
+        console.error('Error en WebSocket del participante:', error);
+    };
+}
+
+// Función para enviar heartbeat
+function sendHeartbeat() {
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        heartbeatCount++; // Incrementar contador
+        lastActivity = Date.now();
+        participanteSocket.send(JSON.stringify({
+            type: 'heartbeat',
+            timestamp: new Date().toISOString(),
+            active_time: Math.floor((Date.now() - window.performance.timing.navigationStart) / 1000)
+        }));
+        
+        // También enviar actualización de progreso con el heartbeat
+        sendProgressUpdate();
+        
+        // Enviar guardado automático cada 5 heartbeats (cada 2.5 minutos)
+        if (heartbeatCount % 5 === 0) {
+            guardarRespuestaAutomatica();
+        }
+    }
+}
+
+// Función para enviar actualización de página
+function sendPageChange(pageNumber) {
+    currentPage = pageNumber;
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        participanteSocket.send(JSON.stringify({
+            type: 'page_change',
+            page: pageNumber,
+            timestamp: new Date().toISOString()
+        }));
+    }
+}
+
+// Función para enviar actualización de respuesta
+function sendAnswerUpdate(questionId, selectedOption) {
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        participanteSocket.send(JSON.stringify({
+            type: 'answer_update',
+            question_id: questionId,
+            selected_option: selectedOption,
+            timestamp: new Date().toISOString()
+        }));
+    }
+}
+
+// Función para enviar actualización de progreso
+function sendProgressUpdate() {
+    // Contar preguntas respondidas y revisadas
+    answeredQuestions = document.querySelectorAll('input[type="radio"]:checked').length;
+    reviewedQuestions = document.querySelectorAll('.question-container').length;
+    
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        participanteSocket.send(JSON.stringify({
+            type: 'progress_update',
+            answered_questions: answeredQuestions,
+            reviewed_questions: reviewedQuestions,
+            timestamp: new Date().toISOString()
+        }));
+    }
+}
+
+// Función para enviar finalización de evaluación
+function sendEvaluationCompleted() {
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        participanteSocket.send(JSON.stringify({
+            type: 'evaluation_completed',
+            timestamp: new Date().toISOString(),
+            final_answers: answeredQuestions,
+            final_reviewed: reviewedQuestions
+        }));
+    }
+}
+
+// Función para manejar terminación administrativa
+function handleEvaluationTerminated(data) {
+    evaluacionFinalizadaAdmin = true;
+    limpiarIntervalos();
+    
+    Swal.fire({
+        title: 'Evaluación Finalizada',
+        text: 'Un administrador ha finalizado tu evaluación.',
+        icon: 'warning',
+        confirmButtonText: 'Entendido',
+        allowOutsideClick: false,
+        allowEscapeKey: false
+    }).then(() => {
+        window.location.href = '/dashboard/';
+    });
+}
+
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
     // Activar modo evaluación (ocultar sidebar)
     activarModoEvaluacion();
+    
+    // Conectar WebSocket
+    connectParticipanteWebSocket();
     
     inicializarEvaluacion();
     configurarEventos();
     iniciarTimer();
     iniciarGuardadoAutomatico();
     cargarProgresoGuardado();
+    
+    // Configurar eventos para WebSocket
+    configurarEventosWebSocket();
 });
 
 // Función para limpiar todos los intervalos y timers
@@ -248,9 +437,7 @@ function limpiarIntervalos() {
     if (timerInterval) {
         clearInterval(timerInterval);
     }
-    if (guardadoInterval) {
-        clearInterval(guardadoInterval);
-    }
+    // Ya no tenemos guardadoInterval porque usamos WebSocket
 }
 
 // Función de inicialización
@@ -337,7 +524,17 @@ function configurarEventos() {
     document.querySelectorAll('input[type="radio"]').forEach(radio => {
         radio.addEventListener('change', function() {
             actualizarProgreso();
+            
+            // Guardado automático inmediato al cambiar respuesta
             guardarRespuestaAutomatica();
+            
+            // Enviar actualización de respuesta via WebSocket
+            const questionId = this.name.replace('pregunta_', '');
+            const selectedOption = this.value;
+            sendAnswerUpdate(questionId, selectedOption);
+            
+            // Enviar actualización de progreso
+            sendProgressUpdate();
         });
     });
     
@@ -346,6 +543,16 @@ function configurarEventos() {
         btn.addEventListener('click', function() {
             const questionNum = this.getAttribute('data-question');
             mostrarPregunta(questionNum);
+            
+            // Enviar cambio de página via WebSocket
+            sendPageChange(parseInt(questionNum));
+        });
+    });
+    
+    // Detectar actividad del usuario para WebSocket
+    ['click', 'keypress', 'mousemove', 'scroll'].forEach(eventType => {
+        document.addEventListener(eventType, function() {
+            lastActivity = Date.now();
         });
     });
     
@@ -355,6 +562,11 @@ function configurarEventos() {
             guardarRespuestaAutomatica();
             e.preventDefault();
             e.returnValue = '';
+        }
+        
+        // Cerrar WebSocket al salir
+        if (participanteSocket) {
+            participanteSocket.close();
         }
     });
     
@@ -431,20 +643,43 @@ function cargarProgresoGuardado() {
     {% endif %}
 }
 
-// Función para guardado automático
+// Función para guardado automático - AHORA IMPULSADO POR EVENTOS DEL WEBSOCKET
 function iniciarGuardadoAutomatico() {
-    guardadoInterval = setInterval(function() {
-        guardarRespuestaAutomatica();
-    }, 30000); // Guardar cada 30 segundos
+    // YA NO USAMOS INTERVALOS DE TIEMPO FIJO
+    // El guardado ahora se activa por eventos del WebSocket:
+    // - Cambio de respuesta (radio button change) - INMEDIATO
+    // - Cambio de página - INMEDIATO  
+    // - Heartbeat (cada 5 heartbeats = cada 2.5 minutos) - PERIÓDICO
+    // - Antes de cerrar la página - INMEDIATO
+    console.log('Sistema de guardado automático configurado para WebSocket - Event-driven');
 }
 
-// Guardar respuestas automáticamente
+// Guardar respuestas automáticamente - AHORA IMPULSADO POR WEBSOCKET
 function guardarRespuestaAutomatica() {
     const respuestas = {};
     document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
         respuestas[radio.name] = radio.value;
     });
     
+    // PRIORIDAD 1: WebSocket (más eficiente, tiempo real)
+    if (participanteSocket && participanteSocket.readyState === WebSocket.OPEN) {
+        participanteSocket.send(JSON.stringify({
+            type: 'auto_save',
+            respuestas: respuestas,
+            tiempo_restante: tiempoRestante,
+            timestamp: new Date().toISOString()
+        }));
+        console.log('Progreso enviado via WebSocket para guardado automático');
+    } else {
+        // PRIORIDAD 2: Fallback HTTP (solo si WebSocket falla)
+        console.warn('WebSocket no disponible, usando fallback HTTP');
+        guardarRespuestaAutomaticaHTTP(respuestas);
+    }
+}
+
+// Función de fallback para guardado HTTP (solo si WebSocket falla)
+// Esta función se usa únicamente cuando hay problemas de conectividad WebSocket
+function guardarRespuestaAutomaticaHTTP(respuestas) {
     fetch(`{% url 'quizzes:guardar_respuesta_automatica' evaluacion.pk %}`, {
         method: 'POST',
         headers: {
@@ -459,7 +694,7 @@ function guardarRespuestaAutomatica() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            console.log('Progreso guardado automáticamente');
+            console.log('Progreso guardado via HTTP fallback');
         } else if (data.redirect && !evaluacionFinalizadaAdmin && !modalMostrandose) {
             // Marcar que ya se mostró el modal para evitar duplicados
             evaluacionFinalizadaAdmin = true;
@@ -486,7 +721,7 @@ function guardarRespuestaAutomatica() {
         }
     })
     .catch(error => {
-        console.error('Error guardando progreso:', error);
+        console.error('Error guardando progreso via HTTP fallback:', error);
     });
 }
 
@@ -538,24 +773,7 @@ function mostrarPregunta(numero) {
     }
 }
 
-// Confirmar envío
-function confirmarEnvio() {
-    const totalPreguntas = {{ preguntas|length }};
-    const respuestas = document.querySelectorAll('input[type="radio"]:checked');
-    const respondidas = respuestas.length;
-    const sinResponder = totalPreguntas - respondidas;
-    
-    const minutos = Math.floor(tiempoRestante / 60);
-    const segundos = tiempoRestante % 60;
-    const tiempoFormateado = `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
-    
-    document.getElementById('modalAnsweredCount').textContent = respondidas;
-    document.getElementById('modalUnansweredCount').textContent = sinResponder;
-    document.getElementById('modalTimeRemaining').textContent = tiempoFormateado;
-    
-    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-    modal.show();
-}
+// Función confirmarEnvio ya definida globalmente arriba
 
 // Enviar evaluación
 function enviarEvaluacion() {
@@ -564,6 +782,9 @@ function enviarEvaluacion() {
     
     // Marcar que la evaluación se está enviando para evitar la alerta de beforeunload
     evaluacionEnviandose = true;
+    
+    // Notificar finalización via WebSocket
+    sendEvaluationCompleted();
     
     // Desactivar modo evaluación antes de enviar
     desactivarModoEvaluacion();
@@ -583,10 +804,46 @@ function enviarEvaluacionAutomaticamente() {
         // Marcar que la evaluación se está enviando para evitar la alerta de beforeunload
         evaluacionEnviandose = true;
         
+        // Notificar finalización via WebSocket
+        sendEvaluationCompleted();
+        
         // Desactivar modo evaluación antes de enviar automáticamente
         desactivarModoEvaluacion();
         document.getElementById('quizForm').submit();
     });
+}
+
+// Función para manejar confirmación de guardado automático del WebSocket
+function handleAutoSaveConfirmed(data) {
+    const respuestasGuardadas = data.respuestas_guardadas;
+    const timestamp = data.timestamp;
+    
+    // Solo log en consola - NO mostrar notificación al usuario
+    console.log(`Guardado automático confirmado: ${respuestasGuardadas} respuestas guardadas a las ${new Date(timestamp).toLocaleTimeString()}`);
+    
+    // NO mostrar notificación - debe ser silencioso para no interrumpir
+}
+
+// Función para mostrar notificaciones de guardado
+// Proporciona feedback visual al usuario cuando el guardado automático es exitoso
+function mostrarNotificacionGuardado(mensaje, tipo) {
+    // Crear notificación sutil en la esquina superior derecha
+    const notificacion = document.createElement('div');
+    notificacion.className = `alert alert-${tipo} alert-dismissible fade show position-fixed`;
+    notificacion.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notificacion.innerHTML = `
+        <i class="bi bi-check-circle"></i> ${mensaje}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notificacion);
+    
+    // Auto-ocultar después de 3 segundos
+    setTimeout(() => {
+        if (notificacion.parentNode) {
+            notificacion.remove();
+        }
+    }, 3000);
 }
 
 // Función para obtener CSRF token
@@ -603,6 +860,42 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+// Función para configurar eventos del WebSocket
+function configurarEventosWebSocket() {
+    // Detectar cambios en las respuestas
+    document.addEventListener('change', function(event) {
+        if (event.target.type === 'radio' && event.target.name.startsWith('pregunta_')) {
+            // Enviar actualización de respuesta
+            const questionId = event.target.name.replace('pregunta_', '');
+            const selectedOption = event.target.value;
+            sendAnswerUpdate(questionId, selectedOption);
+            
+            // Enviar actualización de progreso
+            setTimeout(() => {
+                sendProgressUpdate();
+            }, 100);
+            
+            // Guardado automático inmediato al cambiar respuesta
+            setTimeout(() => {
+                guardarRespuestaAutomatica();
+            }, 200);
+        }
+    });
+    
+    // Detectar navegación entre preguntas
+    document.addEventListener('click', function(event) {
+        if (event.target.classList.contains('question-nav-btn')) {
+            const questionNum = event.target.getAttribute('data-question');
+            sendPageChange(parseInt(questionNum));
+            
+            // Guardado automático al cambiar de página
+            setTimeout(() => {
+                guardarRespuestaAutomatica();
+            }, 300);
+        }
+    });
 }
 </script>
 {% endblock %} 

@@ -11,7 +11,7 @@ from datetime import timedelta
 import random
 from django.core.management.base import BaseCommand
 
-from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes
+from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes, Participantes, ResultadoEvaluacion, SystemConfig
 
 class Command(BaseCommand):
     help = 'Crea una evaluación completa para la Etapa 1 con 60 preguntas de matemáticas'
@@ -19,19 +19,30 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write("🚀 Iniciando creación de evaluación para Etapa 1...")
         
+        # Obtener el año activo del sistema
+        anio_activo = SystemConfig.get_active_year()
+        self.stdout.write(f"📅 Año activo del sistema: {anio_activo}")
+        
+        # Verificar si ya existe una evaluación de etapa 1 para este año
+        evaluacion_existente = Evaluacion.objects.filter(etapa=1, anio=anio_activo).first()
+        if evaluacion_existente:
+            self.stdout.write(f"⚠️  Ya existe una evaluación de Etapa 1 para el año {anio_activo}: {evaluacion_existente.title}")
+            self.stdout.write("   Creando una nueva evaluación...")
+        
         # Configurar fechas para la evaluación
         ahora = timezone.now()
-        inicio = ahora + timedelta(hours=1)  # Inicia en 1 hora
+        inicio = ahora - timedelta(hours=2)  # Inició hace 2 horas (para simular evaluación activa)
         fin = ahora + timedelta(days=7)      # Termina en 7 días
         
         # Crear la evaluación
         evaluacion = Evaluacion.objects.create(
-            title="Evaluación Etapa 1 - Olimpiada de Matemáticas 2024",
+            title=f"Evaluación Etapa 1 - Olimpiada de Matemáticas {anio_activo}",
             etapa=1,
             start_time=inicio,
             end_time=fin,
             duration_minutes=120,  # 2 horas
-            preguntas_a_mostrar=30  # Mostrar 30 preguntas aleatorias de las 60
+            preguntas_a_mostrar=30,  # Mostrar 30 preguntas aleatorias de las 60
+            anio=anio_activo
         )
         
         self.stdout.write(f"✅ Evaluación creada: {evaluacion.title}")
@@ -40,11 +51,13 @@ class Command(BaseCommand):
         self.stdout.write(f"   - Duración: {evaluacion.duration_minutes} minutos")
         self.stdout.write(f"   - Preguntas a mostrar: {evaluacion.preguntas_a_mostrar}")
         
-        # Obtener todos los grupos para asignar a la evaluación
-        grupos = GrupoParticipantes.objects.all()
+        # Obtener todos los grupos del año activo para asignar a la evaluación
+        grupos = GrupoParticipantes.objects.filter(anio=anio_activo)
         if grupos.exists():
             evaluacion.grupos_participantes.set(grupos)
             self.stdout.write(f"✅ Asignados {grupos.count()} grupos a la evaluación")
+        else:
+            self.stdout.write("⚠️  No se encontraron grupos para asignar. Ejecuta primero el script 1_generar_participantes.py")
         
         # Generar todas las preguntas
         todas_preguntas = []
@@ -83,6 +96,10 @@ class Command(BaseCommand):
                 self.stdout.write(f"❌ Error al crear pregunta {i+1}: {e}")
                 continue
         
+        # Generar puntajes para los participantes
+        self.stdout.write(f"\n🎯 Generando puntajes para los participantes...")
+        puntajes_generados = self.generar_puntajes_participantes(evaluacion)
+        
         self.stdout.write(f"\n🎉 ¡Evaluación completada!")
         self.stdout.write(f"📊 Resumen:")
         self.stdout.write(f"   - Evaluación: {evaluacion.title}")
@@ -90,6 +107,7 @@ class Command(BaseCommand):
         self.stdout.write(f"   - Opciones por pregunta: 4")
         self.stdout.write(f"   - Total de opciones: {preguntas_creadas * 4}")
         self.stdout.write(f"   - Grupos asignados: {evaluacion.grupos_participantes.count()}")
+        self.stdout.write(f"   - Participantes con puntajes: {puntajes_generados}")
         
         # Mostrar distribución por categorías
         self.stdout.write(f"\n📋 Distribución de preguntas:")
@@ -104,6 +122,17 @@ class Command(BaseCommand):
         
         for categoria, cantidad in categorias.items():
             self.stdout.write(f"   - {categoria}: {cantidad} preguntas")
+        
+        # Mostrar ranking de mejores puntajes
+        mejores_resultados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            completada=True
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
+        
+        if mejores_resultados:
+            self.stdout.write(f"\n🏆 Top 5 mejores puntajes:")
+            for i, resultado in enumerate(mejores_resultados, 1):
+                self.stdout.write(f"   {i}. {resultado.participante.NombresCompletos}: {resultado.get_puntaje_numerico()} pts ({resultado.get_tiempo_formateado()})")
 
     def generar_preguntas_algebra(self):
         """Genera preguntas de álgebra"""
@@ -439,4 +468,74 @@ class Command(BaseCommand):
                 "correcta": 1
             }
         ]
-        return preguntas 
+        return preguntas
+
+    def generar_puntajes_participantes(self, evaluacion):
+        """Genera puntajes aleatorios para todos los participantes de la evaluación"""
+        participantes_autorizados = evaluacion.get_participantes_etapa1()
+        puntajes_generados = 0
+        
+        if not participantes_autorizados:
+            self.stdout.write("⚠️  No hay participantes autorizados para esta evaluación")
+            return 0
+        
+        self.stdout.write(f"📋 Encontrados {len(participantes_autorizados)} participantes autorizados")
+        
+        for participante in participantes_autorizados:
+            try:
+                # Verificar si ya tiene un resultado para esta evaluación
+                resultado_existente = ResultadoEvaluacion.objects.filter(
+                    evaluacion=evaluacion,
+                    participante=participante
+                ).first()
+                
+                if resultado_existente:
+                    self.stdout.write(f"⏭️  {participante.NombresCompletos} ya tiene puntaje asignado")
+                    continue
+                
+                # Generar puntaje aleatorio (simulando diferentes niveles de rendimiento)
+                # 20% excelente (8-10), 30% bueno (6-8), 30% regular (4-6), 20% bajo (0-4)
+                rand = random.random()
+                if rand < 0.2:  # 20% excelente
+                    puntos_obtenidos = round(random.uniform(8.0, 10.0), 3)
+                elif rand < 0.5:  # 30% bueno
+                    puntos_obtenidos = round(random.uniform(6.0, 8.0), 3)
+                elif rand < 0.8:  # 30% regular
+                    puntos_obtenidos = round(random.uniform(4.0, 6.0), 3)
+                else:  # 20% bajo
+                    puntos_obtenidos = round(random.uniform(0.0, 4.0), 3)
+                
+                # Calcular porcentaje
+                puntaje_porcentaje = (puntos_obtenidos / 10.0) * 100
+                
+                # Generar tiempo utilizado aleatorio (entre 60 y 120 minutos)
+                tiempo_utilizado = random.randint(60, 120)
+                
+                # Crear fechas simuladas
+                fecha_inicio_simulada = evaluacion.start_time + timedelta(minutes=random.randint(0, 60))
+                fecha_fin_simulada = fecha_inicio_simulada + timedelta(minutes=tiempo_utilizado)
+                
+                # Crear el resultado
+                resultado = ResultadoEvaluacion.objects.create(
+                    evaluacion=evaluacion,
+                    participante=participante,
+                    numero_intento=1,
+                    puntaje=round(puntaje_porcentaje, 2),
+                    puntos_obtenidos=puntos_obtenidos,
+                    puntos_totales=10,
+                    tiempo_utilizado=tiempo_utilizado,
+                    fecha_inicio=fecha_inicio_simulada,
+                    fecha_fin=fecha_fin_simulada,
+                    completada=True,
+                    es_mejor_intento=True,
+                    tiempo_restante=0
+                )
+                
+                puntajes_generados += 1
+                self.stdout.write(f"✅ Puntaje asignado a {participante.NombresCompletos}: {resultado.get_puntaje_numerico()} pts")
+                
+            except Exception as e:
+                self.stdout.write(f"❌ Error al asignar puntaje a {participante.NombresCompletos}: {e}")
+                continue
+        
+        return puntajes_generados 

@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.conf import settings
 from .email_utils import generate_email_messages
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion, IntentoEvaluacion, ResultadoEvaluacion
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -170,15 +170,20 @@ def take_quiz(request, pk):
         messages.error(request, 'No estás autorizado para rendir esta evaluación.')
         return redirect('quizzes:quiz')
     
-    # Verificar si ya completó la evaluación
+    # Verificar intentos disponibles usando el nuevo sistema
+    intento_participante = evaluacion.get_o_crear_intento_participante(participante)
+    
+    # Verificar si puede realizar más intentos
+    if not intento_participante.puede_realizar_intento():
+        messages.warning(request, f'Has agotado todos tus intentos para esta evaluación ({intento_participante.intentos_utilizados}/{intento_participante.intentos_permitidos}).')
+        return redirect('quizzes:quiz')
+    
+    # Buscar si hay un intento en progreso (no completado)
     resultado_existente = ResultadoEvaluacion.objects.filter(
         evaluacion=evaluacion,
-        participante=participante
-    ).first()
-    
-    if resultado_existente and resultado_existente.completada:
-        messages.warning(request, 'Ya has completado esta evaluación.')
-        return redirect('quizzes:quiz')
+        participante=participante,
+        completada=False
+    ).order_by('-numero_intento').first()
     
     # Verificar si la evaluación fue finalizada administrativamente
     monitoreo_existente = MonitoreoEvaluacion.objects.filter(
@@ -332,42 +337,37 @@ def take_quiz(request, pk):
             resultado_existente.respuestas_guardadas = respuestas_finales
             resultado_existente.tiempo_restante = 0
             resultado_existente.save()
+            
+            # Registrar que se usó un intento
+            intento_participante.registrar_nuevo_intento()
+            resultado_final = resultado_existente
         else:
-            try:
-                nuevo_resultado = ResultadoEvaluacion.objects.create(
-                    evaluacion=evaluacion,
-                    participante=participante,
-                    puntaje=percentage,
-                    puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
-                    puntos_totales=10,  # Puntos totales siempre son 10
-                    tiempo_utilizado=tiempo_utilizado // 60,
-                    fecha_fin=timezone.now(),
-                    completada=True,
-                    respuestas_guardadas=respuestas_finales,
-                    tiempo_restante=0
-                )
-            except IntegrityError:
-                # Si ya existe un resultado, actualizarlo
-                nuevo_resultado = ResultadoEvaluacion.objects.get(
-                    evaluacion=evaluacion,
-                    participante=participante
-                )
-                nuevo_resultado.puntaje = percentage
-                nuevo_resultado.puntos_obtenidos = puntaje_ponderado
-                nuevo_resultado.puntos_totales = 10
-                nuevo_resultado.tiempo_utilizado = tiempo_utilizado // 60
-                nuevo_resultado.fecha_fin = timezone.now()
-                nuevo_resultado.completada = True
-                nuevo_resultado.respuestas_guardadas = respuestas_finales
-                nuevo_resultado.tiempo_restante = 0
-                nuevo_resultado.save()
+            # Crear nuevo resultado con el número de intento apropiado
+            numero_intento = evaluacion.obtener_siguiente_numero_intento(participante)
+            resultado_final = ResultadoEvaluacion.objects.create(
+                evaluacion=evaluacion,
+                participante=participante,
+                numero_intento=numero_intento,
+                puntaje=percentage,
+                puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
+                puntos_totales=10,  # Puntos totales siempre son 10
+                tiempo_utilizado=tiempo_utilizado // 60,
+                fecha_fin=timezone.now(),
+                completada=True,
+                respuestas_guardadas=respuestas_finales,
+                tiempo_restante=0
+            )
+            
+            # Registrar que se usó un intento
+            intento_participante.registrar_nuevo_intento()
         
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
-            'resultado': resultado_existente if resultado_existente else nuevo_resultado,
+            'resultado': resultado_final,
             'score': score,
             'total_questions': total_questions,
-            'percentage': percentage
+            'percentage': percentage,
+            'intento_info': intento_participante
         })
     
     # Obtener preguntas para este estudiante específico
@@ -380,31 +380,25 @@ def take_quiz(request, pk):
     # Si no hay intento en progreso, crear uno nuevo
     if not continuar_evaluacion:
         tiempo_total = evaluacion.duration_minutes * 60  # en segundos
-        try:
-            resultado_existente = ResultadoEvaluacion.objects.create(
-                evaluacion=evaluacion,
-                participante=participante,
-                fecha_inicio=timezone.now(),
-                tiempo_restante=tiempo_total
-            )
-        except IntegrityError:
-            # Si ya existe un resultado para esta evaluación y participante
-            resultado_existente = ResultadoEvaluacion.objects.get(
-                evaluacion=evaluacion,
-                participante=participante
-            )
-            # Si el resultado existente no tiene tiempo_restante, asignarle el tiempo total
-            if not resultado_existente.tiempo_restante:
-                resultado_existente.tiempo_restante = tiempo_total
-                resultado_existente.save()
-            messages.warning(request, 'Ya tienes un intento en progreso para esta evaluación.')
+        numero_intento = evaluacion.obtener_siguiente_numero_intento(participante)
+        
+        resultado_existente = ResultadoEvaluacion.objects.create(
+            evaluacion=evaluacion,
+            participante=participante,
+            numero_intento=numero_intento,
+            fecha_inicio=timezone.now(),
+            tiempo_restante=tiempo_total
+        )
     
     context = {
         'evaluacion': evaluacion,
         'preguntas': preguntas_mostradas,
         'resultado': resultado_existente,
         'tiempo_total': evaluacion.duration_minutes * 60,  # en segundos
-        'continuar_evaluacion': continuar_evaluacion
+        'continuar_evaluacion': continuar_evaluacion,
+        'intento_info': intento_participante,
+        'numero_intento_actual': resultado_existente.numero_intento if resultado_existente else 1,
+        'participante': participante  # Agregar participante al contexto
     }
     
     return render(request, 'quizzes/take_quiz.html', context)
@@ -1556,30 +1550,45 @@ def student_quizs(request):
     for evaluacion in todas_evaluaciones:
         participantes_autorizados = evaluacion.get_participantes_autorizados()
         if participante in participantes_autorizados:
-            # Verificar si hay un intento en progreso con tiempo restante
-            resultado = evaluacion.resultados.filter(participante=participante).first()
+            # Verificar información de intentos usando el nuevo sistema
+            intento_participante = evaluacion.get_o_crear_intento_participante(participante)
+            
+            # Buscar si hay un intento en progreso (no completado)
+            resultado_en_progreso = evaluacion.resultados.filter(
+                participante=participante, 
+                completada=False
+            ).order_by('-numero_intento').first()
+            
+            # Obtener el mejor resultado completado para mostrar información
+            mejor_resultado = ResultadoEvaluacion.get_mejor_resultado_participante(evaluacion, participante)
+            
             puede_continuar = False
             puede_iniciar = False
             
-            if resultado and not resultado.completada:
-                # Calcular tiempo transcurrido desde el inicio
-                tiempo_transcurrido = (timezone.now() - resultado.fecha_inicio).total_seconds()
+            if resultado_en_progreso:
+                # Hay un intento en progreso, verificar si aún tiene tiempo
+                tiempo_transcurrido = (timezone.now() - resultado_en_progreso.fecha_inicio).total_seconds()
                 tiempo_total = evaluacion.duration_minutes * 60  # en segundos
                 tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
                 
-                # Si aún hay tiempo restante, puede continuar (sin importar la ventana de acceso)
+                # Si aún hay tiempo restante, puede continuar
                 if tiempo_restante > 0:
                     puede_continuar = True
-            elif not resultado:
-                # Si no hay intento previo, verificar ventana de acceso para nuevos ingresos
+            
+            # Verificar si puede iniciar un nuevo intento
+            if not resultado_en_progreso and intento_participante.puede_realizar_intento():
+                # Puede iniciar si está dentro de la ventana de acceso
                 if evaluacion.is_available():
                     puede_iniciar = True
             
             evaluaciones_autorizadas.append({
                 'evaluacion': evaluacion,
-                'resultado': resultado,
+                'resultado': mejor_resultado,  # Usar el mejor resultado para mostrar información
+                'resultado_en_progreso': resultado_en_progreso,  # Para información de continuación
                 'puede_continuar': puede_continuar,
-                'puede_iniciar': puede_iniciar
+                'puede_iniciar': puede_iniciar,
+                'intento_info': intento_participante,  # Información de intentos
+                'numero_intento_actual': (intento_participante.intentos_utilizados + 1) if puede_iniciar else None
             })
     
     context = {
@@ -3526,6 +3535,9 @@ def obtener_estado_monitoreo(request, pk):
             monitoreo.estado = 'activo'
             monitoreo.save()
         
+        # Obtener información de intentos
+        intento_participante = evaluacion.get_o_crear_intento_participante(participante)
+        
         # Agregar datos del monitoreo
         datos_monitoreo.append({
             'id': monitoreo.id,
@@ -3547,7 +3559,12 @@ def obtener_estado_monitoreo(request, pk):
             ],
             'tiene_resultado_completado': resultado is not None,
             'puntaje': resultado.puntaje if resultado else None,
-            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None
+            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None,
+            # Información de intentos
+            'intentos_permitidos': intento_participante.intentos_permitidos,
+            'intentos_utilizados': intento_participante.intentos_utilizados,
+            'puede_realizar_intento': intento_participante.puede_realizar_intento(),
+            'numero_intento_actual': resultado.numero_intento if resultado else (intento_participante.intentos_utilizados + 1)
         })
     
     return JsonResponse({
@@ -3860,3 +3877,136 @@ def settings_view(request):
         'now': timezone.now(),
     }
     return render(request, 'quizzes/settings.html', context)
+
+
+def custom_404_view(request, exception=None, path=None):
+    """Vista personalizada para errores 404"""
+    from django.conf import settings
+    from django.http import Http404
+    
+    # Si está deshabilitado, usar comportamiento estándar de Django
+    if not getattr(settings, 'ENABLE_CUSTOM_ERROR_PAGES', True):
+        raise Http404("Página no encontrada")
+    
+    # Si viene de una URL catch-all, path será el parámetro
+    # Si viene del handler404, exception será el parámetro
+    requested_url = path if path else request.path
+    
+    context = {
+        'error_message': 'La página que buscas no existe',
+        'error_code': '404',
+        'error_description': 'El endpoint o URL solicitado no fue encontrado en nuestro servidor.',
+        'requested_url': requested_url,
+        'suggested_actions': [
+            'Verifica que la URL esté escrita correctamente',
+            'Regresa a la página principal',
+            'Contacta al administrador si crees que esto es un error'
+        ]
+    }
+    return render(request, 'errors/404.html', context, status=404)
+
+@csrf_exempt
+@login_required
+def gestionar_intentos_participante(request, evaluacion_pk):
+    """
+    Vista para gestionar los intentos de participantes específicos en una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=evaluacion_pk)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({
+            'success': False, 
+            'error': 'No tienes permisos para acceder a esta funcionalidad.'
+        }, status=403)
+    
+    if request.method == 'GET':
+        # Obtener participantes autorizados para esta evaluación
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        
+        participantes_data = []
+        for participante in participantes_autorizados:
+            intento = evaluacion.get_o_crear_intento_participante(participante)
+            mejor_resultado = ResultadoEvaluacion.get_mejor_resultado_participante(evaluacion, participante)
+            
+            participantes_data.append({
+                'id': participante.id,
+                'nombre': participante.NombresCompletos,
+                'cedula': participante.cedula,
+                'intentos_permitidos': intento.intentos_permitidos,
+                'intentos_utilizados': intento.intentos_utilizados,
+                'puede_realizar_intento': intento.puede_realizar_intento(),
+                'mejor_puntuacion': mejor_resultado.get_puntaje_numerico() if mejor_resultado else 'Sin intentos',
+                'fecha_modificacion': intento.fecha_modificacion.strftime('%Y-%m-%d %H:%M:%S'),
+                'modificado_por': intento.modificado_por.username if intento.modificado_por else 'Sistema'
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'evaluacion': {
+                'id': evaluacion.id,
+                'title': evaluacion.title,
+                'etapa': evaluacion.etapa,
+                'intentos_default': evaluacion.intentos_permitidos_default
+            },
+            'participantes': participantes_data
+        })
+    
+    elif request.method == 'POST':
+        try:
+            import json
+            data = json.loads(request.body.decode('utf-8'))
+            participante_id = data.get('participante_id')
+            nuevos_intentos = data.get('nuevos_intentos')
+            
+            if not participante_id or not nuevos_intentos:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Datos incompletos. Se requiere participante_id y nuevos_intentos.'
+                })
+            
+            if nuevos_intentos < 1:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'El número de intentos debe ser mayor a 0.'
+                })
+            
+            participante = get_object_or_404(Participantes, pk=participante_id)
+            
+            # Verificar que el participante esté autorizado para esta evaluación
+            participantes_autorizados = evaluacion.get_participantes_autorizados()
+            if participante not in participantes_autorizados:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'El participante no está autorizado para esta evaluación.'
+                })
+            
+            # Actualizar los intentos
+            intento = evaluacion.incrementar_intentos_participante(
+                participante, 
+                nuevos_intentos, 
+                request.user
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Intentos actualizados correctamente para {participante.NombresCompletos}',
+                'intento': {
+                    'intentos_permitidos': intento.intentos_permitidos,
+                    'intentos_utilizados': intento.intentos_utilizados,
+                    'puede_realizar_intento': intento.puede_realizar_intento()
+                }
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Datos JSON inválidos.'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Error al actualizar intentos: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
