@@ -26,7 +26,6 @@
                                     <small>Última actualización:</small><br>
                                     <span id="last-update">Cargando...</span>
                                 </div>
-                                <!-- Auto-refresh eliminado - ya no es necesario -->
                             </div>
                         </div>
                     </div>
@@ -89,9 +88,8 @@
                                     <th>Participante</th>
                                     <th>Estado</th>
                                     <th>Intentos</th>
-                                    <th>Página</th>
-                                                                         <th>Progreso/Puntaje</th>
-                                     <th>Alertas</th>
+                                    <th>Progreso/Puntaje</th>
+                                    <th>Alertas</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -261,6 +259,11 @@
     </div>
 </div>
 
+<!-- Contenedor para notificaciones toast -->
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+    <!-- Los toasts se crearán dinámicamente aquí -->
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -288,17 +291,27 @@ function formatTime(seconds) {
 }
 
 // Función para obtener el color del estado
-function getEstadoColor(estaActivo, estado) {
-    if (estado === 'finalizado') return 'secondary';
+function getEstadoColor(estaActivo, estado, finalizadoPorAdmin = false) {
+    console.log('getEstadoColor:', { estaActivo, estado, finalizadoPorAdmin });
+    
+    if (estado === 'finalizado') {
+        return finalizadoPorAdmin ? 'danger' : 'secondary';
+    }
     if (estado === 'suspendido') return 'danger';
-    return estaActivo ? 'success' : 'warning';
+    if (estado === 'activo') return 'success';
+    return 'warning';
 }
 
 // Función para obtener el texto del estado
-function getEstadoText(estaActivo, estado) {
-    if (estado === 'finalizado') return 'Finalizado';
+function getEstadoText(estaActivo, estado, finalizadoPorAdmin = false) {
+    console.log('getEstadoText:', { estaActivo, estado, finalizadoPorAdmin });
+    
+    if (estado === 'finalizado') {
+        return finalizadoPorAdmin ? 'Finalizado por Admin' : 'Finalizado';
+    }
     if (estado === 'suspendido') return 'Suspendido';
-    return estaActivo ? 'Activo' : 'Inactivo';
+    if (estado === 'activo') return 'Activo';
+    return 'Inactivo';
 }
 
 // Función para conectar WebSocket
@@ -322,17 +335,33 @@ function connectWebSocket() {
     
     monitoreoSocket.onmessage = function(event) {
         const data = JSON.parse(event.data);
+        console.log('WebSocket recibió mensaje:', data);
         
         switch (data.type) {
             case 'initial_data':
             case 'monitoring_update':
+                console.log('Manejando initial_data o monitoring_update');
                 updateMonitoringTable(data.data);
                 updateLastUpdate();
                 break;
             case 'participant_update':
+                console.log('Manejando participant_update');
                 handleParticipantUpdate(data);
                 break;
+            case 'intentos_updated':
+                console.log('Manejando intentos_updated');
+                handleIntentosUpdated(data);
+                break;
+            case 'evaluacion_finalizada_admin':
+                console.log('Manejando evaluacion_finalizada_admin');
+                handleEvaluacionFinalizadaAdmin(data);
+                break;
+            case 'request_update':
+                console.log('Manejando request_update, solicitando actualización manual');
+                requestManualUpdate();
+                break;
             case 'success':
+                console.log('Manejando success');
                 showDynamicToast({
                     type: 'success',
                     title: 'Éxito',
@@ -340,13 +369,30 @@ function connectWebSocket() {
                 });
                 break;
             case 'error':
+                console.log('Manejando error');
                 showDynamicToast({
                     type: 'danger',
                     title: 'Error',
                     message: data.message
                 });
                 break;
+            default:
+                console.log('Tipo de mensaje no manejado:', data.type);
+                break;
         }
+    };
+    
+    monitoreoSocket.onerror = function(error) {
+        console.error('Error en WebSocket de monitoreo:', error);
+        connectionStatus = 'error';
+        updateConnectionStatus(false);
+        
+        // Mostrar mensaje de error al usuario
+        showDynamicToast({
+            type: 'danger',
+            title: 'Error de Conexión',
+            message: 'Se perdió la conexión en tiempo real. Intentando reconectar...'
+        });
     };
     
     monitoreoSocket.onclose = function(event) {
@@ -354,19 +400,21 @@ function connectWebSocket() {
         connectionStatus = 'disconnected';
         updateConnectionStatus(false);
         
-        // Intentar reconectar cada 5 segundos
+        // Limpiar intervalo de reconexión si existe
+        if (reconnectInterval) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+        }
+        
+        // Programar reconexión automática
         if (!reconnectInterval) {
             reconnectInterval = setInterval(() => {
-                console.log('Intentando reconectar WebSocket...');
-                connectWebSocket();
-            }, 5000);
+                if (connectionStatus === 'disconnected') {
+                    console.log('Intentando reconectar WebSocket...');
+                    connectWebSocket();
+                }
+            }, 5000); // Intentar reconectar cada 5 segundos
         }
-    };
-    
-    monitoreoSocket.onerror = function(error) {
-        console.error('Error en WebSocket:', error);
-        connectionStatus = 'error';
-        updateConnectionStatus(false);
     };
 }
 
@@ -393,8 +441,30 @@ function updateLastUpdate() {
     }
 }
 
+// Función para actualizar estadísticas
+function updateStatistics(stats) {
+    // Actualizar tarjetas de estadísticas si existen elementos en el DOM
+    const activosElement = document.querySelector('.card.bg-success .card-body h3');
+    const pendientesElement = document.querySelector('.card.bg-warning .card-body h3');
+    const finalizadosElement = document.querySelector('.card.bg-secondary .card-body h3');
+    const totalElement = document.querySelector('.card.bg-info .card-body h3');
+    
+    if (activosElement) activosElement.textContent = stats.participantes_activos;
+    if (pendientesElement) pendientesElement.textContent = stats.participantes_pendientes;
+    if (finalizadosElement) finalizadosElement.textContent = stats.participantes_finalizados;
+    if (totalElement) totalElement.textContent = stats.total_participantes;
+}
+
 // Función para actualizar la tabla de monitoreo
 function updateMonitoringTable(data) {
+    console.log('updateMonitoringTable recibió:', data);
+    
+    if (!data) {
+        console.log('Data es null, solicitando actualización manual');
+        requestManualUpdate();
+        return;
+    }
+    
     if (data.error) {
         showDynamicToast({
             type: 'danger',
@@ -412,80 +482,126 @@ function updateMonitoringTable(data) {
     // Actualizar tabla
     if (data.monitoreos) {
         const tbody = document.getElementById('tbody-monitoreo');
-        tbody.innerHTML = '';
-        
-        data.monitoreos.forEach(monitoreo => {
-            const row = createMonitoringRow(monitoreo);
-            tbody.appendChild(row);
-        });
+        if (tbody) {
+            tbody.innerHTML = '';
+            
+            data.monitoreos.forEach(monitoreo => {
+                const row = createMonitoringRow(monitoreo);
+                tbody.appendChild(row);
+            });
+        } else {
+            console.error('Elemento tbody-monitoreo no encontrado');
+        }
     }
     
     // Actualizar timestamp
     if (data.timestamp) {
-        const updateTime = new Date(data.timestamp).toLocaleTimeString();
-        document.getElementById('last-update').innerHTML = 
-            `<span class="text-success"><i class="bi bi-wifi"></i> ${updateTime}</span>`;
+        const lastUpdateElement = document.getElementById('last-update');
+        if (lastUpdateElement) {
+            const updateTime = new Date(data.timestamp).toLocaleTimeString();
+            lastUpdateElement.innerHTML = 
+                `<span class="text-success"><i class="bi bi-wifi"></i> ${updateTime}</span>`;
+        }
     }
-}
-
-// Función para actualizar estadísticas
-function updateStatistics(stats) {
-    // Actualizar tarjetas de estadísticas si existen elementos en el DOM
-    const activosElement = document.querySelector('.card.bg-success .card-body h3');
-    const pendientesElement = document.querySelector('.card.bg-warning .card-body h3');
-    const finalizadosElement = document.querySelector('.card.bg-secondary .card-body h3');
-    const totalElement = document.querySelector('.card.bg-info .card-body h3');
-    
-    if (activosElement) activosElement.textContent = stats.participantes_activos;
-    if (pendientesElement) pendientesElement.textContent = stats.participantes_pendientes;
-    if (finalizadosElement) finalizadosElement.textContent = stats.participantes_finalizados;
-    if (totalElement) totalElement.textContent = stats.total_participantes;
 }
 
 // Función para crear una fila de monitoreo
 function createMonitoringRow(monitoreo) {
     const row = document.createElement('tr');
     
+    // Determinar si fue finalizada por administrador
+    const finalizadoPorAdmin = monitoreo.estado === 'finalizado' && monitoreo.finalizado_por_admin;
+    
     // Determinar el contenido de la columna de progreso/puntaje
     let progresoPuntajeContent = '';
-    if (monitoreo.estado === 'finalizado' && monitoreo.tiene_resultado_completado) {
-        // Mostrar puntaje para evaluaciones finalizadas
-        const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
-                            monitoreo.puntaje >= 5 ? 'warning' : 'danger';
+    
+    if (monitoreo.estado === 'finalizado') {
+        if (finalizadoPorAdmin) {
+            // Evaluación finalizada por administrador - mostrar nota 0
+            progresoPuntajeContent = `
+                <div class="text-center">
+                    <strong class="text-danger">0.000/10</strong><br>
+                    <small class="text-muted">0.0%</small><br>
+                    <span class="badge bg-danger">Finalizada por Admin</span>
+                </div>
+            `;
+        } else if (monitoreo.tiene_resultado_completado) {
+            // Evaluación completada normalmente - mostrar puntaje real
+            const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
+                                monitoreo.puntaje >= 5 ? 'warning' : 'danger';
+            progresoPuntajeContent = `
+                <div class="text-center">
+                    <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
+                    <small class="text-muted">${monitoreo.puntaje.toFixed(1)}%</small>
+                </div>
+            `;
+        } else {
+            // Evaluación finalizada sin resultado - mostrar mensaje
+            progresoPuntajeContent = `
+                <div class="text-center">
+                    <span class="badge bg-secondary">Sin resultado</span>
+                </div>
+            `;
+        }
+    } else if (monitoreo.estado === 'activo' && !monitoreo.tiene_resultado_completado) {
+        // Mostrar progreso solo para evaluaciones activas que no están completadas
+        console.log('Datos de progreso:', {
+            estado: monitoreo.estado,
+            tiene_resultado: monitoreo.tiene_resultado_completado,
+            porcentaje_avance: monitoreo.porcentaje_avance,
+            preguntas_respondidas: monitoreo.preguntas_respondidas,
+            preguntas_revisadas: monitoreo.preguntas_revisadas
+        });
+        
+        const porcentaje = Math.max(0, Math.min(100, monitoreo.porcentaje_avance || 0));
         progresoPuntajeContent = `
-            <div class="text-center">
-                <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
-                <small class="text-muted">${monitoreo.puntaje.toFixed(1)}%</small>
-            </div>
-        `;
-    } else {
-        // Mostrar progreso para evaluaciones activas
-        const porcentaje = Math.max(0, Math.min(100, monitoreo.porcentaje_avance));
-        progresoPuntajeContent = `
-            <div class="progress" style="height: 20px;">
-                <div class="progress-bar" role="progressbar" 
+            <div class="progress" style="height: 25px;">
+                <div class="progress-bar bg-primary" role="progressbar" 
                      style="width: ${porcentaje}%" 
                      aria-valuenow="${porcentaje}" 
                      aria-valuemin="0" aria-valuemax="100">
                     ${porcentaje.toFixed(1)}%
                 </div>
             </div>
-            <small class="text-muted">
-                ${monitoreo.preguntas_respondidas} respondidas / ${monitoreo.preguntas_revisadas} revisadas
+            <small class="text-muted mt-1 d-block">
+                ${monitoreo.preguntas_respondidas || 0} respondidas / ${monitoreo.preguntas_revisadas || 0} revisadas
             </small>
+        `;
+    } else if (monitoreo.estado === 'activo' && monitoreo.tiene_resultado_completado) {
+        // Participante activo con resultado completado (puede tener nuevo intento)
+        progresoPuntajeContent = `
+            <div class="text-center">
+                <span class="badge bg-info">Nuevo Intento Disponible</span><br>
+                <small class="text-muted">Puede realizar evaluación adicional</small>
+            </div>
+        `;
+    } else {
+        // Para otros casos mostrar mensaje apropiado
+        progresoPuntajeContent = `
+            <div class="text-center">
+                <span class="badge bg-secondary">No disponible</span>
+            </div>
         `;
     }
     
     // Determinar el color y contenido de la columna de intentos
+    console.log('Datos de intentos:', {
+        puede_realizar_intento: monitoreo.puede_realizar_intento,
+        intentos_utilizados: monitoreo.intentos_utilizados,
+        intentos_permitidos: monitoreo.intentos_permitidos,
+        estado: monitoreo.estado,
+        numero_intento_actual: monitoreo.numero_intento_actual
+    });
+    
     let intentosContent = '';
     const intentosColor = monitoreo.puede_realizar_intento ? 'success' : 'danger';
     const intentosText = monitoreo.puede_realizar_intento ? 'Disponibles' : 'Agotados';
     
     intentosContent = `
         <div class="text-center">
-            <span class="badge bg-${intentosColor}">${monitoreo.intentos_utilizados}/${monitoreo.intentos_permitidos}</span><br>
+            <span class="badge bg-${intentosColor} fs-6">${monitoreo.intentos_utilizados}/${monitoreo.intentos_permitidos}</span><br>
             <small class="text-muted">${intentosText}</small>
-                         ${monitoreo.estado !== 'finalizado' ? `<br><small class="text-info">Intento ${monitoreo.numero_intento_actual}</small>` : ''}
+            ${monitoreo.estado !== 'finalizado' ? `<br><small class="text-info">Intento ${monitoreo.numero_intento_actual}</small>` : ''}
         </div>
     `;
 
@@ -498,12 +614,11 @@ function createMonitoringRow(monitoreo) {
             <small class="text-muted">${monitoreo.participante_cedula}</small>
         </td>
         <td class="estado-cell">
-            <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado)}">
-                ${getEstadoText(monitoreo.esta_activo, monitoreo.estado)}
+            <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado, finalizadoPorAdmin)}">
+                ${getEstadoText(monitoreo.esta_activo, monitoreo.estado, finalizadoPorAdmin)}
             </span>
         </td>
         <td>${intentosContent}</td>
-        <td class="pagina-cell">${monitoreo.estado === 'finalizado' ? '-' : monitoreo.pagina_actual}</td>
         <td class="progreso-cell">${progresoPuntajeContent}</td>
         <td>
             ${monitoreo.alertas_count > 0 ? 
@@ -542,32 +657,16 @@ function createMonitoringRow(monitoreo) {
     return row;
 }
 
-// Función para manejar actualizaciones específicas de participantes
-function handleParticipantUpdate(data) {
-    const participantId = data.participante_id || data.participant_id;
-    const participantData = data.data;
-    const eventType = data.event_type || 'update';
-    
-    console.log('Actualización de participante:', data);
-    
-    // Buscar la fila del participante en la tabla
-    const row = document.querySelector(`tr[data-participante-id="${participantId}"]`);
+// Funciones auxiliares para eliminar duplicación
+function findParticipantRow(participantId) {
+    return document.querySelector(`tr[data-participante-id="${participantId}"]`);
+}
+
+function updateRowAndHighlight(row, success = true) {
     if (row) {
-        // Actualizar la fila con los nuevos datos
-        updateParticipantRow(row, participantData);
-        
-        // Si es finalización de evaluación, nuevo intento o cambio de estado, actualizar el estado completo
-        if (eventType === 'evaluation_completed' || eventType === 'new_attempt' || eventType === 'auto_save') {
-            // Forzar actualización completa del estado para cambios importantes
-            if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
-                monitoreoSocket.send(JSON.stringify({
-                    type: 'request_update'
-                }));
-            }
-        }
-        
         // Destacar la fila temporalmente para mostrar que se actualizó
         highlightRow(row);
+        return true;
     } else {
         // Si no se encuentra la fila, solicitar actualización completa
         if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
@@ -575,7 +674,252 @@ function handleParticipantUpdate(data) {
                 type: 'request_update'
             }));
         }
+        return false;
     }
+}
+
+// Función para solicitar actualización manual del estado
+function requestManualUpdate() {
+    console.log('Solicitando actualización manual del estado...');
+    
+    // Enviar mensaje al WebSocket para solicitar actualización
+    if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+        monitoreoSocket.send(JSON.stringify({
+            type: 'request_update',
+            evaluacion_id: evaluacionId,
+            timestamp: new Date().toISOString()
+        }));
+    } else {
+        // Si el WebSocket no está disponible, hacer petición HTTP
+        fetch(`/quizzes/evaluacion/${evaluacionId}/estado-monitoreo/`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Actualización manual recibida:', data);
+            updateMonitoringTable(data);
+        })
+        .catch(error => {
+            console.error('Error en actualización manual:', error);
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'No se pudo actualizar el estado. Revisa la conexión.'
+            });
+        });
+    }
+}
+
+// Función para obtener cookies
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Función para manejar actualizaciones de participantes individuales
+function handleParticipantUpdate(data) {
+    console.log('handleParticipantUpdate recibió:', data);
+    
+    if (!data || !data.participante_id) {
+        console.error('Datos incompletos en handleParticipantUpdate');
+        return;
+    }
+    
+    const row = document.querySelector(`tr[data-participante-id="${data.participante_id}"]`);
+    if (!row) {
+        console.log(`Fila para participante ${data.participante_id} no encontrada, solicitando actualización completa`);
+        requestManualUpdate();
+        return;
+    }
+    
+    // Actualizar estado
+    if (data.estado !== undefined) {
+        const estadoCell = row.querySelector('.estado-cell');
+        if (estadoCell) {
+            const finalizadoPorAdmin = data.estado === 'finalizado' && data.finalizado_por_admin;
+            estadoCell.innerHTML = `
+                <span class="badge bg-${getEstadoColor(data.esta_activo, data.estado, finalizadoPorAdmin)}">
+                    ${getEstadoText(data.esta_activo, data.estado, finalizadoPorAdmin)}
+                </span>
+            `;
+        }
+    }
+    
+    // Actualizar progreso
+    if (data.porcentaje_avance !== undefined || data.estado !== undefined || data.tiene_resultado_completado !== undefined) {
+        const progresoCell = row.querySelector('.progreso-cell');
+        if (progresoCell) {
+            let progresoPuntajeContent = '';
+            
+            if (data.estado === 'finalizado') {
+                if (data.finalizado_por_admin) {
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <strong class="text-danger">0.000/10</strong><br>
+                            <small class="text-muted">0.0%</small><br>
+                            <span class="badge bg-danger">Finalizada por Admin</span>
+                        </div>
+                    `;
+                } else if (data.tiene_resultado_completado) {
+                    const puntajeColor = data.puntaje >= 7 ? 'success' : 
+                                        data.puntaje >= 5 ? 'warning' : 'danger';
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <strong class="text-${puntajeColor}">${data.puntaje_numerico}</strong><br>
+                            <small class="text-muted">${data.puntaje.toFixed(1)}%</small>
+                        </div>
+                    `;
+                } else {
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <span class="badge bg-secondary">Sin resultado</span>
+                        </div>
+                    `;
+                }
+            } else if (data.estado === 'activo' && !data.tiene_resultado_completado) {
+                const porcentaje = Math.max(0, Math.min(100, data.porcentaje_avance || 0));
+                progresoPuntajeContent = `
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar bg-primary" role="progressbar" 
+                             style="width: ${porcentaje}%" 
+                             aria-valuenow="${porcentaje}" 
+                             aria-valuemin="0" aria-valuemax="100">
+                            ${porcentaje.toFixed(1)}%
+                        </div>
+                    </div>
+                    <small class="text-muted mt-1 d-block">
+                        ${data.preguntas_respondidas || 0} respondidas / ${data.preguntas_revisadas || 0} revisadas
+                    </small>
+                `;
+            } else if (data.estado === 'activo' && data.tiene_resultado_completado) {
+                // Participante activo con resultado completado (puede tener nuevo intento)
+                progresoPuntajeContent = `
+                    <div class="text-center">
+                        <span class="badge bg-info">Nuevo Intento Disponible</span><br>
+                        <small class="text-muted">Puede realizar evaluación adicional</small>
+                    </div>
+                `;
+            } else {
+                progresoPuntajeContent = `
+                    <div class="text-center">
+                        <span class="badge bg-secondary">No disponible</span>
+                    </div>
+                `;
+            }
+            
+            progresoCell.innerHTML = progresoPuntajeContent;
+        }
+    }
+    
+    // Actualizar timestamp
+    updateLastUpdate();
+}
+
+// Función para manejar actualización de intentos
+function handleIntentosUpdated(data) {
+    console.log('handleIntentosUpdated recibió:', data);
+    
+    if (!data || !data.participante_id) {
+        console.error('Datos incompletos en handleIntentosUpdated');
+        return;
+    }
+    
+    // Buscar la fila del participante
+    const row = document.querySelector(`tr[data-participante-id="${data.participante_id}"]`);
+    if (!row) {
+        console.log(`Fila para participante ${data.participante_id} no encontrada`);
+        return;
+    }
+    
+    // Actualizar la columna de intentos
+    const intentosCell = row.querySelector('td:nth-child(3)');
+    if (intentosCell) {
+        const intentosColor = data.puede_realizar_intento ? 'success' : 'danger';
+        const intentosText = data.puede_realizar_intento ? 'Disponibles' : 'Agotados';
+        
+        intentosCell.innerHTML = `
+            <div class="text-center">
+                <span class="badge bg-${intentosColor} fs-6">${data.intentos_utilizados}/${data.intentos_permitidos}</span><br>
+                <small class="text-muted">${intentosText}</small>
+                ${data.estado !== 'finalizado' ? `<br><small class="text-info">Intento ${data.numero_intento_actual}</small>` : ''}
+            </div>
+        `;
+    }
+    
+    // Si el participante ahora puede realizar un nuevo intento, actualizar el estado
+    if (data.puede_realizar_intento && data.estado === 'finalizado') {
+        // Solicitar actualización completa del estado
+        setTimeout(() => {
+            requestManualUpdate();
+        }, 500);
+    }
+    
+    // Mostrar notificación
+    showDynamicToast({
+        type: 'success',
+        title: 'Intentos Actualizados',
+        message: `Los intentos del participante han sido actualizados correctamente.`
+    });
+}
+
+// Función para manejar finalización administrativa
+function handleEvaluacionFinalizadaAdmin(data) {
+    console.log('handleEvaluacionFinalizadaAdmin recibió:', data);
+    
+    if (!data || !data.participante_id) {
+        console.error('Datos incompletos en handleEvaluacionFinalizadaAdmin');
+        return;
+    }
+    
+    // Buscar la fila del participante
+    const row = document.querySelector(`tr[data-participante-id="${data.participante_id}"]`);
+    if (!row) {
+        console.log(`Fila para participante ${data.participante_id} no encontrada`);
+        return;
+    }
+    
+    // Actualizar estado
+    const estadoCell = row.querySelector('.estado-cell');
+    if (estadoCell) {
+        estadoCell.innerHTML = `
+            <span class="badge bg-danger">
+                Finalizado por Admin
+            </span>
+        `;
+    }
+    
+    // Actualizar progreso
+    const progresoCell = row.querySelector('.progreso-cell');
+    if (progresoCell) {
+        progresoCell.innerHTML = `
+            <div class="text-center">
+                <strong class="text-danger">0.000/10</strong><br>
+                <small class="text-muted">0.0%</small><br>
+                <span class="badge bg-danger">Finalizada por Admin</span>
+            </div>
+        `;
+    }
+    
+    // Mostrar notificación
+    showDynamicToast({
+        type: 'warning',
+        title: 'Evaluación Finalizada',
+        message: `La evaluación del participante ha sido finalizada administrativamente.`
+    });
 }
 
 // Función para destacar una fila temporalmente
@@ -592,54 +936,129 @@ function updateParticipantRow(row, data) {
         // Solo actualizar campos que realmente cambiaron para evitar parpadeos
         
         // Actualizar progreso solo si es necesario
-        if (data.porcentaje_avance !== undefined) {
+        if (data.porcentaje_avance !== undefined || data.estado !== undefined || data.tiene_resultado_completado !== undefined) {
             const progresoCell = row.querySelector('.progreso-cell');
             if (progresoCell) {
+                console.log('Actualizando progreso con datos:', data);
+                
                 // Verificar si la evaluación está finalizada
                 const estadoCell = row.querySelector('.estado-cell');
                 const estaFinalizada = estadoCell && estadoCell.textContent.includes('Finalizado');
+                const finalizadoPorAdmin = estadoCell && estadoCell.textContent.includes('por Admin');
                 
-                if (estaFinalizada) {
-                    // Si está finalizada, no mostrar barra de progreso
-                    // Mantener el puntaje que ya se mostró
-                    return;
-                } else {
-                    // Si está activa, mostrar barra de progreso con validación
-                    const porcentaje = Math.max(0, Math.min(100, data.porcentaje_avance));
-                    progresoCell.innerHTML = `
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar" role="progressbar" 
+                let progresoPuntajeContent = '';
+                
+                if (data.estado === 'finalizado') {
+                    if (finalizadoPorAdmin) {
+                        // Evaluación finalizada por administrador - mostrar nota 0
+                        progresoPuntajeContent = `
+                            <div class="text-center">
+                                <strong class="text-danger">0.000/10</strong><br>
+                                <small class="text-muted">0.0%</small><br>
+                                <span class="badge bg-danger">Finalizada por Admin</span>
+                            </div>
+                        `;
+                    } else if (data.tiene_resultado_completado) {
+                        // Evaluación completada normalmente - mostrar puntaje real
+                        const puntajeColor = data.puntaje >= 7 ? 'success' : 
+                                            data.puntaje >= 5 ? 'warning' : 'danger';
+                        progresoPuntajeContent = `
+                            <div class="text-center">
+                                <strong class="text-${puntajeColor}">${data.puntaje_numerico}</strong><br>
+                                <small class="text-muted">${data.puntaje.toFixed(1)}%</small>
+                            </div>
+                        `;
+                    } else {
+                        // Evaluación finalizada sin resultado - mostrar mensaje
+                        progresoPuntajeContent = `
+                            <div class="text-center">
+                                <span class="badge bg-secondary">Sin resultado</span>
+                            </div>
+                        `;
+                    }
+                } else if (data.estado === 'activo' && !data.tiene_resultado_completado) {
+                    // Mostrar progreso solo para evaluaciones activas que no están completadas
+                    console.log('Mostrando progreso para evaluación activa:', {
+                        porcentaje_avance: data.porcentaje_avance,
+                        preguntas_respondidas: data.preguntas_respondidas,
+                        preguntas_revisadas: data.preguntas_revisadas
+                    });
+                    
+                    const porcentaje = Math.max(0, Math.min(100, data.porcentaje_avance || 0));
+                    progresoPuntajeContent = `
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-primary" role="progressbar" 
                                  style="width: ${porcentaje}%" 
                                  aria-valuenow="${porcentaje}" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="100">
+                                 aria-valuemin="0" aria-valuemax="100">
                                 ${porcentaje.toFixed(1)}%
                             </div>
                         </div>
+                        <small class="text-muted mt-1 d-block">
+                            ${data.preguntas_respondidas || 0} respondidas / ${data.preguntas_revisadas || 0} revisadas
+                        </small>
+                    `;
+                } else if (data.estado === 'activo' && data.tiene_resultado_completado) {
+                    // Participante activo con resultado completado (puede tener nuevo intento)
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <span class="badge bg-info">Nuevo Intento Disponible</span><br>
+                            <small class="text-muted">Puede realizar evaluación adicional</small>
+                        </div>
+                    `;
+                } else {
+                    // Para otros casos mostrar mensaje apropiado
+                    progresoPuntajeContent = `
+                        <div class="text-center">
+                            <span class="badge bg-secondary">No disponible</span>
+                        </div>
                     `;
                 }
+                
+                progresoCell.innerHTML = progresoPuntajeContent;
             }
         }
         
-        // Actualizar página actual solo si cambió
-        if (data.pagina_actual) {
-            const paginaCell = row.querySelector('.pagina-cell');
-            if (paginaCell) {
-                paginaCell.textContent = data.pagina_actual;
+        // Actualizar estado si es necesario
+        if (data.estado !== undefined) {
+            const estadoCell = row.querySelector('.estado-cell');
+            if (estadoCell) {
+                const estaActivo = data.esta_activo !== undefined ? data.esta_activo : false;
+                const finalizadoPorAdmin = data.finalizado_por_admin !== undefined ? data.finalizado_por_admin : false;
+                estadoCell.innerHTML = `
+                    <span class="badge bg-${getEstadoColor(estaActivo, data.estado, finalizadoPorAdmin)}">
+                        ${getEstadoText(estaActivo, data.estado, finalizadoPorAdmin)}
+                    </span>
+                `;
+            }
+        }
+        
+        // Actualizar alertas si es necesario
+        if (data.alertas_count !== undefined) {
+            const alertasCell = row.querySelector('td:nth-child(5)');
+            if (alertasCell) {
+                alertasCell.innerHTML = data.alertas_count > 0 ? 
+                    `<span class="badge bg-danger">${data.alertas_count}</span>` : 
+                    '<span class="badge bg-success">0</span>';
+            }
+        }
+        
+        // Si es un nuevo intento, actualizar también la información de intentos
+        if (data.event_type === 'new_attempt') {
+            const intentosCell = row.querySelector('td:nth-child(3)');
+            if (intentosCell) {
+                intentosCell.innerHTML = `
+                    <div class="text-center">
+                        <span class="badge bg-success fs-6">0/${data.intentos_permitidos || 1}</span><br>
+                        <small class="text-muted">Disponibles</small>
+                        <br><small class="text-info">Intento 1</small>
+                    </div>
+                `;
             }
         }
         
     } catch (error) {
-        console.error('Error actualizando fila de participante:', error);
-    }
-}
-
-// Función para enviar solicitud de actualización manual
-function requestManualUpdate() {
-    if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
-        monitoreoSocket.send(JSON.stringify({
-            type: 'request_update'
-        }));
+        console.error('Error al actualizar fila del participante:', error);
     }
 }
 
@@ -684,12 +1103,64 @@ function gestionarIntentos(participanteId, participanteNombre, participanteCedul
     modal.show();
 }
 
+// Función para mostrar notificaciones toast
+function showDynamicToast(options) {
+    const { type, title, message } = options;
+    
+    // Crear el toast dinámicamente
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
+    
+    const toastId = 'toast-' + Date.now();
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type} border-0`;
+    toast.id = toastId;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <strong>${title}</strong><br>
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    // Mostrar el toast usando Bootstrap
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    // Remover el toast del DOM después de que se oculte
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
+    
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+        if (toast.parentNode) {
+            bsToast.hide();
+        }
+    }, 5000);
+}
+
+// Función para crear el contenedor de toasts si no existe
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+    return container;
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
     // Conectar WebSocket
     connectWebSocket();
-    
-         // Auto-refresh eliminado - ya no es necesario
     
     // Confirmar finalización via WebSocket
     document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
@@ -752,70 +1223,50 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Confirmar actualización de intentos (seguimos usando AJAX para esta funcionalidad)
+    // Confirmar actualización de intentos
     document.getElementById('btn-confirmar-intentos').addEventListener('click', function() {
         const nuevosIntentos = parseInt(document.getElementById('nuevos-intentos').value);
         
-        if (!nuevosIntentos || nuevosIntentos < 1) {
+        if (isNaN(nuevosIntentos) || nuevosIntentos < 1) {
             showDynamicToast({
                 type: 'warning',
                 title: 'Advertencia',
-                message: 'Por favor, ingrese un número válido de intentos (mínimo 1).'
+                message: 'Por favor, ingrese un número válido de intentos.'
             });
             return;
         }
         
-        if (nuevosIntentos > 10) {
-            showDynamicToast({
-                type: 'warning',
-                title: 'Advertencia',
-                message: 'El número máximo de intentos permitidos es 10.'
-            });
-            return;
-        }
-        
-        fetch(`/evaluacion/${evaluacionId}/intentos/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
+        // Enviar actualización via WebSocket
+        if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
+            monitoreoSocket.send(JSON.stringify({
+                type: 'update_intentos',
                 participante_id: currentParticipanteId,
-                nuevos_intentos: nuevosIntentos
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                bootstrap.Modal.getInstance(document.getElementById('modalIntentos')).hide();
-                // Solicitar actualización via WebSocket
-                if (monitoreoSocket && monitoreoSocket.readyState === WebSocket.OPEN) {
-                    monitoreoSocket.send(JSON.stringify({
-                        type: 'request_update'
-                    }));
-                }
-                showDynamicToast({
-                    type: 'success',
-                    title: 'Éxito',
-                    message: data.message
-                });
-            } else {
-                showDynamicToast({
-                    type: 'danger',
-                    title: 'Error',
-                    message: data.error
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
+                evaluacion_id: evaluacionId,
+                nuevos_intentos: nuevosIntentos,
+                timestamp: new Date().toISOString()
+            }));
+            
+            // Cerrar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalIntentos'));
+            modal.hide();
+            
             showDynamicToast({
-                type: 'danger',
-                title: 'Error',
-                message: 'Error al actualizar los intentos del participante'
+                type: 'success',
+                title: 'Éxito',
+                message: 'Intentos actualizados correctamente.'
             });
-        });
+            
+            // Solicitar actualización del estado
+            setTimeout(() => {
+                requestManualUpdate();
+            }, 1000);
+        } else {
+            showDynamicToast({
+                type: 'error',
+                title: 'Error',
+                message: 'No se pudo conectar para actualizar los intentos.'
+            });
+        }
     });
     
     // Limpiar conexión WebSocket al cerrar la página
@@ -825,7 +1276,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-
 
 </script>
 {% endblock %} 

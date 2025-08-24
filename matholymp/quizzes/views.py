@@ -193,8 +193,53 @@ def take_quiz(request, pk):
     ).first()
     
     if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
-        messages.error(request, f'Tu evaluación fue finalizada administrativamente. Motivo: {monitoreo_existente.motivo_finalizacion}')
-        return redirect('quizzes:quiz')
+        # Si fue finalizada administrativamente, mostrar el resultado con nota 0
+        resultado_finalizado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=True
+        ).first()
+        
+        if resultado_finalizado:
+            # Mostrar resultado con nota 0
+            return render(request, 'quizzes/result.html', {
+                'evaluacion': evaluacion,
+                'resultado': resultado_finalizado,
+                'score': 0,
+                'total_questions': 0,
+                'percentage': 0,
+                'intento_info': intento_participante,
+                'finalizada_admin': True,
+                'motivo': monitoreo_existente.motivo_finalizacion,
+                'admin': monitoreo_existente.finalizado_por_admin.username
+            })
+        else:
+            # Si no hay resultado, crear uno con nota 0
+            resultado_admin = ResultadoEvaluacion.objects.create(
+                evaluacion=evaluacion,
+                participante=participante,
+                numero_intento=1,
+                puntaje=0,
+                puntos_obtenidos=0,
+                puntos_totales=10,
+                tiempo_utilizado=0,
+                fecha_fin=timezone.now(),
+                completada=True,
+                respuestas_guardadas={},
+                tiempo_restante=0
+            )
+            
+            return render(request, 'quizzes/result.html', {
+                'evaluacion': evaluacion,
+                'resultado': resultado_admin,
+                'score': 0,
+                'total_questions': 0,
+                'percentage': 0,
+                'intento_info': intento_participante,
+                'finalizada_admin': True,
+                'motivo': monitoreo_existente.motivo_finalizacion,
+                'admin': monitoreo_existente.finalizado_por_admin.username
+            })
     
     # Verificar si hay un intento en progreso
     continuar_evaluacion = False
@@ -256,6 +301,50 @@ def take_quiz(request, pk):
                 resultado_existente.completada = True
                 resultado_existente.tiempo_restante = 0
                 resultado_existente.save()
+                
+                # Actualizar el monitoreo para marcar como finalizado
+                try:
+                    monitoreo = MonitoreoEvaluacion.objects.filter(
+                        evaluacion=evaluacion,
+                        participante=participante
+                    ).first()
+                    if monitoreo:
+                        monitoreo.estado = 'finalizado'
+                        monitoreo.resultado = resultado_existente
+                        monitoreo.fecha_ultima_actualizacion = timezone.now()
+                        monitoreo.save()
+                    
+                    # Notificar al WebSocket sobre la finalización de la evaluación
+                    try:
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        
+                        channel_layer = get_channel_layer()
+                        async_to_sync(channel_layer.group_send)(
+                            f'monitoreo_evaluacion_{evaluacion.id}',
+                            {
+                                'type': 'participant_update',
+                                'participant_id': participante.id,
+                                'event_type': 'evaluation_completed',
+                                'data': {
+                                    'estado': 'finalizado',
+                                    'ultima_actividad': timezone.now().isoformat(),
+                                    'preguntas_respondidas': len([r for r in respuestas_guardadas.values() if r]),
+                                    'preguntas_revisadas': len([r for r in respuestas_guardadas.values() if r]),
+                                    'resultado_id': resultado_existente.id,
+                                    'puntaje': percentage,
+                                    'puntaje_numerico': resultado_existente.get_puntaje_numerico(),
+                                    'tiene_resultado_completado': True
+                                }
+                            }
+                        )
+                    except Exception as e:
+                        # Si falla la notificación WebSocket, continuar sin ella
+                        print(f"Error al notificar WebSocket: {str(e)}")
+                        
+                except Exception as e:
+                    # Si hay error al actualizar el monitoreo, continuar sin él
+                    pass
                 
                 messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
                 return redirect('quizzes:quiz')
@@ -338,6 +427,50 @@ def take_quiz(request, pk):
             resultado_existente.tiempo_restante = 0
             resultado_existente.save()
             
+            # Actualizar el monitoreo para marcar como finalizado
+            try:
+                monitoreo = MonitoreoEvaluacion.objects.filter(
+                    evaluacion=evaluacion,
+                    participante=participante
+                ).first()
+                if monitoreo:
+                    monitoreo.estado = 'finalizado'
+                    monitoreo.resultado = resultado_existente
+                    monitoreo.fecha_ultima_actualizacion = timezone.now()
+                    monitoreo.save()
+                    
+                    # Notificar al WebSocket sobre la finalización de la evaluación
+                    try:
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        
+                        channel_layer = get_channel_layer()
+                        async_to_sync(channel_layer.group_send)(
+                            f'monitoreo_evaluacion_{evaluacion.id}',
+                            {
+                                'type': 'participant_update',
+                                'participant_id': participante.id,
+                                'event_type': 'evaluation_completed',
+                                'data': {
+                                    'estado': 'finalizado',
+                                    'ultima_actividad': timezone.now().isoformat(),
+                                    'preguntas_respondidas': len([r for r in respuestas_finales.values() if r]),
+                                    'preguntas_revisadas': len([r for r in respuestas_finales.values() if r]),
+                                    'resultado_id': resultado_existente.id,
+                                    'puntaje': percentage,
+                                    'puntaje_numerico': resultado_existente.get_puntaje_numerico(),
+                                    'tiene_resultado_completado': True
+                                }
+                            }
+                        )
+                    except Exception as e:
+                        # Si falla la notificación WebSocket, continuar sin ella
+                        print(f"Error al notificar WebSocket: {str(e)}")
+                        
+            except Exception as e:
+                # Si hay error al actualizar el monitoreo, continuar sin él
+                pass
+            
             # Registrar que se usó un intento
             intento_participante.registrar_nuevo_intento()
             resultado_final = resultado_existente
@@ -357,6 +490,50 @@ def take_quiz(request, pk):
                 respuestas_guardadas=respuestas_finales,
                 tiempo_restante=0
             )
+            
+            # Actualizar el monitoreo para marcar como finalizado
+            try:
+                monitoreo = MonitoreoEvaluacion.objects.filter(
+                    evaluacion=evaluacion,
+                    participante=participante
+                ).first()
+                if monitoreo:
+                    monitoreo.estado = 'finalizado'
+                    monitoreo.resultado = resultado_final
+                    monitoreo.fecha_ultima_actualizacion = timezone.now()
+                    monitoreo.save()
+                    
+                    # Notificar al WebSocket sobre la finalización de la evaluación
+                    try:
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        
+                        channel_layer = get_channel_layer()
+                        async_to_sync(channel_layer.group_send)(
+                            f'monitoreo_evaluacion_{evaluacion.id}',
+                            {
+                                'type': 'participant_update',
+                                'participant_id': participante.id,
+                                'event_type': 'evaluation_completed',
+                                'data': {
+                                    'estado': 'finalizado',
+                                    'ultima_actividad': timezone.now().isoformat(),
+                                    'preguntas_respondidas': len([r for r in respuestas_finales.values() if r]),
+                                    'preguntas_revisadas': len([r for r in respuestas_finales.values() if r]),
+                                    'resultado_id': resultado_final.id,
+                                    'puntaje': percentage,
+                                    'puntaje_numerico': resultado_final.get_puntaje_numerico(),
+                                    'tiene_resultado_completado': True
+                                }
+                            }
+                        )
+                    except Exception as e:
+                        # Si falla la notificación WebSocket, continuar sin ella
+                        print(f"Error al notificar WebSocket: {str(e)}")
+                        
+            except Exception as e:
+                # Si hay error al actualizar el monitoreo, continuar sin él
+                pass
             
             # Registrar que se usó un intento
             intento_participante.registrar_nuevo_intento()
@@ -3411,27 +3588,52 @@ def monitoreo_evaluacion(request, pk):
     
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
     
-    # Obtener todos los monitoreos activos para esta evaluación
+    # Obtener todos los participantes autorizados para esta evaluación
+    participantes_autorizados = evaluacion.get_participantes_autorizados()
+    total_participantes = len(participantes_autorizados)
+    
+    # Obtener todos los monitoreos para esta evaluación
     monitoreos = MonitoreoEvaluacion.objects.filter(
-        evaluacion=evaluacion,
-        estado='activo'
+        evaluacion=evaluacion
     ).select_related('participante', 'resultado')
     
-    # Estadísticas generales
-    total_participantes = len(evaluacion.get_participantes_autorizados())
-    participantes_activos = monitoreos.filter(ultima_actividad__gte=timezone.now() - timezone.timedelta(minutes=5)).count()
-    participantes_finalizados = MonitoreoEvaluacion.objects.filter(
-        evaluacion=evaluacion,
-        estado='finalizado'
-    ).count()
+    # Contar participantes por estado
+    participantes_activos = 0
+    participantes_finalizados = 0
+    participantes_pendientes = 0
+    
+    # Crear un set de participantes que ya tienen monitoreo
+    participantes_con_monitoreo = set()
+    
+    for monitoreo in monitoreos:
+        participantes_con_monitoreo.add(monitoreo.participante.id)
+        
+        if monitoreo.estado == 'finalizado':
+            participantes_finalizados += 1
+        elif monitoreo.estado == 'activo':
+            # Verificar si está realmente activo (última actividad en los últimos 5 minutos)
+            tiempo_limite = timezone.now() - timezone.timedelta(minutes=5)
+            if monitoreo.ultima_actividad > tiempo_limite:
+                participantes_activos += 1
+            else:
+                participantes_pendientes += 1
+        else:
+            participantes_pendientes += 1
+    
+    # Los participantes pendientes son los que no tienen monitoreo + los que están inactivos
+    participantes_sin_monitoreo = total_participantes - len(participantes_con_monitoreo)
+    participantes_pendientes += participantes_sin_monitoreo
+    
+    # Obtener solo monitoreos activos para la tabla
+    monitoreos_activos = monitoreos.filter(estado='activo')
     
     context = {
         'evaluacion': evaluacion,
-        'monitoreos': monitoreos,
+        'monitoreos': monitoreos_activos,
         'total_participantes': total_participantes,
         'participantes_activos': participantes_activos,
         'participantes_finalizados': participantes_finalizados,
-        'participantes_pendientes': total_participantes - participantes_activos - participantes_finalizados,
+        'participantes_pendientes': participantes_pendientes,
     }
     
     return render(request, 'quizzes/monitoreo_evaluacion.html', context)
@@ -3509,6 +3711,12 @@ def obtener_estado_monitoreo(request, pk):
     participantes_autorizados = evaluacion.get_participantes_autorizados()
     datos_monitoreo = []
     
+    # Contar estadísticas
+    total_participantes = len(participantes_autorizados)
+    participantes_activos = 0
+    participantes_finalizados = 0
+    participantes_pendientes = 0
+    
     for participante in participantes_autorizados:
         # Verificar si el participante tiene un resultado completado
         resultado = ResultadoEvaluacion.objects.filter(
@@ -3535,8 +3743,27 @@ def obtener_estado_monitoreo(request, pk):
             monitoreo.estado = 'activo'
             monitoreo.save()
         
+        # Verificar si el participante puede realizar un nuevo intento
+        # Si puede realizar un nuevo intento, el estado debe ser 'activo'
+        if intento_participante.puede_realizar_intento() and monitoreo.estado == 'finalizado':
+            monitoreo.estado = 'activo'
+            monitoreo.save()
+        
         # Obtener información de intentos
         intento_participante = evaluacion.get_o_crear_intento_participante(participante)
+        
+        # Contar para estadísticas
+        if monitoreo.estado == 'finalizado':
+            participantes_finalizados += 1
+        elif monitoreo.estado == 'activo':
+            # Verificar si está realmente activo
+            tiempo_limite = timezone.now() - timezone.timedelta(minutes=5)
+            if monitoreo.ultima_actividad > tiempo_limite:
+                participantes_activos += 1
+            else:
+                participantes_pendientes += 1
+        else:
+            participantes_pendientes += 1
         
         # Agregar datos del monitoreo
         datos_monitoreo.append({
@@ -3569,6 +3796,12 @@ def obtener_estado_monitoreo(request, pk):
     
     return JsonResponse({
         'monitoreos': datos_monitoreo,
+        'estadisticas': {
+            'total_participantes': total_participantes,
+            'participantes_activos': participantes_activos,
+            'participantes_finalizados': participantes_finalizados,
+            'participantes_pendientes': participantes_pendientes,
+        },
         'timestamp': timezone.now().isoformat()
     })
 
@@ -3595,6 +3828,41 @@ def finalizar_evaluacion_admin(request, pk):
         
         # Finalizar la evaluación
         monitoreo.finalizar_por_admin(request.user, motivo)
+        
+        # Notificar al WebSocket sobre la finalización administrativa
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'monitoreo_evaluacion_{pk}',
+                {
+                    'type': 'evaluacion_finalizada_admin',
+                    'participante_id': monitoreo.participante.id,
+                    'participante_nombre': monitoreo.participante.NombresCompletos,
+                    'participante_cedula': monitoreo.participante.cedula,
+                    'monitoreo_id': monitoreo.id,
+                    'motivo': motivo,
+                    'admin': request.user.username,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+            
+            # También notificar al participante específico
+            async_to_sync(channel_layer.group_send)(
+                f'evaluacion_{pk}_participante_{monitoreo.participante.id}',
+                {
+                    'type': 'evaluation_terminated',
+                    'motivo': motivo,
+                    'admin': request.user.username,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            # Si falla la notificación WebSocket, continuar sin ella
+            print(f"Error al notificar WebSocket: {str(e)}")
         
         return JsonResponse({
             'success': True,
@@ -3926,87 +4194,104 @@ def gestionar_intentos_participante(request, evaluacion_pk):
         
         participantes_data = []
         for participante in participantes_autorizados:
-            intento = evaluacion.get_o_crear_intento_participante(participante)
-            mejor_resultado = ResultadoEvaluacion.get_mejor_resultado_participante(evaluacion, participante)
+            # Obtener información de intentos
+            intento_info = evaluacion.get_o_crear_intento_participante(participante)
             
             participantes_data.append({
                 'id': participante.id,
                 'nombre': participante.NombresCompletos,
                 'cedula': participante.cedula,
-                'intentos_permitidos': intento.intentos_permitidos,
-                'intentos_utilizados': intento.intentos_utilizados,
-                'puede_realizar_intento': intento.puede_realizar_intento(),
-                'mejor_puntuacion': mejor_resultado.get_puntaje_numerico() if mejor_resultado else 'Sin intentos',
-                'fecha_modificacion': intento.fecha_modificacion.strftime('%Y-%m-%d %H:%M:%S'),
-                'modificado_por': intento.modificado_por.username if intento.modificado_por else 'Sistema'
+                'intentos_utilizados': intento_info.intentos_utilizados,
+                'intentos_permitidos': intento_info.intentos_permitidos,
+                'puede_realizar_intento': intento_info.puede_realizar_intento(),
             })
         
         return JsonResponse({
             'success': True,
-            'evaluacion': {
-                'id': evaluacion.id,
-                'title': evaluacion.title,
-                'etapa': evaluacion.etapa,
-                'intentos_default': evaluacion.intentos_permitidos_default
-            },
             'participantes': participantes_data
         })
     
     elif request.method == 'POST':
         try:
-            import json
-            data = json.loads(request.body.decode('utf-8'))
+            data = json.loads(request.body)
             participante_id = data.get('participante_id')
             nuevos_intentos = data.get('nuevos_intentos')
             
-            if not participante_id or not nuevos_intentos:
+            if not participante_id or nuevos_intentos is None:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Datos incompletos. Se requiere participante_id y nuevos_intentos.'
-                })
+                    'error': 'Datos insuficientes'
+                }, status=400)
             
-            if nuevos_intentos < 1:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'El número de intentos debe ser mayor a 0.'
-                })
-            
+            # Obtener el participante
             participante = get_object_or_404(Participantes, pk=participante_id)
             
-            # Verificar que el participante esté autorizado para esta evaluación
-            participantes_autorizados = evaluacion.get_participantes_autorizados()
-            if participante not in participantes_autorizados:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'El participante no está autorizado para esta evaluación.'
-                })
+            # Obtener o crear el intento
+            intento_info = evaluacion.get_o_crear_intento_participante(participante)
             
-            # Actualizar los intentos
-            intento = evaluacion.incrementar_intentos_participante(
-                participante, 
-                nuevos_intentos, 
-                request.user
+            # Actualizar intentos permitidos
+            intento_info.intentos_permitidos = nuevos_intentos
+            intento_info.save()
+            
+            # Actualizar la última actividad del monitoreo para que aparezca como activo
+            try:
+                monitoreo = MonitoreoEvaluacion.objects.get(
+                    evaluacion=evaluacion,
+                    participante=participante
+                )
+                monitoreo.ultima_actividad = timezone.now()
+                monitoreo.save()
+            except MonitoreoEvaluacion.DoesNotExist:
+                pass
+            
+            # Notificar al WebSocket sobre la actualización de intentos
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'monitoreo_evaluacion_{evaluacion.id}',
+                {
+                    'type': 'intentos_updated',
+                    'participante_id': participante_id,
+                    'participante_nombre': participante.NombresCompletos,
+                    'participante_cedula': participante.cedula,
+                    'nuevos_intentos': nuevos_intentos,
+                    'intentos_utilizados': intento_info.intentos_utilizados,
+                    'puede_realizar_intento': intento_info.puede_realizar_intento(),
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+            
+            # También enviar una solicitud de actualización del monitoreo para asegurar que se refleje el cambio
+            async_to_sync(channel_layer.group_send)(
+                f'monitoreo_evaluacion_{evaluacion.id}',
+                {
+                    'type': 'request_update',
+                    'timestamp': timezone.now().isoformat()
+                }
             )
             
             return JsonResponse({
                 'success': True,
                 'message': f'Intentos actualizados correctamente para {participante.NombresCompletos}',
-                'intento': {
-                    'intentos_permitidos': intento.intentos_permitidos,
-                    'intentos_utilizados': intento.intentos_utilizados,
-                    'puede_realizar_intento': intento.puede_realizar_intento()
-                }
+                'intentos_utilizados': intento_info.intentos_utilizados,
+                'intentos_permitidos': nuevos_intentos,
+                'puede_realizar_intento': intento_info.puede_realizar_intento()
             })
             
         except json.JSONDecodeError:
             return JsonResponse({
                 'success': False,
-                'error': 'Datos JSON inválidos.'
+                'error': 'Formato JSON inválido'
             }, status=400)
         except Exception as e:
             return JsonResponse({
                 'success': False,
-                'error': f'Error al actualizar intentos: {str(e)}'
+                'error': f'Error: {str(e)}'
             }, status=500)
     
-    return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+    return JsonResponse({
+        'success': False,
+        'error': 'Método no permitido'
+    }, status=405)

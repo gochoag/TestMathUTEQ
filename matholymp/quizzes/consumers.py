@@ -39,9 +39,6 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
         
         # Enviar datos iniciales del monitoreo
         await self.send_initial_monitoring_data()
-        
-        # Ya no necesitamos actualizaciones periódicas automáticas
-        # Las actualizaciones ahora son impulsadas por eventos del WebSocket
     
     async def disconnect(self, close_code):
         # Abandonar el grupo
@@ -69,10 +66,61 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
                 await self.handle_agregar_alerta(data)
                 
         except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Formato de mensaje inválido'
-            }))
+            await self.send_error_message('Formato de mensaje inválido')
+    
+    # Funciones auxiliares para eliminar duplicación
+    async def send_success_message(self, message):
+        """Enviar mensaje de éxito"""
+        await self.send(text_data=json.dumps({
+            'type': 'success',
+            'message': message
+        }))
+    
+    async def send_error_message(self, message):
+        """Enviar mensaje de error"""
+        await self.send(text_data=json.dumps({
+            'type': 'error',
+            'message': message
+        }))
+    
+    async def handle_operation_result(self, success, success_message, error_message):
+        """Manejar resultado de operaciones de manera uniforme"""
+        if success:
+            await self.send_success_message(success_message)
+            # Enviar actualización a todo el grupo
+            await self.send_monitoring_update()
+        else:
+            await self.send_error_message(error_message)
+    
+    async def intentos_updated(self, event):
+        """
+        Manejar actualización de intentos de un participante
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'intentos_updated',
+            'participante_id': event['participante_id'],
+            'participante_nombre': event.get('participante_nombre', ''),
+            'participante_cedula': event.get('participante_cedula', ''),
+            'nuevos_intentos': event['nuevos_intentos'],
+            'intentos_utilizados': event['intentos_utilizados'],
+            'puede_realizar_intento': event['puede_realizar_intento'],
+            'timestamp': timezone.now().isoformat()
+        }))
+    
+    async def evaluacion_finalizada_admin(self, event):
+        """
+        Manejar finalización administrativa de evaluación
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'evaluacion_finalizada_admin',
+            'participante_id': event['participante_id'],
+            'participante_nombre': event.get('participante_nombre', ''),
+            'participante_cedula': event.get('participante_cedula', ''),
+            'monitoreo_id': event.get('monitoreo_id', ''),
+            'motivo': event['motivo'],
+            'admin': event['admin'],
+            'timestamp': event['timestamp']
+        }))
     
     async def send_initial_monitoring_data(self):
         """
@@ -83,9 +131,6 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             'type': 'initial_data',
             'data': monitoring_data
         }))
-    
-    # Ya no necesitamos actualizaciones periódicas automáticas
-    # Las actualizaciones ahora son impulsadas por eventos del WebSocket
     
     async def send_monitoring_update(self):
         """
@@ -129,32 +174,18 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             motivo = data.get('motivo')
             
             if not monitoreo_id or not motivo:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': 'Datos insuficientes para finalizar evaluación'
-                }))
+                await self.send_error_message('Datos insuficientes para finalizar evaluación')
                 return
             
             success = await self.finalizar_evaluacion_participante(monitoreo_id, motivo)
-            
-            if success:
-                await self.send(text_data=json.dumps({
-                    'type': 'success',
-                    'message': 'Evaluación finalizada correctamente'
-                }))
-                # Enviar actualización a todo el grupo
-                await self.send_monitoring_update()
-            else:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': 'Error al finalizar la evaluación'
-                }))
+            await self.handle_operation_result(
+                success, 
+                'Evaluación finalizada correctamente',
+                'Error al finalizar la evaluación'
+            )
                 
         except Exception as e:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f'Error interno: {str(e)}'
-            }))
+            await self.send_error_message(f'Error interno: {str(e)}')
     
     async def handle_agregar_alerta(self, data):
         """
@@ -167,32 +198,18 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             descripcion = data.get('descripcion')
             
             if not all([monitoreo_id, tipo_alerta, severidad, descripcion]):
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': 'Datos insuficientes para agregar alerta'
-                }))
+                await self.send_error_message('Datos insuficientes para agregar alerta')
                 return
             
             success = await self.agregar_alerta_participante(monitoreo_id, tipo_alerta, severidad, descripcion)
-            
-            if success:
-                await self.send(text_data=json.dumps({
-                    'type': 'success',
-                    'message': 'Alerta agregada correctamente'
-                }))
-                # Enviar actualización a todo el grupo
-                await self.send_monitoring_update()
-            else:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': 'Error al agregar la alerta'
-                }))
+            await self.handle_operation_result(
+                success,
+                'Alerta agregada correctamente',
+                'Error al agregar la alerta'
+            )
                 
         except Exception as e:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f'Error interno: {str(e)}'
-            }))
+            await self.send_error_message(f'Error interno: {str(e)}')
     
     @database_sync_to_async
     def check_evaluacion_exists(self):
@@ -206,19 +223,29 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
         """
         try:
             evaluacion = Evaluacion.objects.get(id=self.evaluacion_id)
+            
+            # Obtener todos los participantes autorizados
+            participantes_autorizados = evaluacion.get_participantes_autorizados()
+            total_participantes = len(participantes_autorizados)
+            
+            # Obtener todos los monitoreos para esta evaluación
             monitoreos = MonitoreoEvaluacion.objects.filter(evaluacion=evaluacion).select_related(
                 'participante', 'resultado'
             )
             
             # Contar estadísticas
-            total_participantes = monitoreos.count()
             participantes_activos = 0
             participantes_finalizados = 0
             participantes_pendientes = 0
             
+            # Crear un set de participantes que ya tienen monitoreo
+            participantes_con_monitoreo = set()
+            
             monitoreos_data = []
             
             for monitoreo in monitoreos:
+                participantes_con_monitoreo.add(monitoreo.participante.id)
+                
                 # Determinar si está activo (última actividad en los últimos 5 minutos)
                 tiempo_limite = timezone.now() - timedelta(minutes=5)
                 esta_activo = monitoreo.ultima_actividad > tiempo_limite
@@ -263,7 +290,6 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
                     'preguntas_respondidas': monitoreo.preguntas_respondidas,
                     'preguntas_revisadas': monitoreo.preguntas_revisadas,
                     'porcentaje_avance': monitoreo.get_porcentaje_avance(),
-                    # Ya no incluimos tiempo_activo ni tiempo_inactivo
                     'ultima_actividad': monitoreo.ultima_actividad.isoformat(),
                     'alertas_count': len(monitoreo.alertas_detectadas),
                     'alertas_detectadas': monitoreo.alertas_detectadas,
@@ -274,9 +300,15 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
                     'puntaje': puntaje,
                     'puntaje_numerico': puntaje_numerico,
                     'tiene_resultado_completado': tiene_resultado_completado,
+                    'finalizado_por_admin': bool(monitoreo.finalizado_por_admin),
+                    'motivo_finalizacion': monitoreo.motivo_finalizacion or '',
                 }
                 
                 monitoreos_data.append(monitoreo_data)
+            
+            # Los participantes pendientes son los que no tienen monitoreo + los que están inactivos
+            participantes_sin_monitoreo = total_participantes - len(participantes_con_monitoreo)
+            participantes_pendientes += participantes_sin_monitoreo
             
             return {
                 'evaluacion': {
@@ -366,9 +398,6 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
         
         # Crear o actualizar monitoreo
         await self.create_or_update_monitoring()
-        
-        # Ya no necesitamos actualizaciones periódicas automáticas
-        # Las actualizaciones ahora son impulsadas por eventos del WebSocket
     
     async def disconnect(self, close_code):
         # Abandonar el grupo
@@ -413,11 +442,28 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
                 'message': 'Formato de mensaje inválido'
             }))
     
+    async def evaluation_terminated(self, event):
+        """
+        Manejar finalización administrativa de evaluación
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'evaluation_terminated',
+            'motivo': event['motivo'],
+            'admin': event['admin'],
+            'timestamp': event['timestamp']
+        }))
+    
     async def handle_heartbeat(self, data):
         """
         Manejar latido del corazón y actualizar actividad
         """
         await self.update_monitoring_activity(data)
+        
+        # Notificar al grupo de monitoreo sobre la actividad
+        await self.notify_monitoring_group('heartbeat', {
+            'ultima_actividad': timezone.now().isoformat(),
+            'tiempo_activo': data.get('active_time', 0)
+        })
         
         # Responder con confirmación
         await self.send(text_data=json.dumps({
@@ -434,7 +480,8 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
         
         # Notificar al grupo de monitoreo
         await self.notify_monitoring_group('page_change', {
-            'page': page_number
+            'page': page_number,
+            'ultima_actividad': timezone.now().isoformat()
         })
     
     async def handle_answer_update(self, data):
@@ -444,7 +491,10 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
         await self.update_monitoring_activity(data)
         
         # Notificar al grupo de monitoreo
-        await self.notify_monitoring_group('answer_update', data)
+        await self.notify_monitoring_group('answer_update', {
+            'ultima_actividad': timezone.now().isoformat(),
+            'respuesta_actualizada': True
+        })
     
     async def handle_progress_update(self, data):
         """
@@ -458,7 +508,8 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
         # Notificar al grupo de monitoreo
         await self.notify_monitoring_group('progress_update', {
             'answered_questions': preguntas_respondidas,
-            'reviewed_questions': preguntas_revisadas
+            'reviewed_questions': preguntas_revisadas,
+            'ultima_actividad': timezone.now().isoformat()
         })
     
     async def handle_auto_save(self, data):
@@ -497,7 +548,8 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
             'estado': 'finalizado',
             'ultima_actividad': timezone.now().isoformat(),
             'preguntas_respondidas': data.get('final_answers', 0),
-            'preguntas_revisadas': data.get('final_reviewed', 0)
+            'preguntas_revisadas': data.get('final_reviewed', 0),
+            'resultado_id': data.get('resultado_id')
         })
     
     async def notify_monitoring_group(self, event_type, data):
@@ -566,6 +618,7 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
                     monitoreo.preguntas_respondidas = 0
                     monitoreo.preguntas_revisadas = 0
                     monitoreo.pagina_actual = 1
+                    monitoreo.resultado = None  # Limpiar resultado anterior
                     
                     # Notificar al grupo de monitoreo sobre el nuevo intento
                     asyncio.create_task(self.notify_monitoring_group('new_attempt', {
@@ -585,10 +638,11 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
         except (Evaluacion.DoesNotExist, Participantes.DoesNotExist):
             return None
     
+    # Función auxiliar para eliminar duplicación en actualizaciones de monitoreo
     @database_sync_to_async
-    def update_monitoring_activity(self, data):
+    def _update_monitoring_field(self, field_name, value, additional_data=None):
         """
-        Actualizar actividad del monitoreo
+        Función auxiliar para actualizar campos del monitoreo de manera uniforme
         """
         try:
             monitoreo = MonitoreoEvaluacion.objects.get(
@@ -596,91 +650,65 @@ class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):
                 participante_id=self.participante_id
             )
             
+            # Actualizar campo específico
+            setattr(monitoreo, field_name, value)
+            
+            # Actualizar última actividad
             monitoreo.ultima_actividad = timezone.now()
             
-            # Actualizar tiempo activo
-            if 'active_time' in data:
-                monitoreo.tiempo_activo = data['active_time']
+            # Actualizar campos adicionales si se proporcionan
+            if additional_data:
+                for field, val in additional_data.items():
+                    setattr(monitoreo, field, val)
             
             monitoreo.save()
             
         except MonitoreoEvaluacion.DoesNotExist:
             pass
+    
+    @database_sync_to_async
+    def update_monitoring_activity(self, data):
+        """
+        Actualizar actividad del monitoreo
+        """
+        additional_data = {}
+        if 'active_time' in data:
+            additional_data['tiempo_activo'] = data['active_time']
+        
+        self._update_monitoring_field('ultima_actividad', timezone.now(), additional_data)
     
     @database_sync_to_async
     def update_page_activity(self, page_number):
         """
         Actualizar actividad de página
         """
-        try:
-            monitoreo = MonitoreoEvaluacion.objects.get(
-                evaluacion_id=self.evaluacion_id,
-                participante_id=self.participante_id
-            )
-            
-            monitoreo.pagina_actual = page_number
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-        except MonitoreoEvaluacion.DoesNotExist:
-            pass
+        self._update_monitoring_field('pagina_actual', page_number)
     
     @database_sync_to_async
     def update_progress(self, preguntas_respondidas, preguntas_revisadas):
         """
         Actualizar progreso del participante
         """
-        try:
-            monitoreo = MonitoreoEvaluacion.objects.get(
-                evaluacion_id=self.evaluacion_id,
-                participante_id=self.participante_id
-            )
-            
-            monitoreo.preguntas_respondidas = preguntas_respondidas
-            monitoreo.preguntas_revisadas = preguntas_revisadas
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-        except MonitoreoEvaluacion.DoesNotExist:
-            pass
+        additional_data = {
+            'preguntas_respondidas': preguntas_respondidas,
+            'preguntas_revisadas': preguntas_revisadas
+        }
+        self._update_monitoring_field('ultima_actividad', timezone.now(), additional_data)
     
     @database_sync_to_async
     def update_last_activity(self):
         """
         Actualizar última actividad al desconectar
         """
-        try:
-            monitoreo = MonitoreoEvaluacion.objects.get(
-                evaluacion_id=self.evaluacion_id,
-                participante_id=self.participante_id
-            )
-            
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-        except MonitoreoEvaluacion.DoesNotExist:
-            pass
+        self._update_monitoring_field('ultima_actividad', timezone.now())
     
     @database_sync_to_async
     def complete_monitoring(self):
         """
         Completar el monitoreo cuando la evaluación finaliza
         """
-        try:
-            monitoreo = MonitoreoEvaluacion.objects.get(
-                evaluacion_id=self.evaluacion_id,
-                participante_id=self.participante_id
-            )
-            
-            monitoreo.estado = 'finalizado'
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-        except MonitoreoEvaluacion.DoesNotExist:
-            pass
-    
-    # Ya no necesitamos actualizaciones periódicas automáticas
-    # Las actualizaciones ahora son impulsadas por eventos del WebSocket
+        additional_data = {'estado': 'finalizado'}
+        self._update_monitoring_field('ultima_actividad', timezone.now(), additional_data)
     
     @database_sync_to_async
     def get_monitoring_data(self):

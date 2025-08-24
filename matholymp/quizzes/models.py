@@ -846,10 +846,17 @@ class MonitoreoEvaluacion(models.Model):
             return f"{segundos}s"
     
     def get_porcentaje_avance(self):
-        """Retorna el porcentaje de avance basado en preguntas respondidas"""
-        if self.preguntas_revisadas > 0:
-            return (self.preguntas_respondidas / self.preguntas_revisadas) * 100
-        return 0
+        """Retorna el porcentaje de avance basado en preguntas respondidas del total de preguntas mostradas al participante"""
+        try:
+            # Obtener las preguntas que se muestran específicamente a este participante
+            preguntas_mostradas = self.evaluacion.get_preguntas_para_estudiante(self.participante.id)
+            total_preguntas_mostradas = len(preguntas_mostradas) if preguntas_mostradas else 0
+            
+            if total_preguntas_mostradas > 0:
+                return round((self.preguntas_respondidas / total_preguntas_mostradas) * 100, 1)
+            return 0
+        except Exception:
+            return 0
     
     def agregar_alerta(self, tipo_alerta, descripcion, severidad='baja'):
         """Agrega una nueva alerta al monitoreo"""
