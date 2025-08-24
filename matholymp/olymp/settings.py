@@ -147,3 +147,34 @@ SESSION_SAVE_EVERY_REQUEST = True
 # Control de páginas de error personalizadas
 # Cambiar a False para deshabilitar las páginas 404 personalizadas
 ENABLE_CUSTOM_ERROR_PAGES = True
+
+# Configuración de logging para depuración
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+    },
+    'loggers': {
+        'quizzes.signals': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'quizzes.consumers': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'quizzes.views': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

@@ -883,26 +883,59 @@ class MonitoreoEvaluacion(models.Model):
                     evaluacion=self.evaluacion,
                     participante=self.participante,
                     defaults={
+                        'numero_intento': 1,  # Asignar número de intento
                         'puntaje': 0,
                         'puntos_obtenidos': 0,
                         'puntos_totales': 10,
                         'tiempo_utilizado': 0,
                         'completada': True,
                         'fecha_fin': timezone.now(),
-                        'tiempo_restante': 0
+                        'tiempo_restante': 0,
+                        'respuestas_guardadas': {},
+                        'fecha_inicio': timezone.now()  # Agregar fecha de inicio
                     }
                 )
+                # Si se creó un nuevo resultado, asignar el número de intento correcto
+                if created:
+                    self.resultado.numero_intento = self.evaluacion.obtener_siguiente_numero_intento(self.participante)
             else:
                 # Si ya existe un resultado, asignar nota de 0 por finalización administrativa
+                was_completada = self.resultado.completada
                 self.resultado.puntaje = 0
                 self.resultado.puntos_obtenidos = 0
                 self.resultado.puntos_totales = 10
-                self.resultado.completada = True
+                self.resultado.tiempo_utilizado = 0
                 self.resultado.fecha_fin = timezone.now()
                 self.resultado.tiempo_restante = 0
-                self.resultado.save()
+                if not self.resultado.fecha_inicio:
+                    self.resultado.fecha_inicio = timezone.now()
+                
+                # Si no estaba completada antes, actualizar mejor intento manualmente
+                if not was_completada:
+                    self.resultado.actualizar_mejor_intento()
 
+            # IMPORTANTE: Registrar que se gastó un intento
+            try:
+                intento_participante = self.evaluacion.get_o_crear_intento_participante(self.participante)
+                
+                # Cuando un admin finaliza una evaluación, significa que el participante
+                # ya estaba usando ese intento, así que lo marcamos como gastado
+                # independientemente de si ya alcanzó el límite
+                if intento_participante.intentos_utilizados < intento_participante.intentos_permitidos:
+                    intento_participante.intentos_utilizados += 1
+                    intento_participante.save()
+                    print(f"Intento gastado por finalización admin: {intento_participante.intentos_utilizados}/{intento_participante.intentos_permitidos}")
+                else:
+                    print(f"Advertencia: Participante ya había agotado intentos, pero se finaliza evaluación en curso")
+            except Exception as e:
+                print(f"Error al registrar intento gastado por finalización admin: {str(e)}")
+
+            # Guardar el monitoreo primero
             self.save()
+
+            # CRÍTICO: Asegurar que completada=True se mantenga después de todas las señales
+            self.resultado.completada = True
+            self.resultado.save()
     
     def esta_activo(self):
         """Verifica si el estudiante está activo (última actividad en los últimos 5 minutos)"""

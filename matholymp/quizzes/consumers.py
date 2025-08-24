@@ -52,6 +52,9 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
         Manejar mensajes recibidos del frontend
         """
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
             data = json.loads(text_data)
             message_type = data.get('type')
             
@@ -64,9 +67,18 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             elif message_type == 'agregar_alerta':
                 # Agregar alerta a un participante
                 await self.handle_agregar_alerta(data)
+            elif message_type == 'update_intentos':
+                # Actualizar intentos de un participante
+                await self.handle_update_intentos(data)
+            else:
+                logger.warning(f"Tipo de mensaje no reconocido: {message_type}")
                 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decodificando JSON: {e}")
             await self.send_error_message('Formato de mensaje inválido')
+        except Exception as e:
+            logger.error(f"Error procesando mensaje: {e}")
+            await self.send_error_message(f'Error interno: {str(e)}')
     
     # Funciones auxiliares para eliminar duplicación
     async def send_success_message(self, message):
@@ -103,7 +115,10 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             'participante_cedula': event.get('participante_cedula', ''),
             'nuevos_intentos': event['nuevos_intentos'],
             'intentos_utilizados': event['intentos_utilizados'],
+            'intentos_permitidos': event['intentos_permitidos'],
             'puede_realizar_intento': event['puede_realizar_intento'],
+            'numero_intento_actual': event.get('numero_intento_actual', 1),
+            'estado': event.get('estado', 'activo'),
             'timestamp': timezone.now().isoformat()
         }))
     
@@ -169,6 +184,9 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
         """
         Manejar finalización administrativa de evaluación
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
             monitoreo_id = data.get('monitoreo_id')
             motivo = data.get('motivo')
@@ -177,14 +195,59 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
                 await self.send_error_message('Datos insuficientes para finalizar evaluación')
                 return
             
+            logger.info(f"Iniciando finalización administrativa para monitoreo {monitoreo_id}")
+            
+            # Obtener información antes de finalizar
+            monitoreo_info = await self.get_monitoreo_info(monitoreo_id)
+            if not monitoreo_info:
+                await self.send_error_message('Monitoreo no encontrado')
+                return
+            
             success = await self.finalizar_evaluacion_participante(monitoreo_id, motivo)
-            await self.handle_operation_result(
-                success, 
-                'Evaluación finalizada correctamente',
-                'Error al finalizar la evaluación'
-            )
+            
+            if success:
+                await self.send_success_message('Evaluación finalizada correctamente')
+                
+                logger.info(f"Evaluación finalizada exitosamente para participante {monitoreo_info['participante_id']}")
+                
+                # Enviar una actualización inmediata específica para finalización administrativa
+                await self.channel_layer.group_send(
+                    self.group_name,
+                    {
+                        'type': 'evaluacion_finalizada_admin',
+                        'participante_id': monitoreo_info['participante_id'],
+                        'participante_nombre': monitoreo_info['participante_nombre'],
+                        'participante_cedula': monitoreo_info['participante_cedula'],
+                        'monitoreo_id': monitoreo_id,
+                        'motivo': motivo,
+                        'admin': self.scope["user"].username,
+                        'timestamp': timezone.now().isoformat(),
+                        'intentos_permitidos': monitoreo_info['intentos_permitidos']
+                    }
+                )
+                
+                # También enviar actualización completa del monitoreo después de un breve delay
+                await asyncio.sleep(0.5)
+                await self.send_monitoring_update()
+                
+                # Notificar al participante específico para cerrar su evaluación
+                await self.channel_layer.group_send(
+                    f'evaluacion_{self.evaluacion_id}_participante_{monitoreo_info["participante_id"]}',
+                    {
+                        'type': 'evaluation_terminated',
+                        'motivo': motivo,
+                        'admin': self.scope["user"].username,
+                        'timestamp': timezone.now().isoformat()
+                    }
+                )
+                
+                logger.info(f"Notificaciones WebSocket enviadas para finalización administrativa")
+            else:
+                await self.send_error_message('Error al finalizar la evaluación')
+                logger.error(f"Error al finalizar evaluación para monitoreo {monitoreo_id}")
                 
         except Exception as e:
+            logger.error(f"Excepción en handle_finalizar_evaluacion: {str(e)}")
             await self.send_error_message(f'Error interno: {str(e)}')
     
     async def handle_agregar_alerta(self, data):
@@ -211,6 +274,95 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             await self.send_error_message(f'Error interno: {str(e)}')
     
+    @database_sync_to_async
+    def get_monitoreo_info(self, monitoreo_id):
+        """
+        Obtener información del monitoreo
+        """
+        try:
+            monitoreo = MonitoreoEvaluacion.objects.get(id=monitoreo_id)
+            return {
+                'participante_id': monitoreo.participante.id,
+                'participante_nombre': monitoreo.participante.NombresCompletos,
+                'participante_cedula': monitoreo.participante.cedula,
+                'intentos_permitidos': 1  # Default value, será actualizado por la lógica de intentos
+            }
+        except MonitoreoEvaluacion.DoesNotExist:
+            return None
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error al obtener info de monitoreo: {str(e)}')
+            return None
+    
+    async def handle_update_intentos(self, data):
+        """
+        Manejar actualización de intentos de un participante
+        """
+        try:
+            participante_id = data.get('participante_id')
+            evaluacion_id = data.get('evaluacion_id')
+            nuevos_intentos = data.get('nuevos_intentos')
+            
+            if not participante_id or not evaluacion_id or nuevos_intentos is None:
+                await self.send_error_message('Datos insuficientes para actualizar intentos')
+                return
+            
+            # Verificar que la evaluación coincide
+            if int(evaluacion_id) != int(self.evaluacion_id):
+                await self.send_error_message('ID de evaluación no coincide')
+                return
+            
+            result = await self.actualizar_intentos_participante(participante_id, nuevos_intentos)
+            
+            if result['success']:
+                # Notificar al grupo sobre la actualización
+                await self.channel_layer.group_send(
+                    self.group_name,
+                    {
+                        'type': 'intentos_updated',
+                        'participante_id': participante_id,
+                        'participante_nombre': result['participante_nombre'],
+                        'participante_cedula': result['participante_cedula'],
+                        'nuevos_intentos': nuevos_intentos,
+                        'intentos_utilizados': result['intentos_utilizados'],
+                        'puede_realizar_intento': result['puede_realizar_intento'],
+                        'intentos_permitidos': nuevos_intentos,
+                        'numero_intento_actual': result['numero_intento_actual'],
+                        'estado': result['estado']
+                    }
+                )
+                
+                await self.send_success_message('Intentos actualizados correctamente')
+                # También enviar actualización completa del monitoreo
+                await self.send_monitoring_update()
+            else:
+                await self.send_error_message(result['error'])
+                
+        except Exception as e:
+            await self.send_error_message(f'Error interno: {str(e)}')
+    
+    @database_sync_to_async
+    def get_monitoreo_info(self, monitoreo_id):
+        """
+        Obtener información básica de un monitoreo
+        """
+        try:
+            monitoreo = MonitoreoEvaluacion.objects.select_related('participante', 'evaluacion').get(id=monitoreo_id)
+            # Obtener información de intentos
+            intento_info = monitoreo.evaluacion.get_o_crear_intento_participante(monitoreo.participante)
+            
+            return {
+                'participante_id': monitoreo.participante.id,
+                'participante_nombre': monitoreo.participante.NombresCompletos,
+                'participante_cedula': monitoreo.participante.cedula,
+                'intentos_permitidos': intento_info.intentos_permitidos
+            }
+        except MonitoreoEvaluacion.DoesNotExist:
+            return None
+        except Exception:
+            return None
+
     @database_sync_to_async
     def check_evaluacion_exists(self):
         """Verificar que la evaluación existe"""
@@ -363,6 +515,82 @@ class MonitoreoEvaluacionConsumer(AsyncWebsocketConsumer):
             return False
         except Exception:
             return False
+    
+    @database_sync_to_async
+    def actualizar_intentos_participante(self, participante_id, nuevos_intentos):
+        """
+        Actualizar los intentos de un participante
+        """
+        try:
+            from django.utils import timezone
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            
+            # Obtener la evaluación y el participante
+            evaluacion = Evaluacion.objects.get(id=self.evaluacion_id)
+            participante = Participantes.objects.get(id=participante_id)
+            
+            # Información de evaluación y participante (suprimida en logs de producción)
+            
+            # Obtener o crear el intento
+            intento_info = evaluacion.get_o_crear_intento_participante(participante)
+            
+            # Estado previo de intentos (suprimido)
+            
+            # Actualizar intentos permitidos
+            intento_info.intentos_permitidos = nuevos_intentos
+            intento_info.save()
+            
+            # Intento actualizado (suprimido)
+            
+            # Actualizar la última actividad del monitoreo para que aparezca como activo
+            try:
+                monitoreo = MonitoreoEvaluacion.objects.get(
+                    evaluacion=evaluacion,
+                    participante=participante
+                )
+                monitoreo.ultima_actividad = timezone.now()
+                monitoreo.save()
+                estado_actual = monitoreo.estado
+            except MonitoreoEvaluacion.DoesNotExist:
+                estado_actual = 'pendiente'
+            
+            # Calcular si puede realizar intento
+            puede_realizar_intento = intento_info.puede_realizar_intento()
+            # Información sobre posibilidad de realizar intento (suprimida)
+            
+            # Determinar el número de intento actual
+            if estado_actual == 'finalizado':
+                numero_intento_actual = intento_info.intentos_utilizados
+            else:
+                numero_intento_actual = intento_info.intentos_utilizados
+            
+            result = {
+                'success': True,
+                'participante_nombre': participante.NombresCompletos,
+                'participante_cedula': participante.cedula,
+                'intentos_utilizados': intento_info.intentos_utilizados,
+                'puede_realizar_intento': puede_realizar_intento,
+                'numero_intento_actual': numero_intento_actual,
+                'estado': estado_actual
+            }
+            
+            # Resultado preparado para enviar (suprimido)
+            return result
+            
+        except (Evaluacion.DoesNotExist, Participantes.DoesNotExist) as e:
+            logger.error(f'Recurso no encontrado: {str(e)}')
+            return {
+                'success': False,
+                'error': f'Recurso no encontrado: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f'Error al actualizar intentos: {str(e)}')
+            return {
+                'success': False,
+                'error': f'Error al actualizar intentos: {str(e)}'
+            }
 
 
 class EvaluacionParticipanteConsumer(AsyncWebsocketConsumer):

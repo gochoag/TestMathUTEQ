@@ -302,49 +302,8 @@ def take_quiz(request, pk):
                 resultado_existente.tiempo_restante = 0
                 resultado_existente.save()
                 
-                # Actualizar el monitoreo para marcar como finalizado
-                try:
-                    monitoreo = MonitoreoEvaluacion.objects.filter(
-                        evaluacion=evaluacion,
-                        participante=participante
-                    ).first()
-                    if monitoreo:
-                        monitoreo.estado = 'finalizado'
-                        monitoreo.resultado = resultado_existente
-                        monitoreo.fecha_ultima_actualizacion = timezone.now()
-                        monitoreo.save()
-                    
-                    # Notificar al WebSocket sobre la finalización de la evaluación
-                    try:
-                        from channels.layers import get_channel_layer
-                        from asgiref.sync import async_to_sync
-                        
-                        channel_layer = get_channel_layer()
-                        async_to_sync(channel_layer.group_send)(
-                            f'monitoreo_evaluacion_{evaluacion.id}',
-                            {
-                                'type': 'participant_update',
-                                'participant_id': participante.id,
-                                'event_type': 'evaluation_completed',
-                                'data': {
-                                    'estado': 'finalizado',
-                                    'ultima_actividad': timezone.now().isoformat(),
-                                    'preguntas_respondidas': len([r for r in respuestas_guardadas.values() if r]),
-                                    'preguntas_revisadas': len([r for r in respuestas_guardadas.values() if r]),
-                                    'resultado_id': resultado_existente.id,
-                                    'puntaje': percentage,
-                                    'puntaje_numerico': resultado_existente.get_puntaje_numerico(),
-                                    'tiene_resultado_completado': True
-                                }
-                            }
-                        )
-                    except Exception as e:
-                        # Si falla la notificación WebSocket, continuar sin ella
-                        print(f"Error al notificar WebSocket: {str(e)}")
-                        
-                except Exception as e:
-                    # Si hay error al actualizar el monitoreo, continuar sin él
-                    pass
+                # El signal se encargará de actualizar el monitoreo y enviar notificaciones WebSocket
+                # cuando se guarde el resultado con completada=True
                 
                 messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
                 return redirect('quizzes:quiz')
@@ -427,49 +386,8 @@ def take_quiz(request, pk):
             resultado_existente.tiempo_restante = 0
             resultado_existente.save()
             
-            # Actualizar el monitoreo para marcar como finalizado
-            try:
-                monitoreo = MonitoreoEvaluacion.objects.filter(
-                    evaluacion=evaluacion,
-                    participante=participante
-                ).first()
-                if monitoreo:
-                    monitoreo.estado = 'finalizado'
-                    monitoreo.resultado = resultado_existente
-                    monitoreo.fecha_ultima_actualizacion = timezone.now()
-                    monitoreo.save()
-                    
-                    # Notificar al WebSocket sobre la finalización de la evaluación
-                    try:
-                        from channels.layers import get_channel_layer
-                        from asgiref.sync import async_to_sync
-                        
-                        channel_layer = get_channel_layer()
-                        async_to_sync(channel_layer.group_send)(
-                            f'monitoreo_evaluacion_{evaluacion.id}',
-                            {
-                                'type': 'participant_update',
-                                'participant_id': participante.id,
-                                'event_type': 'evaluation_completed',
-                                'data': {
-                                    'estado': 'finalizado',
-                                    'ultima_actividad': timezone.now().isoformat(),
-                                    'preguntas_respondidas': len([r for r in respuestas_finales.values() if r]),
-                                    'preguntas_revisadas': len([r for r in respuestas_finales.values() if r]),
-                                    'resultado_id': resultado_existente.id,
-                                    'puntaje': percentage,
-                                    'puntaje_numerico': resultado_existente.get_puntaje_numerico(),
-                                    'tiene_resultado_completado': True
-                                }
-                            }
-                        )
-                    except Exception as e:
-                        # Si falla la notificación WebSocket, continuar sin ella
-                        print(f"Error al notificar WebSocket: {str(e)}")
-                        
-            except Exception as e:
-                # Si hay error al actualizar el monitoreo, continuar sin él
-                pass
+            # El signal se encargará de actualizar el monitoreo y enviar notificaciones WebSocket
+            # cuando se guarde el resultado con completada=True
             
             # Registrar que se usó un intento
             intento_participante.registrar_nuevo_intento()
@@ -491,49 +409,8 @@ def take_quiz(request, pk):
                 tiempo_restante=0
             )
             
-            # Actualizar el monitoreo para marcar como finalizado
-            try:
-                monitoreo = MonitoreoEvaluacion.objects.filter(
-                    evaluacion=evaluacion,
-                    participante=participante
-                ).first()
-                if monitoreo:
-                    monitoreo.estado = 'finalizado'
-                    monitoreo.resultado = resultado_final
-                    monitoreo.fecha_ultima_actualizacion = timezone.now()
-                    monitoreo.save()
-                    
-                    # Notificar al WebSocket sobre la finalización de la evaluación
-                    try:
-                        from channels.layers import get_channel_layer
-                        from asgiref.sync import async_to_sync
-                        
-                        channel_layer = get_channel_layer()
-                        async_to_sync(channel_layer.group_send)(
-                            f'monitoreo_evaluacion_{evaluacion.id}',
-                            {
-                                'type': 'participant_update',
-                                'participant_id': participante.id,
-                                'event_type': 'evaluation_completed',
-                                'data': {
-                                    'estado': 'finalizado',
-                                    'ultima_actividad': timezone.now().isoformat(),
-                                    'preguntas_respondidas': len([r for r in respuestas_finales.values() if r]),
-                                    'preguntas_revisadas': len([r for r in respuestas_finales.values() if r]),
-                                    'resultado_id': resultado_final.id,
-                                    'puntaje': percentage,
-                                    'puntaje_numerico': resultado_final.get_puntaje_numerico(),
-                                    'tiene_resultado_completado': True
-                                }
-                            }
-                        )
-                    except Exception as e:
-                        # Si falla la notificación WebSocket, continuar sin ella
-                        print(f"Error al notificar WebSocket: {str(e)}")
-                        
-            except Exception as e:
-                # Si hay error al actualizar el monitoreo, continuar sin él
-                pass
+            # El signal se encargará de actualizar el monitoreo y enviar notificaciones WebSocket
+            # cuando se guarde el resultado con completada=True
             
             # Registrar que se usó un intento
             intento_participante.registrar_nuevo_intento()
@@ -566,6 +443,59 @@ def take_quiz(request, pk):
             fecha_inicio=timezone.now(),
             tiempo_restante=tiempo_total
         )
+        
+        # Actualizar el monitoreo para marcar como activo y notificar al WebSocket
+        try:
+            monitoreo = MonitoreoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante=participante
+            ).first()
+            if monitoreo:
+                monitoreo.estado = 'activo'
+                monitoreo.ultima_actividad = timezone.now()
+                monitoreo.preguntas_respondidas = 0
+                monitoreo.save()
+                
+                # Notificar al WebSocket sobre el inicio de nueva evaluación
+                try:
+                    from channels.layers import get_channel_layer
+                    from asgiref.sync import async_to_sync
+                    
+                    channel_layer = get_channel_layer()
+                    if channel_layer:
+                        # Obtener información de intentos actualizada
+                        intento_info_actualizado = evaluacion.get_o_crear_intento_participante(participante)
+                        
+                        async_to_sync(channel_layer.group_send)(
+                            f'monitoreo_evaluacion_{evaluacion.id}',
+                            {
+                                'type': 'participant_update',
+                                'participant_id': participante.id,
+                                'participante_id': participante.id,  # Para compatibilidad
+                                'event_type': 'new_attempt',
+                                'estado': 'activo',
+                                'esta_activo': True,
+                                'tiene_resultado_completado': False,
+                                'intentos_utilizados': intento_info_actualizado.intentos_utilizados,
+                                'intentos_permitidos': intento_info_actualizado.intentos_permitidos,
+                                'puede_realizar_intento': intento_info_actualizado.puede_realizar_intento(),
+                                'numero_intento_actual': numero_intento,
+                                'preguntas_respondidas': 0,
+                                'data': {
+                                    'estado': 'activo',
+                                    'ultima_actividad': timezone.now().isoformat(),
+                                    'preguntas_respondidas': 0,
+                                    'numero_intento': numero_intento,
+                                    'fecha_inicio': resultado_existente.fecha_inicio.isoformat()
+                                }
+                            }
+                        )
+                        print(f"Notificación de nueva evaluación enviada para {participante.NombresCompletos}")
+                except Exception as ws_error:
+                    print(f"Error al notificar WebSocket sobre nueva evaluación: {str(ws_error)}")
+                    
+        except Exception as monitoreo_error:
+            print(f"Error al actualizar monitoreo para nueva evaluación: {str(monitoreo_error)}")
     
     context = {
         'evaluacion': evaluacion,
@@ -1739,11 +1669,25 @@ def student_quizs(request):
             # Obtener el mejor resultado completado para mostrar información
             mejor_resultado = ResultadoEvaluacion.get_mejor_resultado_participante(evaluacion, participante)
             
+            # Verificar si fue finalizada por administrador
+            monitoreo_participante = MonitoreoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante=participante
+            ).first()
+            
+            fue_finalizada_por_admin = (monitoreo_participante and 
+                                        monitoreo_participante.finalizado_por_admin is not None and 
+                                        monitoreo_participante.estado == 'finalizado')
+            
+            # Si fue finalizada por admin pero no hay mejor_resultado, obtener el resultado del monitoreo
+            if fue_finalizada_por_admin and not mejor_resultado and monitoreo_participante.resultado:
+                mejor_resultado = monitoreo_participante.resultado
+            
             puede_continuar = False
             puede_iniciar = False
             
-            if resultado_en_progreso:
-                # Hay un intento en progreso, verificar si aún tiene tiempo
+            if resultado_en_progreso and not fue_finalizada_por_admin:
+                # Hay un intento en progreso y no fue finalizada por admin, verificar si aún tiene tiempo
                 tiempo_transcurrido = (timezone.now() - resultado_en_progreso.fecha_inicio).total_seconds()
                 tiempo_total = evaluacion.duration_minutes * 60  # en segundos
                 tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
@@ -1753,7 +1697,7 @@ def student_quizs(request):
                     puede_continuar = True
             
             # Verificar si puede iniciar un nuevo intento
-            if not resultado_en_progreso and intento_participante.puede_realizar_intento():
+            if not resultado_en_progreso and not fue_finalizada_por_admin and intento_participante.puede_realizar_intento():
                 # Puede iniciar si está dentro de la ventana de acceso
                 if evaluacion.is_available():
                     puede_iniciar = True
@@ -1765,7 +1709,8 @@ def student_quizs(request):
                 'puede_continuar': puede_continuar,
                 'puede_iniciar': puede_iniciar,
                 'intento_info': intento_participante,  # Información de intentos
-                'numero_intento_actual': (intento_participante.intentos_utilizados + 1) if puede_iniciar else None
+                'numero_intento_actual': (intento_participante.intentos_utilizados + 1) if puede_iniciar else None,
+                'fue_finalizada_por_admin': fue_finalizada_por_admin  # Para mostrar estado correcto
             })
     
     context = {
