@@ -70,22 +70,23 @@
 
                                     <div class="mb-3">
                                         {% if participante %}
-                                            {% if (resultado and resultado.completada and not puede_iniciar) or (fue_finalizada_por_admin and not puede_iniciar) %}
+                                            {% if fue_finalizada_por_admin and not puede_iniciar %}
                                                 <div class="alert alert-success">
                                                     <i class="bi bi-check-circle me-2"></i>
-                                                    {% if fue_finalizada_por_admin %}
-                                                        <strong>¡Finalizada por Admin!</strong> 
-                                                        {% if resultado %}
-                                                            Puntuación: {{ resultado.get_puntaje_numerico }}
-                                                        {% else %}
-                                                            Puntuación: 0.00/10
-                                                        {% endif %}
-                                                        <br><small class="text-muted">Evaluación terminada por administrador</small>
+                                                    <strong>¡Finalizada por Admin!</strong> 
+                                                    {% if resultado %}
+                                                        Puntuación: {{ resultado.get_puntaje_numerico }}
                                                     {% else %}
-                                                        <strong>¡Completada!</strong> Puntuación: {{ resultado.get_puntaje_numerico }}
-                                                        {% if intento_info and intento_info.intentos_utilizados >= intento_info.intentos_permitidos %}
-                                                            <br><small class="text-muted">Todos los intentos utilizados</small>
-                                                        {% endif %}
+                                                        Puntuación: 0.00/10
+                                                    {% endif %}
+                                                    <br><small class="text-muted">Evaluación terminada por administrador</small>
+                                                </div>
+                                            {% elif resultado and resultado.completada and not puede_iniciar %}
+                                                <div class="alert alert-success">
+                                                    <i class="bi bi-check-circle me-2"></i>
+                                                    <strong>¡Completada!</strong> Puntuación: {{ resultado.get_puntaje_numerico }}
+                                                    {% if intento_info and intento_info.intentos_utilizados >= intento_info.intentos_permitidos %}
+                                                        <br><small class="text-muted">Todos los intentos utilizados</small>
                                                     {% endif %}
                                                 </div>
                                             {% elif puede_continuar %}
@@ -166,13 +167,16 @@
                                                     Iniciar Evaluación
                                                 {% endif %}
                                             </a>
-                                        {% elif fue_finalizada_por_admin or (resultado and resultado.completada) %}
+                                        {% elif fue_finalizada_por_admin %}
                                             <button class="btn btn-success btn-lg w-100" disabled>
                                                 <i class="bi bi-check-circle me-2"></i>
                                                 Ya Completada
-                                                {% if fue_finalizada_por_admin %}
-                                                    <small class="d-block text-muted">Finalizada por Admin</small>
-                                                {% endif %}
+                                                <small class="d-block text-muted">Finalizada por Admin</small>
+                                            </button>
+                                        {% elif resultado and resultado.completada %}
+                                            <button class="btn btn-success btn-lg w-100" disabled>
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                Ya Completada
                                             </button>
                                         {% else %}
                                             {% if evaluacion.get_status == 'pending' %}
