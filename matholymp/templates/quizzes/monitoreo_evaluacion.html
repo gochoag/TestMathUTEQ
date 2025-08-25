@@ -4,6 +4,7 @@
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="container-fluid">
     <!-- Header del monitoreo -->
     <div class="row mb-4">
@@ -24,12 +25,12 @@
                             <div class="d-flex justify-content-end align-items-center">
                                 <div class="me-3">
                                     <small>Última actualización:</small><br>
-                                    <span id="last-update">Cargando...</span>
+                                    <span id="last-update" class="monitoreo-tiempo-real">Cargando...</span>
                                 </div>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
                                     <label class="form-check-label" for="auto-refresh">
-                                        Auto-refresh
+                                        Auto-refresh (5s)
                                     </label>
                                 </div>
                             </div>
@@ -93,10 +94,9 @@
                                 <tr>
                                     <th>Participante</th>
                                     <th>Estado</th>
-                                    <th>Página</th>
                                     <th>Progreso/Puntaje</th>
-                                    <th>Tiempo Activo</th>
                                     <th>Última Actividad</th>
+                                    <th>Intentos</th>
                                     <th>Alertas</th>
                                     <th>Acciones</th>
                                 </tr>
@@ -188,6 +188,76 @@
     </div>
 </div>
 
+<!-- Modal para dar nuevo intento -->
+<div class="modal fade" id="modalNuevoIntento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-clockwise"></i>
+                    Otorgar Nuevo Intento
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info alert-sm">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Participante:</strong> <span id="nombre-participante-intento"></span>
+                </div>
+                
+                <!-- Información compacta de intentos -->
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="text-center p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Gastados</small>
+                            <h4 class="mb-0 text-danger" id="intentos-usados">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Total Actual</small>
+                            <h4 class="mb-0 text-info" id="intentos-totales">1</h4>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Input compacto para nuevos intentos -->
+                <div class="row align-items-end">
+                    <div class="col-8">
+                        <label for="cantidad-intentos" class="form-label small mb-1">
+                            <i class="bi bi-plus-circle text-success"></i> Intentos adicionales:
+                        </label>
+                        <select class="form-select" id="cantidad-intentos">
+                            <option value="1" selected>1 intento adicional</option>
+                            <option value="2">2 intentos adicionales</option>
+                            <option value="3">3 intentos adicionales</option>
+                            <option value="5">5 intentos adicionales</option>
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-center">
+                            <small class="text-muted d-block mb-1">Nuevo Total</small>
+                            <span class="badge bg-success fs-6" id="nuevo-total">2</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <small class="text-muted mt-2 d-block">
+                    <i class="bi bi-exclamation-circle"></i>
+                    Se aumentará el límite de intentos. Esta acción no se puede deshacer.
+                </small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btn-confirmar-nuevo-intento">
+                    <i class="bi bi-check-circle"></i>
+                    Confirmar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal para ver detalles -->
 <div class="modal fade" id="modalDetalles" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -208,11 +278,68 @@
 
 {% endblock %}
 
+{% block extra_css %}
+<style>
+/* Estilo para las transiciones del monitoreo en tiempo real */
+#tabla-monitoreo tbody tr {
+    transition: background-color 0.3s ease-in-out;
+}
+
+/* Efecto de pulso para cambios importantes */
+@keyframes pulso {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+.fila-actualizada {
+    animation: pulso 0.6s ease-in-out;
+}
+
+/* Indicador de tiempo real activo */
+.monitoreo-tiempo-real::after {
+    content: " 🔴";
+    animation: parpadeo 1s infinite;
+}
+
+@keyframes parpadeo {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+/* Estilos para el modal de intentos compacto */
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+#modalNuevoIntento .modal-body {
+    padding: 1rem 1.5rem;
+}
+
+#modalNuevoIntento .border {
+    border-width: 2px !important;
+}
+
+#nuevo-total {
+    font-size: 1.2rem !important;
+    padding: 0.5rem 1rem !important;
+    transition: transform 0.2s ease, background-color 0.3s ease;
+}
+
+#nuevo-total:hover {
+    background-color: #198754 !important;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
+// Variables globales para el monitoreo en tiempo real
 let evaluacionId = {{ evaluacion.id }};
 let autoRefreshInterval;
 let currentMonitoreoId = null;
+let lastMonitoreoData = {}; // Cache para detectar cambios
 
 // Función para formatear tiempo
 function formatTime(seconds) {
@@ -230,107 +357,345 @@ function formatTime(seconds) {
 }
 
 // Función para obtener el color del estado
-function getEstadoColor(estaActivo, estado) {
-    if (estado === 'finalizado') return 'secondary';
+function getEstadoColor(estaActivo, estado, haIniciado, intentosDisponibles) {
+    // Priorizar el estado explícito de la base de datos
+    if (estado === 'finalizado' && intentosDisponibles === 0) return 'secondary'; // Finalizado definitivo
     if (estado === 'suspendido') return 'danger';
-    return estaActivo ? 'success' : 'warning';
+    
+    // Estados mejorados con lógica de intentos
+    if (estado === 'activo') return 'success'; // Rindiendo actualmente
+    if (estado === 'inactivo' && intentosDisponibles > 0) return 'warning'; // Puede reiniciar
+    if (estado === 'finalizado' && intentosDisponibles > 0) return 'warning'; // Finalizado pero puede reiniciar
+    if (!haIniciado || estado === 'pendiente') return 'info'; // Sin iniciar
+    
+    return 'secondary'; // Por defecto
 }
 
 // Función para obtener el texto del estado
-function getEstadoText(estaActivo, estado) {
-    if (estado === 'finalizado') return 'Finalizado';
+function getEstadoText(estaActivo, estado, haIniciado, intentosDisponibles) {
+    // Estados mejorados con lógica de intentos
+    if (estado === 'activo') return 'Rindiendo';
+    if (estado === 'inactivo' && intentosDisponibles > 0) return 'Puede reiniciar';
+    if (estado === 'finalizado' && intentosDisponibles === 0) return 'Finalizado';
+    if (estado === 'finalizado' && intentosDisponibles > 0) return 'Puede reiniciar';
     if (estado === 'suspendido') return 'Suspendido';
-    return estaActivo ? 'Activo' : 'Inactivo';
+    if (!haIniciado || estado === 'pendiente') return 'Pendiente';
+    
+    return 'Estado desconocido';
 }
 
-// Función para cargar los datos del monitoreo
-function cargarMonitoreo() {
-    fetch(`/evaluacion/${evaluacionId}/monitoreo/estado/`)
-        .then(response => response.json())
-        .then(data => {
-            const tbody = document.getElementById('tbody-monitoreo');
-            tbody.innerHTML = '';
-            
-            data.monitoreos.forEach(monitoreo => {
-                const row = document.createElement('tr');
-                
-                // Determinar el contenido de la columna de progreso/puntaje
-                let progresoPuntajeContent = '';
-                if (monitoreo.estado === 'finalizado' && monitoreo.tiene_resultado_completado) {
-                    // Mostrar puntaje para evaluaciones finalizadas
-                    const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
-                                        monitoreo.puntaje >= 5 ? 'warning' : 'danger';
-                    progresoPuntajeContent = `
-                        <div class="text-center">
-                            <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico}</strong><br>
-                            <small class="text-muted">${monitoreo.puntaje}%</small>
-                        </div>
-                    `;
+// Función para generar el HTML de una fila
+function generarFilaMonitoreo(monitoreo) {
+    // Determinar el contenido de la columna de progreso/puntaje
+    let progresoPuntajeContent = '';
+    
+    if (monitoreo.estado === 'finalizado' && monitoreo.intentos_disponibles === 0) {
+        // Participante finalizó definitivamente - mostrar puntaje si está disponible
+        if (monitoreo.tiene_resultado_completado) {
+            const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : 
+                                monitoreo.puntaje >= 5 ? 'warning' : 'danger';
+            progresoPuntajeContent = `
+                <div class="text-center">
+                    <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico || 0}</strong><br>
+                    <small class="text-muted">${monitoreo.puntaje || 0}%</small>
+                </div>
+            `;
+        } else {
+            progresoPuntajeContent = `
+                <div class="text-center">
+                    <span class="badge bg-secondary">
+                        <i class="bi bi-check-circle"></i> Completado
+                    </span>
+                </div>
+            `;
+        }
+    } else if ((monitoreo.estado === 'finalizado' || monitoreo.estado === 'inactivo') && monitoreo.intentos_disponibles > 0) {
+        // Participante terminó pero puede reiniciar
+        progresoPuntajeContent = `
+            <div class="text-center">
+                <span class="badge bg-warning">
+                    <i class="bi bi-arrow-clockwise"></i> Puede reiniciar
+                </span>
+            </div>
+        `;
+    } else if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
+        // Participante no ha iniciado la evaluación
+        progresoPuntajeContent = `
+            <div class="text-center">
+                <span class="badge bg-info">
+                    <i class="bi bi-clock"></i> Sin iniciar
+                </span>
+            </div>
+        `;
+    } else {
+        // Participante está rindiendo - mostrar progreso
+        const porcentaje = monitoreo.porcentaje_avance || 0;
+        progresoPuntajeContent = `
+            <div class="progress" style="height: 20px;">
+                <div class="progress-bar ${porcentaje > 0 ? 'bg-primary' : 'bg-light'}" role="progressbar" 
+                     style="width: ${porcentaje}%" 
+                     aria-valuenow="${porcentaje}" 
+                     aria-valuemin="0" aria-valuemax="100">
+                    ${porcentaje}%
+                </div>
+            </div>
+            <small class="text-muted">
+                ${monitoreo.preguntas_respondidas || 0} respondidas / ${monitoreo.preguntas_revisadas || 0} revisadas
+            </small>
+        `;
+    }
+    
+    return `
+        <td>
+            <strong>${monitoreo.participante_nombre}</strong><br>
+            <small class="text-muted">${monitoreo.participante_cedula}</small>
+        </td>
+        <td>
+            <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, monitoreo.intentos_disponibles)}">
+                ${getEstadoText(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, monitoreo.intentos_disponibles)}
+            </span>
+        </td>
+        <td>${progresoPuntajeContent}</td>
+        <td>
+            ${(() => {
+                // Mostrar última actividad según el estado
+                if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
+                    return '<span class="text-muted"><i class="bi bi-dash-circle"></i> Sin iniciar</span>';
+                } else if (monitoreo.ultima_actividad) {
+                    const fechaActividad = new Date(monitoreo.ultima_actividad);
+                    const ahora = new Date();
+                    const diferencia = Math.floor((ahora - fechaActividad) / 60000); // minutos
+                    
+                    let colorActividad = 'success';
+                    if (diferencia > 10) colorActividad = 'danger';
+                    else if (diferencia > 5) colorActividad = 'warning';
+                    
+                    return `<span class="text-${colorActividad}">
+                        <i class="bi bi-clock"></i> ${fechaActividad.toLocaleTimeString()}
+                        ${diferencia > 0 ? `<br><small class="text-muted">Hace ${diferencia} min</small>` : ''}
+                    </span>`;
                 } else {
-                    // Mostrar progreso para evaluaciones activas
-                    progresoPuntajeContent = `
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar" role="progressbar" 
-                                 style="width: ${monitoreo.porcentaje_avance}%" 
-                                 aria-valuenow="${monitoreo.porcentaje_avance}" 
-                                 aria-valuemin="0" aria-valuemax="100">
-                                ${monitoreo.porcentaje_avance}%
-                            </div>
-                        </div>
-                        <small class="text-muted">
-                            ${monitoreo.preguntas_respondidas} respondidas / ${monitoreo.preguntas_revisadas} revisadas
-                        </small>
-                    `;
+                    return '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Sin registro</span>';
                 }
+            })()}
+        </td>
+        <td>
+            ${(() => {
+                // Calcular los intentos usando la lógica del modelo
+                const intentosUsados = monitoreo.intentos_usados || 0;
+                const intentosDisponibles = monitoreo.intentos_disponibles || 0;
+                const intentosTotales = intentosUsados + intentosDisponibles;
+                const tieneIntentos = intentosDisponibles > 0;
                 
-                row.innerHTML = `
-                    <td>
-                        <strong>${monitoreo.participante_nombre}</strong><br>
-                        <small class="text-muted">${monitoreo.participante_cedula}</small>
-                    </td>
-                    <td>
-                        <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado)}">
-                            ${getEstadoText(monitoreo.esta_activo, monitoreo.estado)}
-                        </span>
-                    </td>
-                    <td>${monitoreo.estado === 'finalizado' ? '-' : monitoreo.pagina_actual}</td>
-                    <td>${progresoPuntajeContent}</td>
-                    <td>${monitoreo.tiempo_activo}</td>
-                    <td>
-                        <span class="text-${monitoreo.esta_activo ? 'success' : 'warning'}">
-                            ${new Date(monitoreo.ultima_actividad).toLocaleTimeString()}
-                        </span>
-                    </td>
-                    <td>
-                        ${monitoreo.alertas_count > 0 ? 
-                            `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
-                            '<span class="badge bg-success">0</span>'
+                // Badge color según si tiene intentos disponibles
+                const badgeColor = tieneIntentos ? 'bg-success' : 'bg-danger';
+                
+                return `<span class="badge ${badgeColor}" title="Disponibles/Total">
+                    ${intentosDisponibles}/${intentosTotales}
+                </span>`;
+            })()}
+        </td>
+        <td>
+            ${monitoreo.alertas_count > 0 ? 
+                `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
+                '<span class="badge bg-success">0</span>'
+            }
+        </td>
+        <td>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-info" 
+                        onclick="verDetalles(${monitoreo.id})" 
+                        title="Ver detalles">
+                    <i class="bi bi-eye"></i>
+                </button>
+                ${(() => {
+                    // Lógica mejorada basada en los datos del modelo
+                    console.log(`Participante: ${monitoreo.participante_nombre}, Estado: ${monitoreo.estado}, Intentos disponibles: ${monitoreo.intentos_disponibles}`);
+                    
+                    // Si tiene intentos disponibles, pueden pasar diferentes cosas:
+                    if (monitoreo.intentos_disponibles > 0) {
+                        // Si no ha iniciado (pendiente)
+                        if (monitoreo.estado === 'pendiente' || !monitoreo.ha_iniciado) {
+                            return `<button type="button" class="btn btn-outline-info" disabled title="Esperando que inicie">
+                                <i class="bi bi-hourglass-split"></i> Esperando
+                            </button>`;
                         }
-                    </td>
-                    <td>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-info" 
-                                    onclick="verDetalles(${monitoreo.id})" 
-                                    title="Ver detalles">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            ${monitoreo.estado !== 'finalizado' ? `
+                        
+                        // Si está rindiendo actualmente
+                        if (monitoreo.estado === 'activo') {
+                            return `
                                 <button type="button" class="btn btn-outline-warning" 
                                         onclick="agregarAlerta(${monitoreo.id})" 
                                         title="Agregar alerta">
                                     <i class="bi bi-exclamation-triangle"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-danger" 
-                                         onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
-                                         title="Finalizar evaluación">
+                                        onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
+                                        title="Finalizar evaluación">
                                     <i class="bi bi-stop-circle"></i>
                                 </button>
-                            ` : ''}
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+                            `;
+                        }
+                        
+                        // Si está inactivo o finalizado pero tiene intentos disponibles (puede reiniciar)
+                        if (monitoreo.estado === 'inactivo' || (monitoreo.estado === 'finalizado' && monitoreo.intentos_disponibles > 0)) {
+                            return `<button type="button" class="btn btn-outline-success" disabled title="Puede reiniciar cuando quiera">
+                                <i class="bi bi-play-circle"></i> Disponible
+                            </button>`;
+                        }
+                    }
+                    
+                    // Si NO tiene intentos disponibles (agotó sus intentos)
+                    // Solo mostrar botón de nuevo intento
+                    const intentosTotales = (monitoreo.intentos_usados || 0) + (monitoreo.intentos_disponibles || 0);
+                    return `<button type="button" class="btn btn-outline-success" 
+                            onclick="darNuevoIntento(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${monitoreo.intentos_usados || 0}, ${intentosTotales})" 
+                            title="Dar nuevo intento">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>`;
+                })()}
+            </div>
+        </td>
+    `;
+}
+
+// Función para mostrar notificaciones de cambios importantes
+function notificarCambioEstado(monitoreo, estadoAnterior) {
+    const nombre = monitoreo.participante_nombre;
+    
+    if (!estadoAnterior) return; // Primera carga
+    
+    // Detectar cambios importantes
+    if (estadoAnterior.estado === 'pendiente' && monitoreo.ha_iniciado) {
+        showDynamicToast({
+            type: 'info',
+            title: 'Participante iniciado',
+            message: `${nombre} ha comenzado la evaluación`
+        });
+    } else if ((estadoAnterior.estado === 'finalizado' || estadoAnterior.estado === 'inactivo') && monitoreo.estado === 'activo') {
+        showDynamicToast({
+            type: 'info',
+            title: 'Nuevo intento iniciado',
+            message: `${nombre} ha iniciado un nuevo intento de evaluación`
+        });
+    } else if (monitoreo.alertas_count > (estadoAnterior.alertas_count || 0)) {
+        showDynamicToast({
+            type: 'warning',
+            title: 'Nueva alerta',
+            message: `Se agregó una alerta para ${nombre}`
+        });
+    } else if (estadoAnterior.esta_activo && !monitoreo.esta_activo && monitoreo.estado !== 'finalizado') {
+        showDynamicToast({
+            type: 'warning',
+            title: 'Participante inactivo',
+            message: `${nombre} lleva más de 5 minutos sin actividad`
+        });
+    }
+}
+
+// Función para detectar cambios en los datos
+function hasMonitoreoChanged(current, previous) {
+    if (!previous) return true;
+    
+    // Comparar campos clave que indican cambios importantes
+    return (
+        current.estado !== previous.estado ||
+        current.ha_iniciado !== previous.ha_iniciado ||
+        current.esta_activo !== previous.esta_activo ||
+        current.porcentaje_avance !== previous.porcentaje_avance ||
+        current.preguntas_respondidas !== previous.preguntas_respondidas ||
+        current.alertas_count !== previous.alertas_count ||
+        current.ultima_actividad !== previous.ultima_actividad ||
+        current.intentos_usados !== previous.intentos_usados ||
+        current.intentos_disponibles !== previous.intentos_disponibles
+    );
+}
+
+// Función mejorada para cargar monitoreo en tiempo real
+function cargarMonitoreo() {
+    console.log('Cargando datos del monitoreo...');
+    
+    fetch(`/evaluacion/${evaluacionId}/monitoreo/estado/`)
+        .then(response => {
+            console.log('Respuesta recibida:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Datos recibidos:', data);
+            
+            if (!data.monitoreos || !Array.isArray(data.monitoreos)) {
+                console.error('Formato de datos inválido:', data);
+                throw new Error('Datos de monitoreo inválidos');
+            }
+            
+            const tbody = document.getElementById('tbody-monitoreo');
+            
+            // Si no hay datos anteriores, es la primera carga - mostrar todos
+            const isFirstLoad = Object.keys(lastMonitoreoData).length === 0;
+            
+            console.log(`${isFirstLoad ? 'Primera carga' : 'Actualización'} - ${data.monitoreos.length} participantes`);
+            
+            if (isFirstLoad) {
+                // Primera carga - limpiar tabla y cargar todos los registros
+                tbody.innerHTML = '';
+                console.log('Primera carga del monitoreo');
+                
+                data.monitoreos.forEach(monitoreo => {
+                    const row = document.createElement('tr');
+                    row.id = `monitoreo-row-${monitoreo.id}`;
+                    row.innerHTML = generarFilaMonitoreo(monitoreo);
+                    tbody.appendChild(row);
+                    
+                    // Guardar en cache
+                    lastMonitoreoData[monitoreo.id] = { ...monitoreo };
+                });
+            } else {
+                // Actualizaciones posteriores - solo cambiar filas modificadas
+                data.monitoreos.forEach(monitoreo => {
+                    const rowId = `monitoreo-row-${monitoreo.id}`;
+                    let existingRow = document.getElementById(rowId);
+                    
+                    // Verificar si hay cambios
+                    const hasChanged = hasMonitoreoChanged(monitoreo, lastMonitoreoData[monitoreo.id]);
+                    
+                    if (hasChanged) {
+                        // Notificar cambios importantes si no es la primera carga
+                        if (lastMonitoreoData[monitoreo.id]) {
+                            notificarCambioEstado(monitoreo, lastMonitoreoData[monitoreo.id]);
+                        }
+                        
+                        // Crear o actualizar la fila
+                        if (existingRow) {
+                            // Actualizar fila existente con animación
+                            existingRow.classList.add('fila-actualizada');
+                            existingRow.style.background = '#fff3cd'; // Highlight amarillo
+                            existingRow.innerHTML = generarFilaMonitoreo(monitoreo);
+                            
+                            // Remover highlight y animación después de 1 segundo
+                            setTimeout(() => {
+                                existingRow.style.background = '';
+                                existingRow.classList.remove('fila-actualizada');
+                            }, 1000);
+                            
+                            console.log(`Fila actualizada: ${monitoreo.participante_nombre} - Estado: ${monitoreo.estado}`);
+                        } else {
+                            // Crear nueva fila (participante nuevo agregado)
+                            const row = document.createElement('tr');
+                            row.id = rowId;
+                            row.innerHTML = generarFilaMonitoreo(monitoreo);
+                            tbody.appendChild(row);
+                            
+                            console.log(`Nueva fila agregada: ${monitoreo.participante_nombre}`);
+                        }
+                    }
+                    
+                    // Actualizar cache
+                    lastMonitoreoData[monitoreo.id] = { ...monitoreo };
+                });
+            }
             
             // Actualizar timestamp
             document.getElementById('last-update').textContent = 
@@ -338,6 +703,16 @@ function cargarMonitoreo() {
         })
         .catch(error => {
             console.error('Error al cargar monitoreo:', error);
+            // En caso de error, mostrar mensaje en la tabla
+            const tbody = document.getElementById('tbody-monitoreo');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Error al cargar los datos del monitoreo. Verificando conexión...
+                    </td>
+                </tr>
+            `;
         });
 }
 
@@ -362,13 +737,15 @@ function agregarAlerta(monitoreoId) {
     modal.show();
 }
 
-    // Función para ver detalles
-    function verDetalles(monitoreoId) {
-        window.location.href = `/monitoreo/${monitoreoId}/detalle/`;
-    }
+// Función para ver detalles
+function verDetalles(monitoreoId) {
+    window.location.href = `/monitoreo/${monitoreoId}/detalle/`;
+}
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Iniciando monitoreo para evaluación ID:', evaluacionId);
+    
     // Cargar datos iniciales
     cargarMonitoreo();
     
@@ -377,14 +754,20 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function toggleAutoRefresh() {
         if (autoRefreshCheckbox.checked) {
+            // Actualización más frecuente para monitoreo en tiempo real
             autoRefreshInterval = setInterval(cargarMonitoreo, 5000); // 5 segundos
+            console.log('Monitoreo en tiempo real activado - actualización cada 5 segundos');
         } else {
             clearInterval(autoRefreshInterval);
+            console.log('Monitoreo en tiempo real desactivado');
         }
     }
     
     autoRefreshCheckbox.addEventListener('change', toggleAutoRefresh);
     toggleAutoRefresh(); // Iniciar auto-refresh
+    
+    // Event listener para actualizar el nuevo total de intentos dinámicamente
+    document.getElementById('cantidad-intentos').addEventListener('change', actualizarNuevoTotal);
     
     // Confirmar finalización
     document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
@@ -493,7 +876,112 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+    
+    // Confirmar nuevo intento
+    document.getElementById('btn-confirmar-nuevo-intento').addEventListener('click', function() {
+        const participanteId = window.currentParticipanteId;
+        const nombreParticipante = window.currentParticipanteNombre;
+        const cantidadIntentos = document.getElementById('cantidad-intentos').value;
+        
+        if (!participanteId) {
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'No se ha seleccionado un participante válido.'
+            });
+            return;
+        }
+        
+        if (!cantidadIntentos || cantidadIntentos < 1) {
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, ingrese una cantidad válida de intentos.'
+            });
+            return;
+        }
+        
+        fetch(`/evaluacion/{{ evaluacion.pk }}/dar-nuevo-intento/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                participante_id: participanteId,
+                cantidad_intentos: parseInt(cantidadIntentos)
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalNuevoIntento')).hide();
+                cargarMonitoreo();
+                showDynamicToast({
+                    type: 'success',
+                    title: 'Éxito',
+                    message: data.message
+                });
+                // Limpiar variables globales
+                window.currentParticipanteId = null;
+                window.currentParticipanteNombre = null;
+            } else {
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: data.error
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al procesar el nuevo intento'
+            });
+        });
+    });
 });
+
+// Función para dar nuevo intento (fuera del DOMContentLoaded para ser accesible globalmente)
+function darNuevoIntento(participanteId, nombreParticipante, intentosUsados = 0, intentosTotales = 1) {
+    // Guardar los datos en variables globales para usar en el modal
+    window.currentParticipanteId = participanteId;
+    window.currentParticipanteNombre = nombreParticipante;
+    
+    // Actualizar el contenido del modal
+    document.getElementById('nombre-participante-intento').textContent = nombreParticipante;
+    document.getElementById('intentos-usados').textContent = intentosUsados;
+    document.getElementById('intentos-totales').textContent = intentosTotales;
+    
+    // Resetear el select a 1 intento adicional
+    document.getElementById('cantidad-intentos').value = "1";
+    
+    // Calcular y mostrar el nuevo total
+    actualizarNuevoTotal();
+    
+    // Mostrar el modal
+    const modal = new bootstrap.Modal(document.getElementById('modalNuevoIntento'));
+    modal.show();
+}
+
+// Función para actualizar el nuevo total dinámicamente
+function actualizarNuevoTotal() {
+    const intentosTotales = parseInt(document.getElementById('intentos-totales').textContent) || 0;
+    const cantidadAdicional = parseInt(document.getElementById('cantidad-intentos').value) || 0;
+    const nuevoTotal = intentosTotales + cantidadAdicional;
+    
+    const nuevoTotalElement = document.getElementById('nuevo-total');
+    nuevoTotalElement.textContent = nuevoTotal;
+    
+    // Efecto visual de actualización
+    nuevoTotalElement.style.transform = 'scale(1.2)';
+    nuevoTotalElement.style.transition = 'transform 0.2s ease';
+    setTimeout(() => {
+        nuevoTotalElement.style.transform = 'scale(1)';
+    }, 200);
+}
 
 
 </script>

@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.conf import settings
 from .email_utils import generate_email_messages
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion, IntentosParticipante
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -169,54 +169,101 @@ def take_quiz(request, pk):
     if participante not in participantes_autorizados:
         messages.error(request, 'No estás autorizado para rendir esta evaluación.')
         return redirect('quizzes:quiz')
-    
-    # Verificar si ya completó la evaluación
-    resultado_existente = ResultadoEvaluacion.objects.filter(
-        evaluacion=evaluacion,
-        participante=participante
-    ).first()
-    
-    if resultado_existente and resultado_existente.completada:
-        messages.warning(request, 'Ya has completado esta evaluación.')
+
+    # VERIFICAR INTENTOS DISPONIBLES antes de proceder
+    intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+    if intentos_disponibles <= 0:
+        intentos_usados = participante.get_intentos_usados(evaluacion)
+        messages.error(request, f'Has agotado tus intentos para esta evaluación. Intentos utilizados: {intentos_usados}')
         return redirect('quizzes:quiz')
     
-    # Verificar si la evaluación fue finalizada administrativamente
-    monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+    # Verificar si hay un intento activo (no completado)
+    resultado_activo = ResultadoEvaluacion.objects.filter(
         evaluacion=evaluacion,
         participante=participante,
-        estado='finalizado'
+        completada=False
     ).first()
     
-    if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
-        messages.error(request, f'Tu evaluación fue finalizada administrativamente. Motivo: {monitoreo_existente.motivo_finalizacion}')
-        return redirect('quizzes:quiz')
+    # Logging para debugging
+    if resultado_activo:
+        print(f"DEBUG - Resultado activo encontrado para {participante.NombresCompletos}")
+        print(f"DEBUG - Respuestas guardadas: {resultado_activo.respuestas_guardadas}")
+        print(f"DEBUG - Tiempo restante: {resultado_activo.tiempo_restante}")
+    else:
+        print(f"DEBUG - No hay resultado activo para {participante.NombresCompletos}")
     
-    # Verificar si hay un intento en progreso
+    # Si hay un intento activo, verificar si puede continuarlo
     continuar_evaluacion = False
-    if resultado_existente and not resultado_existente.completada:
+    if resultado_activo:
         # Usar el tiempo_restante guardado en lugar de recalcular
-        tiempo_restante_guardado = resultado_existente.tiempo_restante or 0
+        tiempo_restante_guardado = resultado_activo.tiempo_restante or 0
         
         # Si hay tiempo restante guardado, usar ese valor
         if tiempo_restante_guardado > 0:
             continuar_evaluacion = True
             # Actualizar última actividad
-            resultado_existente.ultima_actividad = timezone.now()
-            resultado_existente.save()
+            resultado_activo.ultima_actividad = timezone.now()
+            resultado_activo.save()
+            
+            # Actualizar monitoreo al continuar evaluación
+            try:
+                monitoreo = MonitoreoEvaluacion.objects.filter(
+                    evaluacion=evaluacion,
+                    participante=participante
+                ).first()
+                
+                if monitoreo:
+                    # Obtener preguntas para calcular progreso actual
+                    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                    respuestas_actuales = resultado_activo.respuestas_guardadas or {}
+                    preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
+                    
+                    monitoreo.preguntas_respondidas = preguntas_respondidas
+                    monitoreo.preguntas_revisadas = len(preguntas_mostradas)
+                    monitoreo.ultima_actividad = timezone.now()
+                    monitoreo.save()
+                    
+                    print(f"DEBUG - Monitoreo actualizado al continuar: {preguntas_respondidas}/{len(preguntas_mostradas)} preguntas")
+            except Exception as e:
+                print(f"Error al actualizar monitoreo al continuar: {e}")
+                pass
         else:
             # Si no hay tiempo restante guardado, calcular basado en fecha_inicio
-            tiempo_transcurrido = (timezone.now() - resultado_existente.fecha_inicio).total_seconds()
+            tiempo_transcurrido = (timezone.now() - resultado_activo.fecha_inicio).total_seconds()
             tiempo_total = evaluacion.duration_minutes * 60  # en segundos
             tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
             
             if tiempo_restante > 0:
                 continuar_evaluacion = True
-                resultado_existente.tiempo_restante = int(tiempo_restante)
-                resultado_existente.ultima_actividad = timezone.now()
-                resultado_existente.save()
+                resultado_activo.tiempo_restante = int(tiempo_restante)
+                resultado_activo.ultima_actividad = timezone.now()
+                resultado_activo.save()
+                
+                # Actualizar monitoreo al continuar evaluación con tiempo calculado
+                try:
+                    monitoreo = MonitoreoEvaluacion.objects.filter(
+                        evaluacion=evaluacion,
+                        participante=participante
+                    ).first()
+                    
+                    if monitoreo:
+                        # Obtener preguntas para calcular progreso actual
+                        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                        respuestas_actuales = resultado_activo.respuestas_guardadas or {}
+                        preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
+                        
+                        monitoreo.preguntas_respondidas = preguntas_respondidas
+                        monitoreo.preguntas_revisadas = len(preguntas_mostradas)
+                        monitoreo.ultima_actividad = timezone.now()
+                        monitoreo.save()
+                        
+                        print(f"DEBUG - Monitoreo actualizado al continuar (tiempo calculado): {preguntas_respondidas}/{len(preguntas_mostradas)} preguntas")
+                except Exception as e:
+                    print(f"Error al actualizar monitoreo al continuar (tiempo calculado): {e}")
+                    pass
             else:
-                # Si se acabó el tiempo, calcular puntaje de las preguntas respondidas con nuevo sistema
-                respuestas_guardadas = resultado_existente.respuestas_guardadas or {}
+                # Si se acabó el tiempo, finalizar este intento
+                respuestas_guardadas = resultado_activo.respuestas_guardadas or {}
                 preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
                 
                 score = 0
@@ -243,16 +290,32 @@ def take_quiz(request, pk):
                 # Calcular porcentaje basado en puntaje ponderado
                 percentage = (puntaje_ponderado / 10) * 100
                 
-                resultado_existente.puntaje = percentage
-                resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
-                resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
-                resultado_existente.tiempo_utilizado = evaluacion.duration_minutes
-                resultado_existente.fecha_fin = timezone.now()
-                resultado_existente.completada = True
-                resultado_existente.tiempo_restante = 0
-                resultado_existente.save()
+                # Calcular tiempo utilizado cuando se agota el tiempo
+                if resultado_activo.fecha_inicio:
+                    tiempo_utilizado = (timezone.now() - resultado_activo.fecha_inicio).total_seconds() / 60  # en minutos
+                else:
+                    tiempo_utilizado = evaluacion.duration_minutes
                 
-                messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_existente.get_puntaje_numerico()}')
+                resultado_activo.puntaje = percentage
+                resultado_activo.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
+                resultado_activo.puntos_totales = 10  # Puntos totales siempre son 10
+                resultado_activo.tiempo_utilizado = tiempo_utilizado
+                resultado_activo.fecha_fin = timezone.now()
+                resultado_activo.completada = True
+                resultado_activo.tiempo_restante = 0
+                resultado_activo.save()
+                
+                # Actualizar el monitoreo (el intento ya se registra con el resultado completado)
+                monitoreo = MonitoreoEvaluacion.objects.filter(
+                    evaluacion=evaluacion,
+                    participante=participante
+                ).first()
+                if monitoreo:
+                    monitoreo.estado = 'finalizado'
+                    monitoreo.resultado = resultado_activo
+                    monitoreo.save()
+                
+                messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_activo.get_puntaje_numerico()}')
                 return redirect('quizzes:quiz')
     
     # Si no hay intento en progreso, verificar ventana de acceso solo para nuevos ingresos
@@ -274,13 +337,27 @@ def take_quiz(request, pk):
             monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
                 evaluacion=evaluacion,
                 participante=participante,
-                defaults={'resultado': resultado_existente} if resultado_existente else {}
+                defaults={'resultado': resultado_activo} if resultado_activo else {}
             )
-            if not created and resultado_existente and not monitoreo.resultado:
-                monitoreo.resultado = resultado_existente
-                monitoreo.save()
+            
+            # Si el monitoreo existe y el participante tiene intentos disponibles, reactivarlo
+            if not created:
+                intentos_disponibles_monitoreo = participante.get_intentos_disponibles(evaluacion)
+                if intentos_disponibles_monitoreo > 0:
+                    # Si tenía estado finalizado pero ahora tiene intentos, reactivarlo
+                    if monitoreo.estado == 'finalizado':
+                        monitoreo.estado = 'activo'
+                        monitoreo.ultima_actividad = timezone.now()
+                        monitoreo.save()
+                        print(f"Reactivando monitoreo para {participante.NombresCompletos} - Nuevo intento detectado")
+                
+                # Actualizar resultado activo si corresponde
+                if resultado_activo and not monitoreo.resultado:
+                    monitoreo.resultado = resultado_activo
+                    monitoreo.save()
         except Exception as e:
             # Si hay error al crear el monitoreo, continuar sin él
+            print(f"Error al actualizar monitoreo: {e}")
             pass
     
     if request.method == 'POST':
@@ -316,55 +393,64 @@ def take_quiz(request, pk):
         
         # Calcular tiempo utilizado
         tiempo_utilizado = 0
-        if resultado_existente:
+        if resultado_activo:
             tiempo_total = evaluacion.duration_minutes * 60  # en segundos
             tiempo_restante = int(request.POST.get('tiempo_restante', 0))
             tiempo_utilizado = tiempo_total - tiempo_restante
         
         # Guardar resultado en la base de datos con nuevo sistema de puntuación
-        if resultado_existente:
-            resultado_existente.puntaje = percentage
-            resultado_existente.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
-            resultado_existente.puntos_totales = 10  # Puntos totales siempre son 10
-            resultado_existente.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
-            resultado_existente.fecha_fin = timezone.now()
-            resultado_existente.completada = True
-            resultado_existente.respuestas_guardadas = respuestas_finales
-            resultado_existente.tiempo_restante = 0
-            resultado_existente.save()
+        if resultado_activo:
+            resultado_activo.puntaje = percentage
+            resultado_activo.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
+            resultado_activo.puntos_totales = 10  # Puntos totales siempre son 10
+            resultado_activo.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
+            resultado_activo.fecha_fin = timezone.now()
+            resultado_activo.completada = True
+            resultado_activo.respuestas_guardadas = respuestas_finales
+            resultado_activo.tiempo_restante = 0
+            resultado_activo.save()
+            
+            # Actualizar el monitoreo (el intento se registra con el resultado completado)
+            monitoreo = MonitoreoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante=participante
+            ).first()
+            if monitoreo:
+                monitoreo.estado = 'finalizado'
+                monitoreo.resultado = resultado_activo
+                monitoreo.save()
+                
         else:
-            try:
-                nuevo_resultado = ResultadoEvaluacion.objects.create(
-                    evaluacion=evaluacion,
-                    participante=participante,
-                    puntaje=percentage,
-                    puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
-                    puntos_totales=10,  # Puntos totales siempre son 10
-                    tiempo_utilizado=tiempo_utilizado // 60,
-                    fecha_fin=timezone.now(),
-                    completada=True,
-                    respuestas_guardadas=respuestas_finales,
-                    tiempo_restante=0
-                )
-            except IntegrityError:
-                # Si ya existe un resultado, actualizarlo
-                nuevo_resultado = ResultadoEvaluacion.objects.get(
-                    evaluacion=evaluacion,
-                    participante=participante
-                )
-                nuevo_resultado.puntaje = percentage
-                nuevo_resultado.puntos_obtenidos = puntaje_ponderado
-                nuevo_resultado.puntos_totales = 10
-                nuevo_resultado.tiempo_utilizado = tiempo_utilizado // 60
-                nuevo_resultado.fecha_fin = timezone.now()
-                nuevo_resultado.completada = True
-                nuevo_resultado.respuestas_guardadas = respuestas_finales
-                nuevo_resultado.tiempo_restante = 0
-                nuevo_resultado.save()
+            # Obtener el siguiente número de intento
+            siguiente_intento = ResultadoEvaluacion.get_siguiente_numero_intento(evaluacion, participante)
+            
+            nuevo_resultado = ResultadoEvaluacion.objects.create(
+                evaluacion=evaluacion,
+                participante=participante,
+                numero_intento=siguiente_intento,
+                puntaje=percentage,
+                puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
+                puntos_totales=10,  # Puntos totales siempre son 10
+                tiempo_utilizado=tiempo_utilizado // 60,
+                fecha_fin=timezone.now(),
+                completada=True,
+                respuestas_guardadas=respuestas_finales,
+                tiempo_restante=0
+            )
+            
+            # Actualizar el monitoreo (el intento se registra con el resultado completado)
+            monitoreo = MonitoreoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante=participante
+            ).first()
+            if monitoreo:
+                monitoreo.estado = 'finalizado'
+                monitoreo.resultado = nuevo_resultado
+                monitoreo.save()
         
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
-            'resultado': resultado_existente if resultado_existente else nuevo_resultado,
+            'resultado': resultado_activo if resultado_activo else nuevo_resultado,
             'score': score,
             'total_questions': total_questions,
             'percentage': percentage
@@ -380,32 +466,54 @@ def take_quiz(request, pk):
     # Si no hay intento en progreso, crear uno nuevo
     if not continuar_evaluacion:
         tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+        
+        # Obtener el siguiente número de intento
+        siguiente_intento = ResultadoEvaluacion.get_siguiente_numero_intento(evaluacion, participante)
+        
+        resultado_activo = ResultadoEvaluacion.objects.create(
+            evaluacion=evaluacion,
+            participante=participante,
+            numero_intento=siguiente_intento,
+            fecha_inicio=timezone.now(),
+            tiempo_restante=tiempo_total
+        )
+        
+        # Actualizar monitoreo al crear nuevo intento
         try:
-            resultado_existente = ResultadoEvaluacion.objects.create(
-                evaluacion=evaluacion,
-                participante=participante,
-                fecha_inicio=timezone.now(),
-                tiempo_restante=tiempo_total
-            )
-        except IntegrityError:
-            # Si ya existe un resultado para esta evaluación y participante
-            resultado_existente = ResultadoEvaluacion.objects.get(
+            monitoreo = MonitoreoEvaluacion.objects.filter(
                 evaluacion=evaluacion,
                 participante=participante
-            )
-            # Si el resultado existente no tiene tiempo_restante, asignarle el tiempo total
-            if not resultado_existente.tiempo_restante:
-                resultado_existente.tiempo_restante = tiempo_total
-                resultado_existente.save()
-            messages.warning(request, 'Ya tienes un intento en progreso para esta evaluación.')
+            ).first()
+            
+            if monitoreo:
+                # Al crear un nuevo resultado, activar el monitoreo
+                monitoreo.estado = 'activo'
+                monitoreo.resultado = resultado_activo
+                monitoreo.ultima_actividad = timezone.now()
+                
+                # Inicializar datos de progreso
+                monitoreo.preguntas_respondidas = 0
+                monitoreo.preguntas_revisadas = len(preguntas_mostradas)
+                
+                monitoreo.save()
+                print(f"Activando monitoreo para {participante.NombresCompletos} - Iniciando nuevo intento {siguiente_intento}")
+                print(f"DEBUG - Inicializando monitoreo: 0/{len(preguntas_mostradas)} preguntas")
+        except Exception as e:
+            print(f"Error al activar monitoreo: {e}")
+            pass
     
     context = {
         'evaluacion': evaluacion,
         'preguntas': preguntas_mostradas,
-        'resultado': resultado_existente,
+        'resultado': resultado_activo,
         'tiempo_total': evaluacion.duration_minutes * 60,  # en segundos
         'continuar_evaluacion': continuar_evaluacion
     }
+    
+    # Logging para debugging del contexto
+    if resultado_activo:
+        print(f"DEBUG - Contexto resultado tiene respuestas_guardadas: {resultado_activo.respuestas_guardadas}")
+        print(f"DEBUG - continuar_evaluacion: {continuar_evaluacion}")
     
     return render(request, 'quizzes/take_quiz.html', context)
 
@@ -441,10 +549,11 @@ def guardar_respuesta_automatica(request, pk):
                 'redirect': True
             })
         
-        # Obtener o crear resultado
+        # Obtener o crear resultado activo (no completado)
         resultado, created = ResultadoEvaluacion.objects.get_or_create(
             evaluacion=evaluacion,
             participante=participante,
+            completada=False,
             defaults={
                 'fecha_inicio': timezone.now(),
                 'tiempo_restante': evaluacion.duration_minutes * 60
@@ -456,16 +565,40 @@ def guardar_respuesta_automatica(request, pk):
             resultado.tiempo_restante = evaluacion.duration_minutes * 60
             resultado.save()
         
+        # Verificación adicional: No permitir guardado si ya está completada
+        if resultado.completada:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Esta evaluación ya ha sido completada',
+                'redirect': True
+            })
+        
         # Actualizar respuestas guardadas
         import json
         data = json.loads(request.body.decode('utf-8'))
         respuestas = data.get('respuestas', {})
         tiempo_restante = data.get('tiempo_restante', evaluacion.duration_minutes * 60)
         
-        resultado.respuestas_guardadas.update(respuestas)
+        # Asegurar que respuestas_guardadas esté inicializado
+        if resultado.respuestas_guardadas is None:
+            resultado.respuestas_guardadas = {}
+        
+        # Logging para debugging
+        print(f"DEBUG - Guardando respuestas para {participante.NombresCompletos}: {respuestas}")
+        print(f"DEBUG - Respuestas anteriores: {resultado.respuestas_guardadas}")
+        
+        # Hacer una copia del diccionario para evitar problemas de referencia
+        respuestas_actualizadas = resultado.respuestas_guardadas.copy()
+        respuestas_actualizadas.update(respuestas)
+        
+        resultado.respuestas_guardadas = respuestas_actualizadas
         resultado.tiempo_restante = tiempo_restante
         resultado.ultima_actividad = timezone.now()
         resultado.save()
+        
+        # Verificar que se guardó correctamente
+        resultado.refresh_from_db()
+        print(f"DEBUG - Respuestas después de guardar (verificación): {resultado.respuestas_guardadas}")
         
         # Actualizar monitoreo
         try:
@@ -489,9 +622,14 @@ def guardar_respuesta_automatica(request, pk):
             monitoreo.preguntas_respondidas = preguntas_respondidas
             monitoreo.preguntas_revisadas = total_preguntas
             monitoreo.tiempo_activo += 30  # Asumir 30 segundos de actividad por guardado
+            monitoreo.ultima_actividad = timezone.now()
             monitoreo.save()
+            
+            print(f"DEBUG - Monitoreo actualizado: {preguntas_respondidas}/{total_preguntas} preguntas")
+            
         except Exception as e:
             # Si hay error al actualizar el monitoreo, continuar sin él
+            print(f"DEBUG - Error al actualizar monitoreo: {e}")
             pass
         
         return JsonResponse({'success': True})
@@ -1557,29 +1695,49 @@ def student_quizs(request):
         participantes_autorizados = evaluacion.get_participantes_autorizados()
         if participante in participantes_autorizados:
             # Verificar si hay un intento en progreso con tiempo restante
-            resultado = evaluacion.resultados.filter(participante=participante).first()
+            resultado_activo = evaluacion.resultados.filter(
+                participante=participante, 
+                completada=False
+            ).first()
+            
             puede_continuar = False
             puede_iniciar = False
             
-            if resultado and not resultado.completada:
+            if resultado_activo:
                 # Calcular tiempo transcurrido desde el inicio
-                tiempo_transcurrido = (timezone.now() - resultado.fecha_inicio).total_seconds()
+                tiempo_transcurrido = (timezone.now() - resultado_activo.fecha_inicio).total_seconds()
                 tiempo_total = evaluacion.duration_minutes * 60  # en segundos
                 tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
                 
                 # Si aún hay tiempo restante, puede continuar (sin importar la ventana de acceso)
                 if tiempo_restante > 0:
                     puede_continuar = True
-            elif not resultado:
-                # Si no hay intento previo, verificar ventana de acceso para nuevos ingresos
+            else:
+                # Si no hay intento activo, verificar si puede iniciar uno nuevo
+                # Verificar ventana de acceso Y intentos disponibles
                 if evaluacion.is_available():
-                    puede_iniciar = True
+                    # Verificar si tiene intentos disponibles
+                    intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+                    if intentos_disponibles > 0:
+                        puede_iniciar = True
+            
+            # Obtener el mejor resultado completado (si existe) para mostrar información
+            mejor_resultado = ResultadoEvaluacion.get_mejor_resultado(evaluacion, participante)
+            
+            # Obtener información de intentos
+            intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+            intentos_usados = participante.get_intentos_usados(evaluacion)
+            intentos_totales = intentos_disponibles + intentos_usados
             
             evaluaciones_autorizadas.append({
                 'evaluacion': evaluacion,
-                'resultado': resultado,
+                'resultado_activo': resultado_activo,  # Intento en progreso
+                'mejor_resultado': mejor_resultado,    # Mejor intento completado
                 'puede_continuar': puede_continuar,
-                'puede_iniciar': puede_iniciar
+                'puede_iniciar': puede_iniciar,
+                'intentos_disponibles': intentos_disponibles,
+                'intentos_usados': intentos_usados,
+                'intentos_totales': intentos_totales
             })
     
     context = {
@@ -2213,17 +2371,42 @@ def ranking_evaluacion(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Obtener resultados ordenados por puntaje y tiempo
-    resultados = ResultadoEvaluacion.objects.filter(
+    # Obtener resultados ordenados por puntaje y tiempo - solo el mejor por participante
+    from django.db.models import Max
+    
+    # Primero, obtener el mejor puntaje por participante
+    mejores_puntajes = ResultadoEvaluacion.objects.filter(
         evaluacion=evaluacion,
         completada=True
-    ).select_related('participante').order_by('-puntos_obtenidos', 'tiempo_utilizado')
+    ).values('participante').annotate(
+        mejor_puntaje=Max('puntos_obtenidos')
+    )
+    
+    # Crear una lista de participantes con sus mejores puntajes
+    participantes_con_mejor_puntaje = []
+    for item in mejores_puntajes:
+        participante_id = item['participante']
+        mejor_puntaje = item['mejor_puntaje']
+        
+        # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
+        mejor_resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante_id=participante_id,
+            completada=True,
+            puntos_obtenidos=mejor_puntaje
+        ).order_by('tiempo_utilizado').first()
+        
+        if mejor_resultado:
+            participantes_con_mejor_puntaje.append(mejor_resultado)
+    
+    # Ordenar por puntaje descendente y tiempo ascendente
+    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
     
     # Calcular estadísticas
-    total_participantes = resultados.count()
+    total_participantes = len(resultados)
     
     # Calcular promedio de puntos obtenidos (número, no porcentaje)
-    promedio_puntos = resultados.aggregate(Avg('puntos_obtenidos'))['puntos_obtenidos__avg'] or 0
+    promedio_puntos = sum(r.puntos_obtenidos for r in resultados) / total_participantes if total_participantes > 0 else 0
     
     # Calcular tiempo promedio real (usando fechas de inicio y fin)
     tiempo_total_minutos = 0
@@ -3526,6 +3709,55 @@ def obtener_estado_monitoreo(request, pk):
             monitoreo.estado = 'activo'
             monitoreo.save()
         
+        # Calcular intentos para este participante
+        intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+        intentos_usados = participante.get_intentos_usados(evaluacion)
+        
+        # Lógica mejorada para manejar estados con nuevos intentos
+        # 1. Si tiene resultado completado y NO hay intentos disponibles -> Finalizado
+        # 2. Si tiene resultado completado pero SÍ hay intentos disponibles -> Inactivo (puede hacer nuevo intento)
+        # 3. Si NO tiene resultado completado pero tiene intentos disponibles -> Depende si ha iniciado o no
+        # 4. Si está rindiendo actualmente (resultado no completado) -> Activo
+        
+        # Verificar si tiene un resultado actualmente en progreso (no completado)
+        resultado_en_progreso = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=False
+        ).first()
+        
+        # Actualizar lógica del estado del monitoreo
+        if resultado_en_progreso:
+            # Está rindiendo actualmente
+            if monitoreo.estado != 'activo':
+                monitoreo.estado = 'activo'
+                monitoreo.resultado = resultado_en_progreso
+                monitoreo.ultima_actividad = timezone.now()
+                monitoreo.save()
+        elif resultado and intentos_disponibles == 0:
+            # Tiene resultado completado y NO tiene más intentos -> Finalizado definitivo
+            if monitoreo.estado != 'finalizado':
+                monitoreo.estado = 'finalizado'
+                monitoreo.resultado = resultado
+                monitoreo.save()
+        elif resultado and intentos_disponibles > 0:
+            # Tiene resultado completado pero SÍ tiene intentos disponibles -> Puede reiniciar
+            if monitoreo.estado == 'finalizado':
+                monitoreo.estado = 'inactivo'  # Puede iniciar nuevo intento cuando quiera
+                monitoreo.save()
+        elif not resultado and intentos_disponibles > 0:
+            # No ha completado ningún intento pero tiene intentos -> Pendiente
+            if monitoreo.estado == 'finalizado':
+                monitoreo.estado = 'pendiente'
+                monitoreo.save()
+        
+        # Verificar si el participante ha iniciado alguna vez la evaluación
+        # (si tiene cualquier resultado, completado o no)
+        ha_iniciado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante
+        ).exists()
+        
         # Agregar datos del monitoreo
         datos_monitoreo.append({
             'id': monitoreo.id,
@@ -3534,12 +3766,10 @@ def obtener_estado_monitoreo(request, pk):
             'participante_cedula': monitoreo.participante.cedula,
             'estado': monitoreo.estado,
             'esta_activo': monitoreo.esta_activo() if monitoreo.estado == 'activo' else False,
-            'pagina_actual': monitoreo.pagina_actual,
+            'ha_iniciado': ha_iniciado,  # Ha iniciado si tiene cualquier resultado
             'preguntas_respondidas': monitoreo.preguntas_respondidas,
             'preguntas_revisadas': monitoreo.preguntas_revisadas,
             'porcentaje_avance': round(monitoreo.get_porcentaje_avance(), 1),
-            'tiempo_activo': monitoreo.get_tiempo_total_activo(),
-            'tiempo_inactivo': monitoreo.get_tiempo_total_inactivo(),
             'ultima_actividad': monitoreo.ultima_actividad.isoformat(),
             'alertas_count': len(monitoreo.alertas_detectadas),
             'alertas_recientes': [
@@ -3547,7 +3777,10 @@ def obtener_estado_monitoreo(request, pk):
             ],
             'tiene_resultado_completado': resultado is not None,
             'puntaje': resultado.puntaje if resultado else None,
-            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None
+            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None,
+            # CAMPOS DE INTENTOS
+            'intentos_disponibles': intentos_disponibles,
+            'intentos_usados': intentos_usados
         })
     
     return JsonResponse({
@@ -3860,3 +4093,110 @@ def settings_view(request):
         'now': timezone.now(),
     }
     return render(request, 'quizzes/settings.html', context)
+
+
+def custom_404_view(request, exception=None, path=None):
+    """Vista personalizada para errores 404"""
+    from django.conf import settings
+    from django.http import Http404
+    from django.shortcuts import render
+    
+    # Si está deshabilitado, usar comportamiento estándar de Django
+    if not getattr(settings, 'ENABLE_CUSTOM_ERROR_PAGES', True):
+        raise Http404("Página no encontrada")
+    
+    # Si viene de una URL catch-all, path será el parámetro
+    # Si viene del handler404, exception será el parámetro
+    requested_url = path if path else request.path
+    
+    context = {
+        'error_message': 'La página que buscas no existe',
+        'error_code': '404',
+        'error_description': 'El endpoint o URL solicitado no fue encontrado en nuestro servidor.',
+        'requested_url': requested_url,
+        'suggested_actions': [
+            'Verifica que la URL esté escrita correctamente',
+            'Regresa a la página principal',
+            'Contacta al administrador si crees que esto es un error'
+        ]
+    }
+    return render(request, 'errors/404.html', context, status=404)
+
+
+@csrf_exempt
+@login_required
+def dar_nuevo_intento_evaluacion(request, pk):
+    """
+    Vista para dar un nuevo intento a un participante en una evaluación específica
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+    
+    # Verificar permisos básicos (solo admins pueden dar nuevos intentos)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'}, status=403)
+    
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    try:
+        data = json.loads(request.body)
+        participante_id = data.get('participante_id')
+        
+        if not participante_id:
+            return JsonResponse({'success': False, 'error': 'ID del participante requerido'})
+        
+        participante = get_object_or_404(Participantes, id=participante_id)
+        
+        # Verificar que el participante esté autorizado para esta evaluación
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        if participante not in participantes_autorizados:
+            return JsonResponse({'success': False, 'error': 'Participante no autorizado para esta evaluación'})
+        
+        # Obtener el monitoreo actual del participante
+        monitoreo = MonitoreoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante
+        ).first()
+        
+        if not monitoreo:
+            return JsonResponse({'success': False, 'error': 'No se encontró monitoreo para este participante'})
+        
+        # Verificar los intentos actuales del participante
+        intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+        intentos_usados = participante.get_intentos_usados(evaluacion)
+        
+        # Crear o actualizar el registro de intentos para otorgar uno adicional
+        intento_config, created = IntentosParticipante.objects.get_or_create(
+            participante=participante,
+            evaluacion=evaluacion,
+            defaults={
+                'intentos_maximos': participante.intentos_maximos_default + 1,
+                'creado_por': request.user,
+                'motivo': 'Intento adicional otorgado por administrador'
+            }
+        )
+        
+        if not created:
+            # Si ya existe, incrementar los intentos máximos
+            intento_config.intentos_maximos += 1
+            intento_config.save()
+        
+        # Recalcular los intentos disponibles después del otorgamiento
+        nuevos_intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
+        
+        # Si el participante está finalizado pero ahora tiene intentos, reactivarlo
+        if monitoreo.estado == 'finalizado' and nuevos_intentos_disponibles > 0:
+            monitoreo.estado = 'inactivo'  # Lo ponemos en inactivo para que pueda reiniciar
+            monitoreo.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Se ha otorgado un nuevo intento a {participante.NombresCompletos}. Intentos disponibles: {nuevos_intentos_disponibles}',
+            'intentos_disponibles': nuevos_intentos_disponibles,
+            'intentos_usados': participante.get_intentos_usados(evaluacion)
+        })
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

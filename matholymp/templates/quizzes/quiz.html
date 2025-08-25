@@ -27,7 +27,7 @@
             <div class="row justify-content-center">
                 {% if evaluaciones %}
                     {% for evaluacion_data in evaluaciones %}
-                        {% with evaluacion=evaluacion_data.evaluacion resultado=evaluacion_data.resultado puede_continuar=evaluacion_data.puede_continuar puede_iniciar=evaluacion_data.puede_iniciar %}
+                        {% with evaluacion=evaluacion_data.evaluacion resultado_activo=evaluacion_data.resultado_activo mejor_resultado=evaluacion_data.mejor_resultado puede_continuar=evaluacion_data.puede_continuar puede_iniciar=evaluacion_data.puede_iniciar intentos_disponibles=evaluacion_data.intentos_disponibles intentos_usados=evaluacion_data.intentos_usados intentos_totales=evaluacion_data.intentos_totales %}
                         <div class="col-12 col-md-6 col-lg-4 mb-4">
                             <div class="card h-100 shadow-sm border-0">
                                 <div class="card-header bg-gradient-primary text-white text-center py-4">
@@ -37,17 +37,28 @@
                                 <div class="card-body text-center">
                                     <div class="mb-4">
                                         <div class="row text-center">
-                                            <div class="col-6">
+                                            <div class="col-4">
                                                 <div class="border-end">
                                                     <i class="bi bi-clock text-primary fs-1"></i>
                                                     <p class="mb-0 text-muted">Duración</p>
                                                     <h5 class="mb-0">{{ evaluacion.duration_minutes }} min</h5>
                                                 </div>
                                             </div>
-                                            <div class="col-6">
-                                                <i class="bi bi-question-circle text-success fs-1"></i>
-                                                <p class="mb-0 text-muted">Preguntas</p>
-                                                <h5 class="mb-0">{{ evaluacion.preguntas.count }}</h5>
+                                            <div class="col-4">
+                                                <div class="border-end">
+                                                    <i class="bi bi-question-circle text-success fs-1"></i>
+                                                    <p class="mb-0 text-muted">Preguntas</p>
+                                                    <h5 class="mb-0">{{ evaluacion.preguntas.count }}</h5>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <i class="bi bi-arrow-clockwise text-info fs-1"></i>
+                                                <p class="mb-0 text-muted">Intentos</p>
+                                                <h5 class="mb-0">
+                                                    <span class="badge {{ intentos_disponibles|yesno:'bg-success,bg-danger' }}">
+                                                        {{ intentos_disponibles }}/{{ intentos_totales }}
+                                                    </span>
+                                                </h5>
                                             </div>
                                         </div>
                                     </div>
@@ -63,12 +74,15 @@
 
                                     <div class="mb-3">
                                         {% if participante %}
-                                            {% if resultado and resultado.completada %}
-                                                <div class="alert alert-success">
-                                                    <i class="bi bi-check-circle me-2"></i>
-                                                    <strong>¡Completada!</strong> Puntuación: {{ resultado.get_puntaje_numerico }}
+                                            {% if mejor_resultado %}
+                                                <div class="alert alert-info">
+                                                    <i class="bi bi-trophy me-2"></i>
+                                                    <strong>Mejor puntuación:</strong> {{ mejor_resultado.get_puntaje_numerico }}
+                                                    <small class="d-block text-muted">Intento #{{ mejor_resultado.numero_intento }}</small>
                                                 </div>
-                                            {% elif puede_continuar %}
+                                            {% endif %}
+                                            
+                                            {% if resultado_activo and not resultado_activo.completada %}
                                                 <div class="alert alert-warning">
                                                     <i class="bi bi-arrow-clockwise me-2"></i>
                                                     <strong>Evaluación en progreso</strong> - Puedes continuar
@@ -76,7 +90,11 @@
                                             {% elif puede_iniciar %}
                                                 <div class="alert alert-primary">
                                                     <i class="bi bi-play-circle me-2"></i>
-                                                    Evaluación disponible para rendir
+                                                    {% if mejor_resultado %}
+                                                        Puedes rendir un nuevo intento
+                                                    {% else %}
+                                                        Evaluación disponible para rendir
+                                                    {% endif %}
                                                 </div>
                                             {% else %}
                                                 {% if evaluacion.get_status == 'pending' %}
@@ -88,6 +106,11 @@
                                                     <div class="alert alert-secondary">
                                                         <i class="bi bi-x-circle me-2"></i>
                                                         Ventana de acceso cerrada
+                                                    </div>
+                                                {% elif intentos_disponibles == 0 %}
+                                                    <div class="alert alert-danger">
+                                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                                        Intentos agotados ({{ intentos_usados }}/{{ intentos_totales }})
                                                     </div>
                                                 {% else %}
                                                     <div class="alert alert-secondary">
@@ -118,12 +141,7 @@
                                 </div>
                                 <div class="card-footer bg-light text-center">
                                     {% if participante %}
-                                        {% if resultado and resultado.completada %}
-                                            <button class="btn btn-success btn-lg w-100" disabled>
-                                                <i class="bi bi-check-circle me-2"></i>
-                                                Ya Completada
-                                            </button>
-                                        {% elif puede_continuar %}
+                                        {% if puede_continuar %}
                                             <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-warning btn-lg w-100">
                                                 <i class="bi bi-arrow-clockwise me-2"></i>
                                                 Continuar Evaluación
@@ -131,7 +149,7 @@
                                         {% elif puede_iniciar %}
                                             <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
                                                 <i class="bi bi-play-circle me-2"></i>
-                                                Iniciar Evaluación
+                                                {% if mejor_resultado %}Nuevo Intento{% else %}Iniciar Evaluación{% endif %}
                                             </a>
                                         {% else %}
                                             {% if evaluacion.get_status == 'pending' %}
@@ -143,6 +161,11 @@
                                                 <button class="btn btn-outline-secondary btn-lg w-100" disabled>
                                                     <i class="bi bi-x-circle me-2"></i>
                                                     Ventana Cerrada
+                                                </button>
+                                            {% elif intentos_disponibles == 0 %}
+                                                <button class="btn btn-outline-danger btn-lg w-100" disabled>
+                                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                                    Sin Intentos ({{ intentos_usados }}/{{ intentos_totales }})
                                                 </button>
                                             {% else %}
                                                 <button class="btn btn-outline-secondary btn-lg w-100" disabled>

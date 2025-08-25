@@ -409,25 +409,35 @@ function actualizarTimer() {
 
 // Función para cargar progreso guardado automáticamente
 function cargarProgresoGuardado() {
-    {% if continuar_evaluacion and resultado.respuestas_guardadas %}
-        // Cargar respuestas guardadas automáticamente
-        const respuestasGuardadas = {{ resultado.respuestas_guardadas|safe }};
-        
-        Object.keys(respuestasGuardadas).forEach(preguntaKey => {
-            const opcionId = respuestasGuardadas[preguntaKey];
-            if (opcionId) {
-                const radio = document.getElementById(`opcion_${opcionId}`);
-                if (radio) {
-                    radio.checked = true;
+    {% if continuar_evaluacion and resultado %}
+        {% if resultado.respuestas_guardadas %}
+            // Cargar respuestas guardadas automáticamente
+            const respuestasGuardadas = {{ resultado.respuestas_guardadas|safe }};
+            console.log('DEBUG - Cargando respuestas guardadas:', respuestasGuardadas);
+            
+            Object.keys(respuestasGuardadas).forEach(preguntaKey => {
+                const opcionId = respuestasGuardadas[preguntaKey];
+                if (opcionId) {
+                    const radio = document.getElementById(`opcion_${opcionId}`);
+                    if (radio) {
+                        radio.checked = true;
+                        console.log(`DEBUG - Respuesta cargada: ${preguntaKey} = ${opcionId}`);
+                    } else {
+                        console.log(`DEBUG - No se encontró radio para opción: ${opcionId}`);
+                    }
                 }
-            }
-        });
-        
-        // Actualizar progreso después de cargar las respuestas
-        setTimeout(() => {
-            actualizarProgreso();
-            actualizarNavegacion();
-        }, 100);
+            });
+            
+            // Actualizar progreso después de cargar las respuestas
+            setTimeout(() => {
+                actualizarProgreso();
+                actualizarNavegacion();
+            }, 100);
+        {% else %}
+            console.log('DEBUG - No hay respuestas guardadas para cargar');
+        {% endif %}
+    {% else %}
+        console.log('DEBUG - No se puede continuar evaluación o no hay resultado');
     {% endif %}
 }
 
@@ -445,6 +455,9 @@ function guardarRespuestaAutomatica() {
         respuestas[radio.name] = radio.value;
     });
     
+    console.log('DEBUG - Guardando respuestas automáticamente:', respuestas);
+    console.log('DEBUG - Tiempo restante:', tiempoRestante);
+    
     fetch(`{% url 'quizzes:guardar_respuesta_automatica' evaluacion.pk %}`, {
         method: 'POST',
         headers: {
@@ -459,30 +472,33 @@ function guardarRespuestaAutomatica() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            console.log('Progreso guardado automáticamente');
-        } else if (data.redirect && !evaluacionFinalizadaAdmin && !modalMostrandose) {
-            // Marcar que ya se mostró el modal para evitar duplicados
-            evaluacionFinalizadaAdmin = true;
-            modalMostrandose = true;
-            
-            // Detener todas las verificaciones y timers
-            limpiarIntervalos();
-            
-            // Marcar que la evaluación se está enviando para evitar alertas del navegador
-            evaluacionEnviandose = true;
-            
-            // La evaluación fue finalizada administrativamente
-            Swal.fire({
-                icon: 'error',
-                title: 'Evaluación Finalizada',
-                text: 'Tu evaluación ha sido finalizada administrativamente. Tu puntaje será de 0/10.',
-                confirmButtonText: 'Entendido',
-                allowOutsideClick: false,
-                allowEscapeKey: false
-            }).then(() => {
-                // Redirigir a la página de evaluaciones
-                window.location.href = "{% url 'quizzes:quiz' %}";
-            });
+            console.log('Progreso guardado automáticamente exitosamente');
+        } else {
+            console.error('Error al guardar automáticamente:', data.error);
+            if (data.redirect && !evaluacionFinalizadaAdmin && !modalMostrandose) {
+                // Marcar que ya se mostró el modal para evitar duplicados
+                evaluacionFinalizadaAdmin = true;
+                modalMostrandose = true;
+                
+                // Detener todas las verificaciones y timers
+                limpiarIntervalos();
+                
+                // Marcar que la evaluación se está enviando para evitar alertas del navegador
+                evaluacionEnviandose = true;
+                
+                // La evaluación fue finalizada administrativamente
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Evaluación Finalizada',
+                    text: 'Tu evaluación ha sido finalizada administrativamente. Tu puntaje será de 0/10.',
+                    confirmButtonText: 'Entendido',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false
+                }).then(() => {
+                    // Redirigir a la página de evaluaciones
+                    window.location.href = "{% url 'quizzes:quiz' %}";
+                });
+            }
         }
     })
     .catch(error => {

@@ -125,3 +125,6 @@ MESSAGE_TAGS = {
 
 # Renovar la sesión con cada request
 SESSION_SAVE_EVERY_REQUEST = True
+
+# Configuración para páginas de error personalizadas
+ENABLE_CUSTOM_ERROR_PAGES = False

@@ -13,6 +13,43 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write('=== CREANDO EVALUACIONES DE ETAPA 1, 2 Y 3 ===')
         
+        # Verificar y limpiar datos existentes
+        self.stdout.write('\n=== VERIFICANDO Y LIMPIANDO DATOS EXISTENTES ===')
+        
+        # Eliminar evaluaciones de prueba anteriores si existen
+        evaluaciones_existentes = Evaluacion.objects.filter(
+            title__in=[
+                'Evaluación Etapa 1 - Clasificatoria',
+                'Evaluación Etapa 2 - Semifinal', 
+                'Evaluación Etapa 3 - Final'
+            ]
+        )
+        
+        if evaluaciones_existentes.exists():
+            self.stdout.write(f'Eliminando {evaluaciones_existentes.count()} evaluaciones de prueba anteriores...')
+            evaluaciones_existentes.delete()
+        
+        # Eliminar participantes de prueba anteriores
+        participantes_prueba = Participantes.objects.filter(
+            cedula__startswith='123456'
+        )
+        if participantes_prueba.exists():
+            self.stdout.write(f'Eliminando {participantes_prueba.count()} participantes de prueba anteriores...')
+            # Eliminar usuarios asociados
+            users_prueba = User.objects.filter(username__startswith='123456')
+            users_prueba.delete()
+            participantes_prueba.delete()
+        
+        # Eliminar representantes de prueba anteriores
+        representantes_prueba = Representante.objects.filter(
+            NombreColegio__in=['Colegio San Francisco', 'Instituto Tecnológico']
+        )
+        if representantes_prueba.exists():
+            self.stdout.write(f'Eliminando {representantes_prueba.count()} representantes de prueba anteriores...')
+            representantes_prueba.delete()
+        
+        self.stdout.write('✅ Datos anteriores limpiados correctamente')
+        
         # ===== CREAR REPRESENTANTES =====
         self.stdout.write('\n=== CREANDO REPRESENTANTES ===')
         
@@ -238,7 +275,8 @@ class Command(BaseCommand):
                 puntos_totales=10,  # Siempre 10
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
@@ -260,7 +298,8 @@ class Command(BaseCommand):
                 puntos_totales=10,  # Siempre 10
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
@@ -350,7 +389,8 @@ class Command(BaseCommand):
                 puntos_totales=10,  # Siempre 10
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
@@ -372,7 +412,8 @@ class Command(BaseCommand):
                 puntos_totales=10,  # Siempre 10
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
@@ -459,7 +500,8 @@ class Command(BaseCommand):
             puntos_totales=10,
             tiempo_utilizado=tiempo_utilizado,
             fecha_fin=timezone.now(),
-            completada=True
+            completada=True,
+            numero_intento=1  # Asegurar que el número de intento esté establecido
         )
         
         self.stdout.write(f'  ✓ {participante_oro.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [ORO]')
@@ -480,7 +522,8 @@ class Command(BaseCommand):
                 puntos_totales=10,
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [PLATA]')
@@ -501,7 +544,8 @@ class Command(BaseCommand):
                 puntos_totales=10,
                 tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
-                completada=True
+                completada=True,
+                numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
             self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [BRONCE]')
@@ -558,4 +602,13 @@ class Command(BaseCommand):
         self.stdout.write('✅ Etapa 1: 30 participantes → 15 clasificados')
         self.stdout.write('✅ Etapa 2: 15 participantes → 5 finalistas')
         self.stdout.write('✅ Etapa 3: 5 participantes → 1 ORO, 2 PLATA, 2 BRONCE')
-        self.stdout.write('\nAhora puedes verificar los procedimientos de preselección automática.') 
+        self.stdout.write(f'\n📋 INFORMACIÓN PARA ACCESO:')
+        self.stdout.write(f'   - Todos los usuarios tienen contraseña temporal de 6 caracteres')
+        self.stdout.write(f'   - El username de cada participante es su número de cédula')
+        self.stdout.write(f'   - Los resultados incluyen el campo numero_intento = 1')
+        self.stdout.write('\n🎯 PRÓXIMOS PASOS:')
+        self.stdout.write('   1. Verificar que las evaluaciones aparezcan en el admin')
+        self.stdout.write('   2. Probar el procedimiento de preselección automática')
+        self.stdout.write('   3. Validar que los rankings funcionen correctamente')
+        self.stdout.write(f'\n⚡ El script se ejecutó exitosamente sin errores')
+        self.stdout.write('Ahora puedes verificar los procedimientos de preselección automática.') 

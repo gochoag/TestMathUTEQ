@@ -246,6 +246,29 @@ class AdminProfile(models.Model):
     def __str__(self):
         return self.user.get_full_name() or self.user.username
 
+# Modelo para configurar intentos específicos por participante y evaluación
+class IntentosParticipante(models.Model):
+    """
+    Modelo para configurar intentos específicos por participante en evaluaciones
+    Permite sobrescribir el número de intentos por defecto
+    """
+    participante = models.ForeignKey('Participantes', on_delete=models.CASCADE, related_name='configuraciones_intentos')
+    evaluacion = models.ForeignKey('Evaluacion', on_delete=models.CASCADE, related_name='configuraciones_intentos')
+    intentos_maximos = models.PositiveIntegerField(help_text='Intentos máximos para este participante en esta evaluación')
+    
+    # Campos de auditoría
+    creado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, help_text='Admin que asignó los intentos')
+    fecha_asignacion = models.DateTimeField(auto_now_add=True)
+    motivo = models.TextField(blank=True, help_text='Motivo por el cual se asignaron intentos adicionales')
+    
+    class Meta:
+        unique_together = ['participante', 'evaluacion']
+        verbose_name = 'Configuración de Intentos'
+        verbose_name_plural = 'Configuraciones de Intentos'
+    
+    def __str__(self):
+        return f"{self.participante.NombresCompletos} - {self.evaluacion.title} ({self.intentos_maximos} intentos)"
+
 # Modelo para los participantes
 class Participantes(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -256,6 +279,7 @@ class Participantes(models.Model):
     edad = models.IntegerField(null=True, blank=True)
     password_temporal = models.CharField(max_length=50, blank=True, help_text='Contraseña temporal para mostrar en correos')
     
+    intentos_maximos_default = models.PositiveIntegerField(default=1, help_text='Intentos máximos por defecto para evaluaciones')
 
     def clean(self):
         """Validación personalizada para evitar correos duplicados"""
@@ -279,6 +303,40 @@ class Participantes(models.Model):
 
     def __str__(self):
         return f"{self.NombresCompletos} ({self.cedula})"
+    
+    def get_intentos_disponibles(self, evaluacion):
+        """Calcula intentos disponibles para una evaluación específica"""
+        # Buscar configuración específica para esta evaluación
+        intento_config = IntentosParticipante.objects.filter(
+            participante=self,
+            evaluacion=evaluacion
+        ).first()
+        
+        if intento_config:
+            max_intentos = intento_config.intentos_maximos
+        else:
+            max_intentos = self.intentos_maximos_default
+        
+        # Contar intentos usados (resultados completados)
+        intentos_usados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=self,
+            completada=True
+        ).count()
+        
+        return max(0, max_intentos - intentos_usados)
+    
+    def get_intentos_usados(self, evaluacion):
+        """Calcula intentos usados para una evaluación específica"""
+        return ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=self,
+            completada=True
+        ).count()
+    
+    def puede_iniciar_evaluacion(self, evaluacion):
+        """Verifica si el participante puede iniciar una evaluación"""
+        return self.get_intentos_disponibles(evaluacion) > 0
 
     @staticmethod
     def create_participant(cedula, NombresCompletos, email, phone=None, edad=None):
@@ -578,8 +636,11 @@ class ResultadoEvaluacion(models.Model):
     puntos_obtenidos = models.DecimalField(max_digits=5, decimal_places=3, default=0, help_text='Puntos obtenidos por el estudiante (ponderado sobre 10)')
     puntos_totales = models.PositiveIntegerField(default=10, help_text='Puntos totales de la evaluación (siempre 10)')
     
+    # Campo para múltiples intentos
+    numero_intento = models.PositiveIntegerField(default=1, help_text='Número del intento del participante')
+    
     class Meta:
-        unique_together = ['evaluacion', 'participante']
+        unique_together = ['evaluacion', 'participante', 'numero_intento']
         ordering = ['-puntaje', 'tiempo_utilizado']
     
     def get_tiempo_formateado(self):
@@ -618,11 +679,27 @@ class ResultadoEvaluacion(models.Model):
     
     def get_puntaje_numerico(self):
         """Retorna el puntaje ponderado en formato numérico (ej: 8.500/10)"""
-        if self.puntos_totales > 0:
-            # Formatear con 3 decimales para mostrar el puntaje ponderado
-            return f"{self.puntos_obtenidos:.3f}/{self.puntos_totales}"
-        return "0.000/0"
+        return f"{self.puntos_obtenidos:.3f}/{self.puntos_totales}"
     
+    @classmethod
+    def get_mejor_resultado(cls, evaluacion, participante):
+        """Obtiene el mejor resultado de un participante en una evaluación específica"""
+        return cls.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=True
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado').first()
+    
+    @classmethod
+    def get_siguiente_numero_intento(cls, evaluacion, participante):
+        """Obtiene el siguiente número de intento para un participante en una evaluación"""
+        ultimo_resultado = cls.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante
+        ).order_by('-numero_intento').first()
+        
+        return (ultimo_resultado.numero_intento + 1) if ultimo_resultado else 1
+       
     def get_puntaje_porcentaje(self):
         """Retorna el puntaje como porcentaje"""
         if self.puntos_totales > 0:
@@ -632,7 +709,9 @@ class ResultadoEvaluacion(models.Model):
 # Modelo para el monitoreo en tiempo real de evaluaciones
 class MonitoreoEvaluacion(models.Model):
     ESTADO_CHOICES = [
+        ('pendiente', 'Pendiente'),
         ('activo', 'Activo'),
+        ('inactivo', 'Inactivo'),
         ('finalizado', 'Finalizado'),
         ('suspendido', 'Suspendido'),
     ]
@@ -642,7 +721,7 @@ class MonitoreoEvaluacion(models.Model):
     resultado = models.OneToOneField(ResultadoEvaluacion, on_delete=models.CASCADE, related_name='monitoreo', null=True, blank=True)
     
     # Estado del monitoreo
-    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='activo')
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
     
     # Información de actividad
     ultima_actividad = models.DateTimeField(auto_now=True)
@@ -736,9 +815,16 @@ class MonitoreoEvaluacion(models.Model):
 
             # Obtener o crear el resultado de evaluación
             if not self.resultado:
+                # Obtener el siguiente número de intento
+                siguiente_intento = ResultadoEvaluacion.get_siguiente_numero_intento(
+                    self.evaluacion, 
+                    self.participante
+                )
+                
                 self.resultado, created = ResultadoEvaluacion.objects.get_or_create(
                     evaluacion=self.evaluacion,
                     participante=self.participante,
+                    numero_intento=siguiente_intento,
                     defaults={
                         'puntaje': 0,
                         'puntos_obtenidos': 0,
