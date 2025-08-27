@@ -100,6 +100,10 @@ def validate_password_strength(password, username):
 # Vista de login
 
 def custom_login(request):
+    # Si el usuario ya está autenticado, redirigir al dashboard
+    if request.user.is_authenticated:
+        return redirect('quizzes:dashboard')
+        
     if request.GET.get('session_expired'):
         messages.warning(request, 'Tu sesión expiró por inactividad')
         return redirect(settings.LOGIN_URL)
@@ -361,48 +365,73 @@ def take_quiz(request, pk):
             pass
     
     if request.method == 'POST':
-        # Procesar envío de evaluación con nuevo sistema de puntuación
-        score = 0
-        puntos_obtenidos = 0
-        puntos_totales = 0
-        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
-        total_questions = len(preguntas_mostradas)
+        # Verificar si la evaluación fue finalizada por cambios de pestaña
+        finalizada_por_cambios_pestana = request.POST.get('finalizada_por_cambios_pestana') == 'true'
         
-        respuestas_finales = {}
-        for pregunta in preguntas_mostradas:
-            selected = request.POST.get(f'pregunta_{pregunta.id}')
-            respuestas_finales[f'pregunta_{pregunta.id}'] = selected
+        if finalizada_por_cambios_pestana:
+            # Finalización por cambios de pestaña - asignar puntaje de 0
+            score = 0
+            puntos_obtenidos = 0
+            puntos_totales = 10
+            percentage = 0
             
-            # Nuevo sistema de puntuación:
-            # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
-            if selected:
-                if pregunta.opciones.filter(id=selected, is_correct=True).exists():
-                    score += 1
-                    puntos_obtenidos += 1  # +1 punto por respuesta correcta
-                else:
-                    puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
-            # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
-        
-        # Ponderar a escala de 10 puntos
-        puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
-        # Asegurar que el puntaje no sea negativo
-        puntaje_ponderado = max(0, puntaje_ponderado)
-        
-        # Calcular porcentaje basado en puntos totales (mantener compatibilidad)
-        percentage = (puntaje_ponderado / 10) * 100
-        
-        # Calcular tiempo utilizado
-        tiempo_utilizado = 0
-        if resultado_activo:
-            tiempo_total = evaluacion.duration_minutes * 60  # en segundos
-            tiempo_restante = int(request.POST.get('tiempo_restante', 0))
-            tiempo_utilizado = tiempo_total - tiempo_restante
+            # Calcular tiempo utilizado
+            tiempo_utilizado = 0
+            if resultado_activo:
+                tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+                tiempo_restante = int(request.POST.get('tiempo_restante', 0))
+                tiempo_utilizado = tiempo_total - tiempo_restante
+            
+            # Obtener respuestas guardadas hasta el momento de la finalización
+            respuestas_finales = {}
+            if resultado_activo and resultado_activo.respuestas_guardadas:
+                respuestas_finales = resultado_activo.respuestas_guardadas
+            
+        else:
+            # Procesar envío normal de evaluación con nuevo sistema de puntuación
+            score = 0
+            puntos_obtenidos = 0
+            puntos_totales = 0
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            total_questions = len(preguntas_mostradas)
+            
+            respuestas_finales = {}
+            for pregunta in preguntas_mostradas:
+                selected = request.POST.get(f'pregunta_{pregunta.id}')
+                respuestas_finales[f'pregunta_{pregunta.id}'] = selected
+                
+                # Nuevo sistema de puntuación:
+                # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
+                if selected:
+                    if pregunta.opciones.filter(id=selected, is_correct=True).exists():
+                        score += 1
+                        puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                    else:
+                        puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
+                # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
+            
+            # Ponderar a escala de 10 puntos
+            puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
+            # Asegurar que el puntaje no sea negativo
+            puntaje_ponderado = max(0, puntaje_ponderado)
+            puntos_obtenidos = puntaje_ponderado
+            puntos_totales = 10
+            
+            # Calcular porcentaje basado en puntos totales (mantener compatibilidad)
+            percentage = (puntaje_ponderado / 10) * 100
+            
+            # Calcular tiempo utilizado
+            tiempo_utilizado = 0
+            if resultado_activo:
+                tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+                tiempo_restante = int(request.POST.get('tiempo_restante', 0))
+                tiempo_utilizado = tiempo_total - tiempo_restante
         
         # Guardar resultado en la base de datos con nuevo sistema de puntuación
         if resultado_activo:
             resultado_activo.puntaje = percentage
-            resultado_activo.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
-            resultado_activo.puntos_totales = 10  # Puntos totales siempre son 10
+            resultado_activo.puntos_obtenidos = puntos_obtenidos  # Guardar puntaje ponderado sobre 10
+            resultado_activo.puntos_totales = puntos_totales  # Puntos totales siempre son 10
             resultado_activo.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
             resultado_activo.fecha_fin = timezone.now()
             resultado_activo.completada = True
@@ -418,6 +447,25 @@ def take_quiz(request, pk):
             if monitoreo:
                 monitoreo.estado = 'finalizado'
                 monitoreo.resultado = resultado_activo
+                
+                # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
+                if finalizada_por_cambios_pestana:
+                    if monitoreo.alertas is None:
+                        monitoreo.alertas = []
+                    
+                    monitoreo.alertas.append({
+                        'tipo': 'finalizacion_automatica',
+                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (3/3)',
+                        'timestamp': timezone.now().isoformat(),
+                        'motivo': 'cambios_pestana_excedidos',
+                        'cambios_realizados': monitoreo.cambios_pestana or 3
+                    })
+                    
+                    # Marcar la finalización administrativa en el monitoreo
+                    monitoreo.finalizado_por_admin = request.user
+                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (3/3)'
+                    monitoreo.fecha_finalizacion_admin = timezone.now()
+                
                 monitoreo.save()
                 
         else:
@@ -429,8 +477,8 @@ def take_quiz(request, pk):
                 participante=participante,
                 numero_intento=siguiente_intento,
                 puntaje=percentage,
-                puntos_obtenidos=puntaje_ponderado,  # Guardar puntaje ponderado sobre 10
-                puntos_totales=10,  # Puntos totales siempre son 10
+                puntos_obtenidos=puntos_obtenidos,  # Guardar puntaje ponderado sobre 10
+                puntos_totales=puntos_totales,  # Puntos totales siempre son 10
                 tiempo_utilizado=tiempo_utilizado // 60,
                 fecha_fin=timezone.now(),
                 completada=True,
@@ -446,14 +494,38 @@ def take_quiz(request, pk):
             if monitoreo:
                 monitoreo.estado = 'finalizado'
                 monitoreo.resultado = nuevo_resultado
+                
+                # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
+                if finalizada_por_cambios_pestana:
+                    if monitoreo.alertas is None:
+                        monitoreo.alertas = []
+                    
+                    monitoreo.alertas.append({
+                        'tipo': 'finalizacion_automatica',
+                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (3/3)',
+                        'timestamp': timezone.now().isoformat(),
+                        'motivo': 'cambios_pestana_excedidos',
+                        'cambios_realizados': monitoreo.cambios_pestana or 3
+                    })
+                    
+                    # Marcar la finalización administrativa en el monitoreo
+                    monitoreo.finalizado_por_admin = request.user
+                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (3/3)'
+                    monitoreo.fecha_finalizacion_admin = timezone.now()
+                
                 monitoreo.save()
+        
+        # Agregar un mensaje específico si fue finalizada por cambios de pestaña
+        if finalizada_por_cambios_pestana:
+            messages.warning(request, 'Tu evaluación fue finalizada automáticamente por exceder el límite de cambios de pestaña permitidos (3/3). Tu puntaje es 0/10.')
         
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
             'resultado': resultado_activo if resultado_activo else nuevo_resultado,
             'score': score,
-            'total_questions': total_questions,
-            'percentage': percentage
+            'total_questions': len(preguntas_mostradas) if not finalizada_por_cambios_pestana else 0,
+            'percentage': percentage,
+            'finalizada_por_cambios_pestana': finalizada_por_cambios_pestana
         })
     
     # Obtener preguntas para este estudiante específico
@@ -633,6 +705,112 @@ def guardar_respuesta_automatica(request, pk):
             pass
         
         return JsonResponse({'success': True})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@login_required
+def registrar_cambio_pestana(request, pk):
+    """
+    Vista para registrar cambios de pestaña durante la evaluación
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'})
+    
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        
+        # Verificar que el participante esté autorizado
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        if participante not in participantes_autorizados:
+            return JsonResponse({'success': False, 'error': 'No autorizado'})
+        
+        # Verificar si la evaluación fue finalizada administrativamente
+        monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            estado='finalizado'
+        ).first()
+        
+        if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Evaluación finalizada administrativamente',
+                'redirect': True
+            })
+        
+        # Obtener resultado actual
+        resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=False
+        ).first()
+        
+        if not resultado:
+            return JsonResponse({
+                'success': False, 
+                'error': 'No se encontró una evaluación activa'
+            })
+        
+        # Procesar datos del cambio de pestaña
+        import json
+        data = json.loads(request.body.decode('utf-8'))
+        cambios_pestana = data.get('cambios_pestana', 0)
+        tiempo_restante = data.get('tiempo_restante', 0)
+        
+        # Actualizar información de cambios de pestaña en el resultado
+        if not hasattr(resultado, 'cambios_pestana') or resultado.cambios_pestana is None:
+            resultado.cambios_pestana = 0
+            
+        resultado.cambios_pestana = cambios_pestana
+        resultado.tiempo_restante = tiempo_restante
+        resultado.ultima_actividad = timezone.now()
+        resultado.save()
+        
+        # Actualizar monitoreo con información del cambio de pestaña
+        try:
+            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+                evaluacion=evaluacion,
+                participante=participante,
+                defaults={'resultado': resultado}
+            )
+            
+            if not created and not monitoreo.resultado:
+                monitoreo.resultado = resultado
+                monitoreo.save()
+            
+            # Registrar alerta de cambio de pestaña
+            from datetime import datetime
+            alerta_texto = f"Cambio de pestaña #{cambios_pestana} - Tiempo restante: {tiempo_restante//60}:{tiempo_restante%60:02d}"
+            
+            if monitoreo.alertas is None:
+                monitoreo.alertas = []
+            
+            monitoreo.alertas.append({
+                'tipo': 'cambio_pestana',
+                'mensaje': alerta_texto,
+                'timestamp': datetime.now().isoformat(),
+                'cambio_numero': cambios_pestana,
+                'tiempo_restante': tiempo_restante
+            })
+            
+            monitoreo.cambios_pestana = cambios_pestana
+            monitoreo.ultima_actividad = timezone.now()
+            monitoreo.save()
+            
+            print(f"DEBUG - Cambio de pestaña #{cambios_pestana} registrado para {participante.NombresCompletos}")
+            
+        except Exception as e:
+            print(f"DEBUG - Error al actualizar monitoreo con cambio de pestaña: {e}")
+            pass
+        
+        return JsonResponse({
+            'success': True,
+            'cambios_pestana': cambios_pestana,
+            'mensaje': f'Cambio de pestaña #{cambios_pestana} registrado'
+        })
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})

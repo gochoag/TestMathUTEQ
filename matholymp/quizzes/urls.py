@@ -16,6 +16,7 @@ urlpatterns = [
     path('quiz/<int:pk>/guardar/', views.guardar_respuesta_automatica, name='guardar_respuesta_automatica'),
     path('quiz/<int:pk>/progreso/', views.obtener_progreso_evaluacion, name='obtener_progreso_evaluacion'),
     path('quiz/<int:pk>/verificar-estado/', views.verificar_estado_evaluacion, name='verificar_estado_evaluacion'),
+    path('quiz/<int:pk>/cambio-pestana/', views.registrar_cambio_pestana, name='registrar_cambio_pestana'),
     path('evaluaciones/', views.quiz_view, name='quiz'),  # Nueva URL para evaluaciones
     path('evaluaciones/crear/', views.create_evaluacion, name='create_evaluacion'),
     path('mis-resultados/', views.student_results, name='student_results'),

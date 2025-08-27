@@ -19,6 +19,10 @@
                                 <small class="d-block">Tiempo restante</small>
                                 <span id="timer" class="fw-bold fs-5">--:--</span>
                             </div>
+                            <div class="me-3">
+                                <small class="d-block">Cambios de pestaña</small>
+                                <span id="tabChangesCounter" class="fw-bold fs-6 text-warning">0/3</span>
+                            </div>
                             <div class="progress me-3" style="width: 100px; height: 8px;">
                                 <div id="progressBar" class="progress-bar bg-warning" role="progressbar" style="width: 100%"></div>
                             </div>
@@ -214,6 +218,51 @@ body.evaluacion-activa .container-fluid {
 body.evaluacion-activa #sidebarToggleBtnHeader {
     display: none !important;
 }
+
+/* Estilos para alertas de cambio de pestaña */
+.swal-wide {
+    width: 600px !important;
+    max-width: 90% !important;
+}
+
+.swal2-html-container .alert {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+}
+
+.swal2-html-container .alert-warning {
+    color: #664d03;
+    background-color: #fff3cd;
+    border-color: #ffecb5;
+}
+
+.swal2-html-container .alert-info {
+    color: #055160;
+    background-color: #cff4fc;
+    border-color: #b6effb;
+}
+
+.swal2-html-container .alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c2c7;
+}
+
+/* Indicador de cambios de pestaña en el header */
+.tab-changes-indicator {
+    position: absolute;
+    top: 10px;
+    right: 200px;
+    background-color: #dc3545;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: bold;
+    z-index: 1050;
+}
 </style>
 {% endblock %}
 
@@ -228,6 +277,12 @@ let evaluacionFinalizadaAdmin = false; // Variable para controlar si ya se mostr
 let verificacionInterval; // Variable para el intervalo de verificación
 let modalMostrandose = false; // Variable para controlar si el modal ya se está mostrando
 
+// Variables para control de cambios de pestaña
+let cambiosPestana = {% if continuar_evaluacion and resultado.cambios_pestana %}{{ resultado.cambios_pestana }}{% else %}0{% endif %};
+const maxCambiosPestana = 3;
+let documentoVisible = true;
+let advertenciasMostradas = false;
+
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
     // Activar modo evaluación (ocultar sidebar)
@@ -235,6 +290,43 @@ document.addEventListener('DOMContentLoaded', function() {
     
     inicializarEvaluacion();
     configurarEventos();
+    configurarControlPestanas();
+    
+    // Mostrar advertencia si ya hay cambios de pestaña registrados al continuar
+    {% if continuar_evaluacion and resultado.cambios_pestana and resultado.cambios_pestana > 0 %}
+        setTimeout(() => {
+            if (cambiosPestana > 0 && cambiosPestana < maxCambiosPestana) {
+                const cambiosRestantes = maxCambiosPestana - cambiosPestana;
+                Swal.fire({
+                    icon: 'warning',
+                    title: '⚠️ Advertencia de Continuación',
+                    html: `
+                        <div class="text-center">
+                            <p><strong>Esta evaluación tiene cambios de pestaña registrados.</strong></p>
+                            <div class="alert alert-warning">
+                                <strong>Cambios registrados:</strong> ${cambiosPestana}/${maxCambiosPestana}
+                            </div>
+                            <div class="alert alert-info">
+                                <strong>Cambios restantes:</strong> ${cambiosRestantes}
+                            </div>
+                            <p class="text-muted">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                Si realizas ${cambiosRestantes} cambio${cambiosRestantes !== 1 ? 's' : ''} más, 
+                                tu evaluación se finalizará automáticamente con puntaje de 0/10.
+                            </p>
+                        </div>
+                    `,
+                    confirmButtonText: 'Entendido',
+                    timer: 5000,
+                    showConfirmButton: true,
+                    customClass: {
+                        popup: 'swal-wide'
+                    }
+                });
+            }
+        }, 2000);
+    {% endif %}
+    
     iniciarTimer();
     iniciarGuardadoAutomatico();
     cargarProgresoGuardado();
@@ -257,6 +349,7 @@ function limpiarIntervalos() {
 function inicializarEvaluacion() {
     actualizarProgreso();
     actualizarNavegacion();
+    actualizarContadorCambiosPestana();
     iniciarVerificacionEstado();
     
     {% if continuar_evaluacion %}
@@ -329,6 +422,207 @@ function activarModoEvaluacion() {
 // Desactivar modo evaluación (mostrar sidebar)
 function desactivarModoEvaluacion() {
     document.body.classList.remove('evaluacion-activa');
+}
+
+// Configurar control de cambios de pestañas
+function configurarControlPestanas() {
+    // Detectar cambio de visibilidad del documento
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden && documentoVisible && !evaluacionEnviandose && !evaluacionFinalizadaAdmin) {
+            // El usuario cambió de pestaña o minimizó la ventana
+            documentoVisible = false;
+            cambiosPestana++;
+            
+            console.log(`DEBUG - Cambio de pestaña detectado. Total: ${cambiosPestana}/${maxCambiosPestana}`);
+            
+            // Guardar el cambio en el servidor
+            registrarCambioPestana();
+            
+            // Verificar si se excedió el límite
+            if (cambiosPestana >= maxCambiosPestana) {
+                finalizarPorCambiosPestana();
+            } else {
+                mostrarAdvertenciaCambioPestana();
+            }
+        } else if (!document.hidden && !documentoVisible) {
+            // El usuario regresó a la pestaña
+            documentoVisible = true;
+        }
+    });
+    
+    // Detectar pérdida de foco (blur) de la ventana
+    window.addEventListener('blur', function() {
+        if (documentoVisible && !evaluacionEnviandose && !evaluacionFinalizadaAdmin) {
+            // Posible cambio de ventana o aplicación
+            setTimeout(function() {
+                if (!document.hasFocus() && documentoVisible) {
+                    documentoVisible = false;
+                    cambiosPestana++;
+                    
+                    console.log(`DEBUG - Cambio de ventana detectado. Total: ${cambiosPestana}/${maxCambiosPestana}`);
+                    
+                    // Guardar el cambio en el servidor
+                    registrarCambioPestana();
+                    
+                    // Verificar si se excedió el límite
+                    if (cambiosPestana >= maxCambiosPestana) {
+                        finalizarPorCambiosPestana();
+                    } else {
+                        mostrarAdvertenciaCambioPestana();
+                    }
+                }
+            }, 100);
+        }
+    });
+    
+    // Detectar cuando regresa el foco
+    window.addEventListener('focus', function() {
+        if (!documentoVisible) {
+            documentoVisible = true;
+        }
+    });
+}
+
+// Registrar cambio de pestaña en el servidor
+function registrarCambioPestana() {
+    // Actualizar contador visual
+    actualizarContadorCambiosPestana();
+    
+    fetch(`{% url 'quizzes:registrar_cambio_pestana' evaluacion.pk %}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            cambios_pestana: cambiosPestana,
+            tiempo_restante: tiempoRestante
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Cambio de pestaña registrado exitosamente');
+        } else {
+            console.error('Error al registrar cambio de pestaña:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error registrando cambio de pestaña:', error);
+    });
+}
+
+// Actualizar contador visual de cambios de pestaña
+function actualizarContadorCambiosPestana() {
+    const contador = document.getElementById('tabChangesCounter');
+    if (contador) {
+        contador.textContent = `${cambiosPestana}/${maxCambiosPestana}`;
+        
+        // Cambiar color según el número de cambios
+        if (cambiosPestana === 0) {
+            contador.className = 'fw-bold fs-6 text-success';
+        } else if (cambiosPestana === 1) {
+            contador.className = 'fw-bold fs-6 text-warning';
+        } else if (cambiosPestana === 2) {
+            contador.className = 'fw-bold fs-6 text-danger';
+        } else if (cambiosPestana >= 3) {
+            contador.className = 'fw-bold fs-6 text-danger bg-danger text-white px-2 rounded';
+        }
+    }
+}
+
+// Mostrar advertencia de cambio de pestaña
+function mostrarAdvertenciaCambioPestana() {
+    const cambiosRestantes = maxCambiosPestana - cambiosPestana;
+    
+    if (!advertenciasMostradas) {
+        advertenciasMostradas = true;
+        
+        Swal.fire({
+            icon: 'warning',
+            title: 'Advertencia de Cambio de Pestaña',
+            html: `
+                <div class="text-center">
+                    <p><strong>Has cambiado de pestaña o ventana durante la evaluación.</strong></p>
+                    <div class="alert alert-warning">
+                        <strong>Cambios realizados:</strong> ${cambiosPestana}/${maxCambiosPestana}
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>Cambios restantes:</strong> ${cambiosRestantes}
+                    </div>
+                    <p class="text-muted">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Si realizas ${cambiosRestantes} cambio${cambiosRestantes !== 1 ? 's' : ''} más, 
+                        tu evaluación se finalizará automáticamente con puntaje de 0/10.
+                    </p>
+                </div>
+            `,
+            confirmButtonText: 'Entendido',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal-wide'
+            }
+        }).then(() => {
+            advertenciasMostradas = false;
+        });
+    }
+}
+
+// Finalizar evaluación por exceso de cambios de pestaña
+function finalizarPorCambiosPestana() {
+    // Detener todos los intervalos y timers
+    limpiarIntervalos();
+    
+    // Marcar que la evaluación se está enviando para evitar alertas del navegador
+    evaluacionEnviandose = true;
+    evaluacionFinalizadaAdmin = true;
+    modalMostrandose = true;
+    
+    // Enviar evaluación con puntaje de 0
+    enviarEvaluacionPorCambiosPestana();
+}
+
+// Enviar evaluación por cambios de pestaña
+function enviarEvaluacionPorCambiosPestana() {
+    Swal.fire({
+        icon: 'error',
+        title: 'Evaluación Finalizada Automáticamente',
+        html: `
+            <div class="text-center">
+                <p><strong>Has excedido el límite de cambios de pestaña permitidos.</strong></p>
+                <div class="alert alert-danger">
+                    <strong>Cambios realizados:</strong> ${cambiosPestana}/${maxCambiosPestana}
+                </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Tu puntaje será de 0/10</strong>
+                </div>
+                <p class="text-muted">
+                    La evaluación se enviará automáticamente.
+                </p>
+            </div>
+        `,
+        confirmButtonText: 'Entendido',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        customClass: {
+            popup: 'swal-wide'
+        }
+    }).then(() => {
+        // Desactivar modo evaluación antes de enviar
+        desactivarModoEvaluacion();
+        
+        // Enviar formulario con una marca especial para indicar finalización por cambios de pestaña
+        const form = document.getElementById('quizForm');
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'finalizada_por_cambios_pestana';
+        input.value = 'true';
+        form.appendChild(input);
+        
+        form.submit();
+    });
 }
 
 // Configurar eventos

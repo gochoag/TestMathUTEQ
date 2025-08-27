@@ -38,18 +38,18 @@
                                     <div class="mb-4">
                                         <div class="row text-center">
                                             <div class="col-4">
-                                                <div class="border-end">
+                                                
                                                     <i class="bi bi-clock text-primary fs-1"></i>
                                                     <p class="mb-0 text-muted">Duración</p>
                                                     <h5 class="mb-0">{{ evaluacion.duration_minutes }} min</h5>
-                                                </div>
+                                                
                                             </div>
                                             <div class="col-4">
-                                                <div class="border-end">
+                                               
                                                     <i class="bi bi-question-circle text-success fs-1"></i>
                                                     <p class="mb-0 text-muted">Preguntas</p>
-                                                    <h5 class="mb-0">{{ evaluacion.preguntas.count }}</h5>
-                                                </div>
+                                                    <h5 class="mb-0">{{ evaluacion.preguntas_a_mostrar }}</h5>
+                                               
                                             </div>
                                             <div class="col-4">
                                                 <i class="bi bi-arrow-clockwise text-info fs-1"></i>
@@ -147,7 +147,7 @@
                                                 Continuar Evaluación
                                             </a>
                                         {% elif puede_iniciar %}
-                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
+                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100 confirm-start-quiz" data-quiz-id="{{ evaluacion.pk }}" data-quiz-title="{{ evaluacion.title }}" data-is-retry="{% if mejor_resultado %}true{% else %}false{% endif %}">
                                                 <i class="bi bi-play-circle me-2"></i>
                                                 {% if mejor_resultado %}Nuevo Intento{% else %}Iniciar Evaluación{% endif %}
                                             </a>
@@ -176,7 +176,7 @@
                                         {% endif %}
                                     {% else %}
                                         {% if evaluacion.get_status == 'active' %}
-                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100">
+                                            <a href="{% url 'quizzes:take_quiz' evaluacion.pk %}" class="btn btn-primary btn-lg w-100 confirm-start-quiz" data-quiz-id="{{ evaluacion.pk }}" data-quiz-title="{{ evaluacion.title }}" data-is-retry="false">
                                                 <i class="bi bi-play-circle me-2"></i>
                                                 Iniciar Evaluación
                                             </a>
@@ -258,5 +258,89 @@
     padding-left: 10px;
     padding-right: 10px;
 }
+
+/* Estilos personalizados para SweetAlert2 */
+.swal-popup-quiz-confirm {
+    font-family: inherit;
+}
+
+.swal-popup-quiz-confirm .swal2-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #343a40;
+}
+
+.swal-popup-quiz-confirm .swal2-content {
+    font-size: 1rem;
+    color: #6c757d;
+    line-height: 1.5;
+}
+
+.swal-popup-quiz-confirm .swal2-confirm {
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+}
+
+.swal-popup-quiz-confirm .swal2-cancel {
+    font-weight: 500;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+}
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Confirmación SOLO para iniciar nueva evaluación (primera vez o nuevo intento)
+    document.querySelectorAll('.confirm-start-quiz').forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const quizTitle = this.getAttribute('data-quiz-title');
+            const isRetry = this.getAttribute('data-is-retry') === 'true';
+            const quizUrl = this.getAttribute('href');
+            
+            const title = isRetry ? '¿Iniciar nuevo intento?' : '¿Iniciar evaluación?';
+            const text = isRetry ? 
+                `¿Estás seguro de que deseas iniciar un nuevo intento de la evaluación "${quizTitle}"?` :
+                `¿Estás seguro de que deseas iniciar la evaluación "${quizTitle}"?`;
+            
+            Swal.fire({
+                title: title,
+                text: text,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#007bff',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, iniciar',
+                cancelButtonText: 'Cancelar',
+                reverseButtons: false,
+                customClass: {
+                    popup: 'swal-popup-quiz-confirm'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Mostrar loading
+                    Swal.fire({
+                        title: 'Cargando evaluación...',
+                        text: 'Por favor espera mientras se prepara la evaluación',
+                        icon: 'info',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showConfirmButton: false,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    });
+                    
+                    // Redirigir después de un breve delay
+                    setTimeout(() => {
+                        window.location.href = quizUrl;
+                    }, 1000);
+                }
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

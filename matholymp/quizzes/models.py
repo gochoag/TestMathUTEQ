@@ -537,9 +537,19 @@ class Evaluacion(models.Model):
         if self.etapa == 1:
             return self.get_participantes_etapa1()
         elif self.etapa == 2:
-            return self.get_participantes_etapa2()
+            # Para etapa 2: si hay participantes asignados manualmente, usar solo esos
+            # Si no hay manuales, usar automáticos (preseleccionados)
+            if self.participantes_individuales.exists():
+                return list(self.participantes_individuales.all())
+            else:
+                return self.get_participantes_etapa2()  # Automáticos
         elif self.etapa == 3:
-            return self.get_participantes_etapa3()
+            # Para etapa 3: si hay participantes asignados manualmente, usar solo esos
+            # Si no hay manuales, usar automáticos (preseleccionados)
+            if self.participantes_individuales.exists():
+                return list(self.participantes_individuales.all())
+            else:
+                return self.get_participantes_etapa3()  # Automáticos
         return []
     
     def get_preguntas_aleatorias(self):
@@ -639,6 +649,9 @@ class ResultadoEvaluacion(models.Model):
     # Campo para múltiples intentos
     numero_intento = models.PositiveIntegerField(default=1, help_text='Número del intento del participante')
     
+    # Campo para control de cambios de pestaña
+    cambios_pestana = models.PositiveIntegerField(default=0, help_text='Número de cambios de pestaña durante la evaluación')
+    
     class Meta:
         unique_together = ['evaluacion', 'participante', 'numero_intento']
         ordering = ['-puntaje', 'tiempo_utilizado']
@@ -736,6 +749,10 @@ class MonitoreoEvaluacion(models.Model):
     # Alertas y irregularidades
     alertas_detectadas = models.JSONField(default=list, blank=True, help_text='Lista de alertas detectadas')
     irregularidades = models.TextField(blank=True, help_text='Descripción de irregularidades detectadas')
+    
+    # Control de cambios de pestaña
+    cambios_pestana = models.PositiveIntegerField(default=0, help_text='Número de cambios de pestaña detectados')
+    alertas = models.JSONField(default=list, blank=True, help_text='Lista de alertas específicas incluyendo cambios de pestaña')
     
     # Control administrativo
     finalizado_por_admin = models.ForeignKey(
