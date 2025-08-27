@@ -2,6 +2,8 @@
 Utilidades para el envío de correos electrónicos
 """
 
+import datetime
+
 def generate_email_messages(subject, nombre, system_name, username, nueva_password, email_type='credentials', additional_content=None):
     """
     Función global para generar mensajes de correo electrónico en formato texto plano y HTML.
@@ -19,6 +21,9 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         tuple: (plain_message, html_message)
     """
     
+    # Obtener el año actual
+    current_year = datetime.datetime.now().year
+    
     if email_type == 'credentials':
         # Mensaje en texto plano para credenciales
         plain_message = f"""
@@ -31,10 +36,11 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
 
         Puede acceder al sistema usando estas credenciales.
 
-        Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos.
+        Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos al correo: olimpiadasmecanicauteq@gmail.com
 
-        Saludos cordiales,
-        CARRERA DE INGENIERIA MECÁNICA
+        Atentamente,
+        Carrera de Ingeniería Mecánica
+        Universidad Técnica Estatal Quevedo
                 """
         
         # Mensaje HTML moderno para credenciales
@@ -44,6 +50,7 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
             <title>Credenciales de Acceso</title>
             <style>
                 * {{
@@ -53,10 +60,10 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 body {{
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-family: 'Open Sans', sans-serif;
                     line-height: 1.6;
                     color: #333;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: #f4f4f4;
                     padding: 20px;
                 }}
                 
@@ -64,27 +71,45 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                     max-width: 600px;
                     margin: 0 auto;
                     background: white;
-                    border-radius: 15px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                    border-radius: 8px;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
                     overflow: hidden;
+                    border: 1px solid #ddd;
                 }}
                 
                 .header {{
-                    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+                    background: linear-gradient(135deg, #025a27 0%, #034a2a 100%);
                     color: white;
-                    padding: 30px;
+                    padding: 30px 30px;
                     text-align: center;
+                    position: relative;
+                }}
+                
+                .header::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: linear-gradient(90deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%);
                 }}
                 
                 .header h1 {{
-                    font-size: 28px;
-                    font-weight: 600;
-                    margin-bottom: 10px;
+                    font-size: 24px;
+                    font-weight: 700;
+                    margin: 0 0 10px 0;
+                    letter-spacing: 0.5px;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 }}
                 
-                .header .subtitle {{
-                    font-size: 16px;
-                    opacity: 0.9;
+                .header h2 {{
+                    font-size: 18px;
+                    font-weight: 400;
+                    margin: 0;
+                    letter-spacing: 0.3px;
+                    opacity: 0.95;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 }}
                 
                 .content {{
@@ -92,22 +117,23 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 .greeting {{
-                    font-size: 18px;
+                    font-size: 16px;
                     margin-bottom: 25px;
                     color: #555;
+                    font-weight: 400;
                 }}
                 
                 .credentials-card {{
-                    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                    border-radius: 12px;
+                    background: #f9f9f9;
+                    border-radius: 8px;
                     padding: 25px;
                     margin: 25px 0;
-                    border-left: 5px solid #667eea;
+                    border-left: 4px solid #025a27;
                 }}
                 
                 .credentials-card h3 {{
-                    color: #667eea;
-                    font-size: 20px;
+                    color: #025a27;
+                    font-size: 18px;
                     margin-bottom: 20px;
                     font-weight: 600;
                 }}
@@ -127,18 +153,18 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 .credential-label {{
                     font-weight: 600;
                     color: #555;
-                    font-size: 16px;
+                    font-size: 14px;
                     min-width: 120px;
                 }}
                 
                 .credential-value {{
-                    background: white;
+                    background: #fff;
                     padding: 8px 15px;
-                    border-radius: 8px;
+                    border-radius: 4px;
                     font-family: 'Courier New', monospace;
                     font-weight: 600;
-                    color: #667eea;
-                    border: 2px solid #e0e0e0;
+                    color: #025a27;
+                    border: 1px solid #ddd;
                     font-size: 14px;
                     flex: 1;
                     margin-left: 15px;
@@ -146,44 +172,47 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 .info-box {{
-                    background: #e3f2fd;
+                    background: #e8f5e8;
                     border-radius: 8px;
                     padding: 20px;
                     margin: 25px 0;
-                    border-left: 4px solid #2196f3;
+                    border-left: 4px solid #025a27;
                 }}
                 
                 .info-box h4 {{
-                    color: #1976d2;
+                    color: #025a27;
                     margin-bottom: 10px;
                     font-size: 16px;
+                    font-weight: 600;
                 }}
                 
                 .info-box p {{
                     color: #424242;
                     font-size: 14px;
+                    font-weight: 400;
                 }}
                 
                 .footer {{
-                    background: #f8f9fa;
+                    background: #f4f4f4;
                     padding: 30px;
                     text-align: center;
-                    border-top: 1px solid #e0e0e0;
+                    border-top: 1px solid #ddd;
                 }}
                 
                 .footer p {{
                     color: #666;
                     font-size: 14px;
+                    font-weight: 400;
                 }}
                 
                 .footer .signature {{
                     font-weight: 600;
-                    color: #667eea;
+                    color: #025a27;
                     margin-top: 10px;
                 }}
                 
                 .logo {{
-                    font-size: 20px;
+                    font-size: 18px;
                     font-weight: bold;
                     margin-bottom: 10px;
                     line-height: 1.3;
@@ -218,12 +247,14 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         <body>
             <div class="email-container">
                 <div class="header">
-                    <div class="logo">🏆 OLIMPIADA INTERCOLEGIAL DE MATEMATICA, UTEQ-2025</div>
-                    <h1>Credenciales de Acceso</h1>
-                    <div class="subtitle">{system_name}</div>
+                    <h1>Universidad Técnica Estatal de Quevedo</h1>
+                    <h2>Olimpiada Intercolegial de Matemática {current_year}</h2>
                 </div>
                 
                 <div class="content">
+                    <h1 style="font-size: 28px; font-weight: 700; color: #025a27; text-align: center; margin-bottom: 10px;">Credenciales de Acceso</h1>
+                    <div class="subtitle" style="font-size: 18px; color: #555; text-align: center; margin-bottom: 30px;">{system_name}</div>
+                    
                     <div class="greeting">
                         Estimado/a <strong>{nombre}</strong>,
                     </div>
@@ -243,11 +274,16 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                         </div>
                     </div>
                     
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="https://aplicaciones.uteq.edu.ec:9051/login/" style="background: #025a27; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; font-size: 16px;">Acceder al Sistema</a>
+                    </div>
+                    
                     <div class="info-box">
                         <h4>Información Importante</h4>
                         <p>• Guarde estas credenciales en un lugar seguro<br>
                         • No comparta su contraseña con otras personas<br>
-                        • Puede cambiar su contraseña una vez que ingrese al sistema</p>
+                        • Puede cambiar su contraseña una vez que ingrese al sistema<br>
+                        • Para soporte técnico, contacte: <a href="mailto:olimpiadasmecanicauteq@gmail.com" style="color: #025a27;">olimpiadasmecanicauteq@gmail.com</a></p>
                     </div>
                     
                     <p>Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos. 
@@ -255,8 +291,8 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 </div>
                 
                 <div class="footer">
-                    <p>Saludos cordiales,</p>
-                    <div class="signature">CARRERA DE INGENIERIA MECÁNICA</div>
+                    <p>Atentamente,</p>
+                    <div class="signature">Carrera de Ingeniería Mecánica<br>Universidad Técnica Estatal Quevedo</div>
                     <p style="margin-top: 15px; font-size: 12px; color: #999;">
                         Este es un mensaje automático, por favor no responda a este correo.
                     </p>
@@ -278,10 +314,11 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         IMPORTANTE: Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.
         Los participantes pueden acceder a la plataforma usando su cédula como usuario y la contraseña que aparece en la tabla.
 
-        Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.
+        Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos al correo: olimpiadasmecanicauteq@gmail.com
 
-        Saludos cordiales,
-        CARRERA DE INGENIERIA MECÁNICA
+        Atentamente,
+        Carrera de Ingeniería Mecánica
+        Universidad Técnica Estatal Quevedo
                 """
         
         # Mensaje HTML moderno para lista de participantes
@@ -291,6 +328,7 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
             <title>Lista de Participantes</title>
             <style>
                 * {{
@@ -300,10 +338,10 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 body {{
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-family: 'Open Sans', sans-serif;
                     line-height: 1.6;
                     color: #333;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: #f4f4f4;
                     padding: 20px;
                 }}
                 
@@ -311,27 +349,45 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                     max-width: 800px;
                     margin: 0 auto;
                     background: white;
-                    border-radius: 15px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                    border-radius: 8px;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
                     overflow: hidden;
+                    border: 1px solid #ddd;
                 }}
                 
                 .header {{
-                    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+                    background: linear-gradient(135deg, #025a27 0%, #034a2a 100%);
                     color: white;
-                    padding: 30px;
+                    padding: 30px 30px;
                     text-align: center;
+                    position: relative;
+                }}
+                
+                .header::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: linear-gradient(90deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%);
                 }}
                 
                 .header h1 {{
-                    font-size: 28px;
-                    font-weight: 600;
-                    margin-bottom: 10px;
+                    font-size: 24px;
+                    font-weight: 700;
+                    margin: 0 0 10px 0;
+                    letter-spacing: 0.5px;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 }}
                 
-                .header .subtitle {{
-                    font-size: 16px;
-                    opacity: 0.9;
+                .header h2 {{
+                    font-size: 18px;
+                    font-weight: 400;
+                    margin: 0;
+                    letter-spacing: 0.3px;
+                    opacity: 0.95;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 }}
                 
                 .content {{
@@ -339,16 +395,18 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 .greeting {{
-                    font-size: 18px;
+                    font-size: 16px;
                     margin-bottom: 25px;
                     color: #555;
+                    font-weight: 400;
                 }}
                 
                 .participants-table {{
                     margin: 30px 0;
-                    border-radius: 12px;
+                    border-radius: 8px;
                     overflow: hidden;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                    border: 2px solid #025a27;
                 }}
                 
                 .participants-table table {{
@@ -358,44 +416,47 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 .participants-table th {{
-                    background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+                    background: #025a27;
                     color: white;
                     padding: 15px 10px;
                     text-align: left;
-                    font-weight: 600;
+                    font-weight: 700;
                     font-size: 14px;
+                    border-bottom: 2px solid #ddd;
                 }}
                 
                 .participants-table td {{
                     padding: 12px 10px;
-                    border-bottom: 1px solid #e0e0e0;
+                    border-bottom: 1px solid #ddd;
                     font-size: 13px;
+                    border-right: 1px solid #eee;
                 }}
                 
                 .participants-table tr:nth-child(even) {{
-                    background-color: #f8f9fa;
+                    background-color: #f9f9f9;
                 }}
                 
                 .participants-table tr:hover {{
-                    background-color: #e3f2fd;
+                    background-color: #e8f4fd;
                 }}
                 
                 .info-box {{
-                    background: #fff3cd;
+                    background: #e8f5e8;
                     border-radius: 8px;
                     padding: 20px;
                     margin: 25px 0;
-                    border-left: 4px solid #ffc107;
+                    border-left: 4px solid #025a27;
                 }}
                 
                 .info-box h4 {{
-                    color: #856404;
+                    color: #025a27;
                     margin-bottom: 10px;
                     font-size: 16px;
+                    font-weight: 600;
                 }}
                 
                 .info-box ul {{
-                    color: #856404;
+                    color: #025a27;
                     font-size: 14px;
                     padding-left: 20px;
                 }}
@@ -405,25 +466,26 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 }}
                 
                 .footer {{
-                    background: #f8f9fa;
+                    background: #f4f4f4;
                     padding: 30px;
                     text-align: center;
-                    border-top: 1px solid #e0e0e0;
+                    border-top: 1px solid #ddd;
                 }}
                 
                 .footer p {{
                     color: #666;
                     font-size: 14px;
+                    font-weight: 400;
                 }}
                 
                 .footer .signature {{
                     font-weight: 600;
-                    color: #667eea;
+                    color: #025a27;
                     margin-top: 10px;
                 }}
                 
                 .logo {{
-                    font-size: 20px;
+                    font-size: 18px;
                     font-weight: bold;
                     margin-bottom: 10px;
                     line-height: 1.3;
@@ -456,12 +518,14 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         <body>
             <div class="email-container">
                 <div class="header">
-                    <div class="logo">🏆 OLIMPIADA INTERCOLEGIAL DE MATEMATICA, UTEQ-2025</div>
-                    <h1>Lista de Participantes</h1>
-                    <div class="subtitle">Grupo: {system_name}</div>
+                    <h1>Universidad Técnica Estatal de Quevedo</h1>
+                    <h2>Olimpiada Intercolegial de Matemática {current_year}</h2>
                 </div>
                 
                 <div class="content">
+                    <h1 style="font-size: 28px; font-weight: 700; color: #025a27; text-align: center; margin-bottom: 10px;">Lista de Participantes</h1>
+                    <div class="subtitle" style="font-size: 18px; color: #555; text-align: center; margin-bottom: 30px;">Grupo: {system_name}</div>
+                    
                     <div class="greeting">
                         Estimado/a <strong>{nombre}</strong>,
                     </div>
@@ -473,12 +537,12 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                     </div>
                     
                     <div class="info-box">
-                        <h4>Información Importante</h4>
+                        <h4>Información</h4>
                         <ul>
                             <li><strong>Total de participantes:</strong> {additional_content.get('total_participantes', 'N/A')}</li>
                             <li><strong>IMPORTANTE:</strong> Las contraseñas mostradas en la tabla son las credenciales actuales de los participantes.</li>
                             <li>Los participantes pueden acceder a la plataforma usando su <strong>cédula como usuario</strong> y la <strong>contraseña que aparece en la tabla</strong>.</li>
-                            <li>Estas son las contraseñas que los participantes deben usar para acceder al sistema.</li>
+                            <li>Para soporte técnico, contacte: <a href="mailto:olimpiadasmecanicauteq@gmail.com" style="color: #025a27;">olimpiadasmecanicauteq@gmail.com</a></li>
                         </ul>
                     </div>
                     
@@ -487,8 +551,8 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                 </div>
                 
                 <div class="footer">
-                    <p>Saludos cordiales,</p>
-                    <div class="signature">CARRERA DE INGENIERIA MECÁNICA</div>
+                    <p>Atentamente,</p>
+                    <div class="signature">Carrera de Ingeniería Mecánica<br>Universidad Técnica Estatal Quevedo</div>
                     <p style="margin-top: 15px; font-size: 12px; color: #999;">
                         Este es un mensaje automático, por favor no responda a este correo.
                     </p>

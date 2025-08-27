@@ -1,11 +1,40 @@
+version: "3.9"
+
 services:
   
-  web:
+  webtestmathuteq:
+    container_name: webtestmathuteq
     build: .
     command: python matholymp/manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "8500:8000"
     env_file:
       - .env
+    restart: always
+    networks:
+      - djangotestmathuteq_bridge
+
+  nginx_ssl_django_webtestmathuteq:
+    container_name: nginx_ssl_django_webtestmathuteq
+    image: nginx
+    tty: true
+    ports:
+      - 9051:443
+      - 9050:444
+    volumes:
+      - ./nginx/config/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/ssl/
+      - ./nginx/html/:/var/www/html
+      - ./nginx/logs:/etc/nginx/logs
+      - ./matholymp/static/:/var/www/static
+    restart: always
+    depends_on:
+      - webtestmathuteq
+    networks:
+      - djangotestmathuteq_bridge
+
+networks:
+  djangotestmathuteq_bridge:
+    driver: bridge

@@ -73,8 +73,8 @@ def validate_password_strength(password, username):
         str or None: Mensaje de error si la contraseña no es válida, None si es válida
     """
     # 1. Validar longitud mínima
-    if len(password) < 8:
-        return 'La contraseña debe tener al menos 8 caracteres.'
+    if len(password) < 6:
+        return 'La contraseña debe tener al menos 6 caracteres.'
     
     # 2. Validar que no sea similar al nombre de usuario
     if password.lower() in username.lower() or username.lower() in password.lower():
@@ -85,7 +85,7 @@ def validate_password_strength(password, username):
         return 'La contraseña no puede ser completamente numérica.'
     
     # 4. Validar contraseñas comunes
-    common_passwords = ['12345678', 'password', 'contraseña', 'qwerty123', '87654321', 'abc12345']
+    common_passwords = ['12345678', '123456','1234567', '123456789', 'password', 'contraseña', 'qwerty123', '87654321', 'abc12345']
     if password.lower() in common_passwords:
         return 'La contraseña es demasiado común. Elige una más segura.'
     
