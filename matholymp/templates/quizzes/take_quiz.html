@@ -15,17 +15,10 @@
                             {{ evaluacion.title }}
                         </h3>
                         <div class="d-flex align-items-center">
-                            <div class="me-3">
-                                <small class="d-block">Tiempo restante</small>
-                                <span id="timer" class="fw-bold fs-5">--:--</span>
-                            </div>
-                            <div class="me-3">
-                                <small class="d-block">Cambios de pestaña</small>
-                                <span id="tabChangesCounter" class="fw-bold fs-6 text-warning">0/3</span>
-                            </div>
-                            <div class="progress me-3" style="width: 100px; height: 8px;">
-                                <div id="progressBar" class="progress-bar bg-warning" role="progressbar" style="width: 100%"></div>
-                            </div>
+                            <small class="text-light">
+                                <i class="bi bi-clock me-1"></i>
+                                Evaluación en curso
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -80,6 +73,30 @@
                                         </h6>
                                     </div>
                                     <div class="card-body">
+                                        <!-- Panel de información de la evaluación -->
+                                        <div class="mb-3 p-3 evaluation-info-panel">
+                                            <div class="mb-3">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <small class="text-muted">
+                                                        <i class="bi bi-clock me-1"></i>
+                                                        Tiempo restante
+                                                    </small>
+                                                    <span id="timer" class="fw-bold text-primary fs-6">--:--</span>
+                                                </div>
+                                                <div class="progress mb-2" style="height: 6px;">
+                                                    <div id="progressBar" class="progress-bar bg-success" role="progressbar" style="width: 100%"></div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">
+                                                    <i class="bi bi-window-stack me-1"></i>
+                                                    Cambios de pestaña
+                                                </small>
+                                                <span id="tabChangesCounter" class="fw-bold fs-6 text-success">0/3</span>
+                                            </div>
+                                        </div>
+                                        
                                         <div class="mb-3">
                                             <div class="d-flex justify-content-between mb-2">
                                                 <small class="text-muted">Progreso</small>
@@ -263,6 +280,27 @@ body.evaluacion-activa #sidebarToggleBtnHeader {
     font-weight: bold;
     z-index: 1050;
 }
+
+/* Estilos para el panel de información en la navegación */
+.evaluation-info-panel {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+}
+
+.evaluation-info-panel .progress {
+    height: 6px;
+    background-color: #e9ecef;
+}
+
+.evaluation-info-panel .text-primary {
+    color: #0d6efd !important;
+}
+
+/* Animación suave para el contador de cambios */
+#tabChangesCounter {
+    transition: all 0.3s ease;
+}
 </style>
 {% endblock %}
 
@@ -299,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const cambiosRestantes = maxCambiosPestana - cambiosPestana;
                 Swal.fire({
                     icon: 'warning',
-                    title: '⚠️ Advertencia de Continuación',
+                    title: 'Advertencia de Continuación',
                     html: `
                         <div class="text-center">
                             <p><strong>Esta evaluación tiene cambios de pestaña registrados.</strong></p>
@@ -366,12 +404,15 @@ function inicializarEvaluacion() {
 
 // Función para verificar periódicamente si la evaluación fue finalizada administrativamente
 function iniciarVerificacionEstado() {
-    // Verificar cada 10 segundos
+    // Verificar inmediatamente al iniciar
+    verificarEstadoEvaluacion();
+    
+    // Verificar cada 5 segundos (para sincronizar con el monitoreo del admin)
     verificacionInterval = setInterval(function() {
         if (!evaluacionFinalizadaAdmin) {
             verificarEstadoEvaluacion();
         }
-    }, 10000);
+    }, 5000);
 }
 
 // Verificar estado de la evaluación
@@ -407,6 +448,40 @@ function verificarEstadoEvaluacion() {
                     // Redirigir a la página de evaluaciones
                     window.location.href = "{% url 'quizzes:quiz' %}";
                 });
+            } else {
+                // Verificar si hubo cambios en los cambios de pestañas (reducción administrativa)
+                if (data.cambios_pestana_actuales !== undefined && data.cambios_pestana_actuales !== cambiosPestana) {
+                    console.log(`DEBUG - Cambios de pestañas actualizados por admin: ${cambiosPestana} → ${data.cambios_pestana_actuales}`);
+                    
+                    // Actualizar la variable global con el nuevo valor
+                    const cambiosAnteriores = cambiosPestana;
+                    cambiosPestana = data.cambios_pestana_actuales;
+                    
+                    // Actualizar el contador visual inmediatamente
+                    actualizarContadorCambiosPestana();
+                    
+                    // Mostrar notificación al participante
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Cambios de Pestañas Actualizados',
+                        html: `
+                            <div class="text-center">
+                                <p>Un administrador ha reducido tus cambios de pestaña:</p>
+                                <div class="alert alert-info">
+                                    <strong>Anterior:</strong> ${cambiosAnteriores}/3<br>
+                                    <strong>Nuevo:</strong> ${cambiosPestana}/3
+                                </div>
+                                <p class="text-success">
+                                    <i class="bi bi-check-circle"></i>
+                                    Puedes continuar con tu evaluación normalmente.
+                                </p>
+                            </div>
+                        `,
+                        timer: 5000,
+                        showConfirmButton: true,
+                        confirmButtonText: 'Continuar'
+                    });
+                }
             }
         })
         .catch(error => {

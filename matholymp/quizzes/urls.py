@@ -56,6 +56,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/monitoreo/estado/', views.obtener_estado_monitoreo, name='obtener_estado_monitoreo'),
     path('evaluacion/<int:pk>/monitoreo/finalizar/', views.finalizar_evaluacion_admin, name='finalizar_evaluacion_admin'),
     path('evaluacion/<int:pk>/dar-nuevo-intento/', views.dar_nuevo_intento_evaluacion, name='dar_nuevo_intento_evaluacion'),
+    path('evaluacion/<int:pk>/reducir-cambios-pestana/', views.reducir_cambios_pestana, name='reducir_cambios_pestana'),
     path('monitoreo/<int:monitoreo_id>/detalle/', views.detalle_monitoreo, name='detalle_monitoreo'),
     path('monitoreo/<int:monitoreo_id>/alerta/', views.agregar_alerta_manual, name='agregar_alerta_manual'),
     

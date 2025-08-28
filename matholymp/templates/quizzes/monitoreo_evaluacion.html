@@ -97,6 +97,7 @@
                                     <th>Progreso/Puntaje</th>
                                     <th>Última Actividad</th>
                                     <th>Intentos</th>
+                                    <th>Cambios Pestañas</th>
                                     <th>Alertas</th>
                                     <th>Acciones</th>
                                 </tr>
@@ -258,6 +259,75 @@
     </div>
 </div>
 
+<!-- Modal para reducir cambios de pestañas -->
+<div class="modal fade" id="modalReducirCambiosPestana" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-dash-circle"></i>
+                    Reducir Cambios de Pestañas
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info alert-sm">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Participante:</strong> <span id="nombre-participante-reducir"></span>
+                </div>
+                
+                <!-- Información compacta de cambios de pestañas -->
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="text-center p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Cambios Actuales</small>
+                            <h4 class="mb-0 text-danger" id="cambios-actuales">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Máximo Permitido</small>
+                            <h4 class="mb-0 text-warning" id="cambios-maximo">3</h4>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Input compacto para cantidad a reducir -->
+                <div class="row align-items-end">
+                    <div class="col-8">
+                        <label for="cantidad-reducir" class="form-label small mb-1">
+                            <i class="bi bi-dash-circle text-danger"></i> Cantidad a reducir:
+                        </label>
+                        <select class="form-select" id="cantidad-reducir">
+                            <option value="1" selected>1 cambio</option>
+                            <option value="2">2 cambios</option>
+                            <option value="3">3 cambios</option>
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-center">
+                            <small class="text-muted d-block mb-1">Nuevo Total</small>
+                            <span class="badge bg-success fs-6" id="nuevo-total-cambios">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <small class="text-muted mt-2 d-block">
+                    <i class="bi bi-exclamation-circle"></i>
+                    Esta acción reducirá el contador de cambios de pestañas del participante.
+                </small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btn-confirmar-reducir">
+                    <i class="bi bi-check-circle"></i>
+                    Confirmar Reducción
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal para ver detalles -->
 <div class="modal fade" id="modalDetalles" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -329,6 +399,13 @@
 
 #nuevo-total:hover {
     background-color: #198754 !important;
+}
+
+/* Estilos para el modal de reducir cambios de pestañas */
+#nuevo-total-cambios {
+    font-size: 1.2rem !important;
+    padding: 0.5rem 1rem !important;
+    transition: transform 0.2s ease, background-color 0.3s ease;
 }
 </style>
 {% endblock %}
@@ -496,6 +573,24 @@ function generarFilaMonitoreo(monitoreo) {
             })()}
         </td>
         <td>
+            ${(() => {
+                // Mostrar cambios de pestañas con colores según la cantidad
+                const cambiosActuales = monitoreo.cambios_pestana_actuales || 0;
+                const cambiosMaximo = monitoreo.cambios_pestana_maximo || 3;
+                
+                let badgeColor = 'bg-success';
+                if (cambiosActuales >= cambiosMaximo) {
+                    badgeColor = 'bg-danger';
+                } else if (cambiosActuales > cambiosMaximo / 2) {
+                    badgeColor = 'bg-warning text-dark';
+                }
+                
+                return `<span class="badge ${badgeColor}" title="Cambios/Máximo">
+                    ${cambiosActuales}/${cambiosMaximo}
+                </span>`;
+            })()}
+        </td>
+        <td>
             ${monitoreo.alertas_count > 0 ? 
                 `<span class="badge bg-danger">${monitoreo.alertas_count}</span>` : 
                 '<span class="badge bg-success">0</span>'
@@ -528,6 +623,11 @@ function generarFilaMonitoreo(monitoreo) {
                                         onclick="agregarAlerta(${monitoreo.id})" 
                                         title="Agregar alerta">
                                     <i class="bi bi-exclamation-triangle"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" 
+                                        onclick="reducirCambiosPestana(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${monitoreo.cambios_pestana_actuales || 0}, ${monitoreo.cambios_pestana_maximo || 3})" 
+                                        title="Reducir cambios de pestañas">
+                                    <i class="bi bi-dash-circle"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-danger" 
                                         onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')" 
@@ -607,7 +707,8 @@ function hasMonitoreoChanged(current, previous) {
         current.alertas_count !== previous.alertas_count ||
         current.ultima_actividad !== previous.ultima_actividad ||
         current.intentos_usados !== previous.intentos_usados ||
-        current.intentos_disponibles !== previous.intentos_disponibles
+        current.intentos_disponibles !== previous.intentos_disponibles ||
+        current.cambios_pestana_actuales !== previous.cambios_pestana_actuales
     );
 }
 
@@ -707,7 +808,7 @@ function cargarMonitoreo() {
             const tbody = document.getElementById('tbody-monitoreo');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center text-danger">
+                    <td colspan="8" class="text-center text-danger">
                         <i class="bi bi-exclamation-triangle"></i>
                         Error al cargar los datos del monitoreo. Verificando conexión...
                     </td>
@@ -768,6 +869,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Event listener para actualizar el nuevo total de intentos dinámicamente
     document.getElementById('cantidad-intentos').addEventListener('change', actualizarNuevoTotal);
+    
+    // Event listener para actualizar el nuevo total de cambios dinámicamente  
+    document.getElementById('cantidad-reducir').addEventListener('change', actualizarNuevoTotalCambios);
     
     // Confirmar finalización
     document.getElementById('btn-confirmar-finalizar').addEventListener('click', function() {
@@ -942,6 +1046,73 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+    
+    // Confirmar reducción de cambios de pestañas
+    document.getElementById('btn-confirmar-reducir').addEventListener('click', function() {
+        const participanteId = window.currentParticipanteIdReducir;
+        const nombreParticipante = window.currentParticipanteNombreReducir;
+        const cantidadReducir = document.getElementById('cantidad-reducir').value;
+        
+        if (!participanteId) {
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'No se ha seleccionado un participante válido.'
+            });
+            return;
+        }
+        
+        if (!cantidadReducir || cantidadReducir < 1) {
+            showDynamicToast({
+                type: 'warning',
+                title: 'Advertencia',
+                message: 'Por favor, seleccione una cantidad válida para reducir.'
+            });
+            return;
+        }
+        
+        fetch(`/evaluacion/{{ evaluacion.pk }}/reducir-cambios-pestana/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                participante_id: participanteId,
+                cantidad_reduccion: parseInt(cantidadReducir)
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalReducirCambiosPestana')).hide();
+                cargarMonitoreo();
+                showDynamicToast({
+                    type: 'success',
+                    title: 'Éxito',
+                    message: data.message
+                });
+                // Limpiar variables globales
+                window.currentParticipanteIdReducir = null;
+                window.currentParticipanteNombreReducir = null;
+                window.currentCambiosActuales = null;
+            } else {
+                showDynamicToast({
+                    type: 'danger',
+                    title: 'Error',
+                    message: data.error
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showDynamicToast({
+                type: 'danger',
+                title: 'Error',
+                message: 'Error al procesar la reducción de cambios'
+            });
+        });
+    });
 });
 
 // Función para dar nuevo intento (fuera del DOMContentLoaded para ser accesible globalmente)
@@ -966,6 +1137,47 @@ function darNuevoIntento(participanteId, nombreParticipante, intentosUsados = 0,
     modal.show();
 }
 
+// Función para reducir cambios de pestañas (nueva funcionalidad)
+function reducirCambiosPestana(participanteId, nombreParticipante, cambiosActuales = 0, cambiosMaximo = 3) {
+    // Validar que el participante tiene cambios de pestañas para reducir
+    if (cambiosActuales === 0) {
+        showDynamicToast({
+            type: 'warning',
+            title: 'Sin cambios',
+            message: `${nombreParticipante} no ha realizado cambios de pestañas.`
+        });
+        return;
+    }
+    
+    // Guardar los datos en variables globales para usar en el modal
+    window.currentParticipanteIdReducir = participanteId;
+    window.currentParticipanteNombreReducir = nombreParticipante;
+    window.currentCambiosActuales = cambiosActuales;
+    
+    // Actualizar el contenido del modal
+    document.getElementById('nombre-participante-reducir').textContent = nombreParticipante;
+    document.getElementById('cambios-actuales').textContent = cambiosActuales;
+    document.getElementById('cambios-maximo').textContent = cambiosMaximo;
+    
+    // Configurar el select con opciones válidas (no se puede reducir más de lo que tiene)
+    const selectReducir = document.getElementById('cantidad-reducir');
+    selectReducir.innerHTML = '';
+    for (let i = 1; i <= Math.min(cambiosActuales, 3); i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `${i} cambio${i > 1 ? 's' : ''}`;
+        if (i === 1) option.selected = true;
+        selectReducir.appendChild(option);
+    }
+    
+    // Calcular y mostrar el nuevo total
+    actualizarNuevoTotalCambios();
+    
+    // Mostrar el modal
+    const modal = new bootstrap.Modal(document.getElementById('modalReducirCambiosPestana'));
+    modal.show();
+}
+
 // Función para actualizar el nuevo total dinámicamente
 function actualizarNuevoTotal() {
     const intentosTotales = parseInt(document.getElementById('intentos-totales').textContent) || 0;
@@ -974,6 +1186,33 @@ function actualizarNuevoTotal() {
     
     const nuevoTotalElement = document.getElementById('nuevo-total');
     nuevoTotalElement.textContent = nuevoTotal;
+    
+    // Efecto visual de actualización
+    nuevoTotalElement.style.transform = 'scale(1.2)';
+    nuevoTotalElement.style.transition = 'transform 0.2s ease';
+    setTimeout(() => {
+        nuevoTotalElement.style.transform = 'scale(1)';
+    }, 200);
+}
+
+// Función para actualizar el nuevo total de cambios dinámicamente
+function actualizarNuevoTotalCambios() {
+    const cambiosActuales = window.currentCambiosActuales || 0;
+    const cantidadReducir = parseInt(document.getElementById('cantidad-reducir').value) || 0;
+    const nuevoTotal = Math.max(0, cambiosActuales - cantidadReducir);
+    
+    const nuevoTotalElement = document.getElementById('nuevo-total-cambios');
+    nuevoTotalElement.textContent = nuevoTotal;
+    
+    // Cambiar color según el nuevo total
+    nuevoTotalElement.className = 'badge fs-6';
+    if (nuevoTotal === 0) {
+        nuevoTotalElement.className += ' bg-success';
+    } else if (nuevoTotal === 1) {
+        nuevoTotalElement.className += ' bg-warning';
+    } else {
+        nuevoTotalElement.className += ' bg-danger';
+    }
     
     // Efecto visual de actualización
     nuevoTotalElement.style.transform = 'scale(1.2)';

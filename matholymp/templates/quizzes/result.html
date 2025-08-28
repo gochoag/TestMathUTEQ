@@ -15,77 +15,73 @@
                 </div>
                 <div class="card-body text-center p-5">
                     <div class="mb-4">
-                        <div class="position-relative d-inline-block">
-                            <div class="progress-circle" style="width: 200px; height: 200px;">
-                                <svg width="200" height="200" viewBox="0 0 200 200">
-                                    <circle cx="100" cy="100" r="80" fill="none" stroke="#e9ecef" stroke-width="12"/>
-                                    <circle cx="100" cy="100" r="80" fill="none" stroke="#28a745" stroke-width="12" 
-                                            stroke-dasharray="{{ resultado.get_puntaje_porcentaje|floatformat:0|add:"0" }} 100" 
-                                            stroke-dashoffset="25" transform="rotate(-90 100 100)"/>
-                                </svg>
-                                <div class="position-absolute top-50 start-50 translate-middle text-center">
-                                    <h1 class="mb-0 fw-bold text-success">{{ resultado.get_puntaje_numerico }}</h1>
-                                    <small class="text-muted">Puntuación</small>
+                        <div class="score-badge d-inline-block text-center" 
+                             style="min-width: 200px; height: 80px; 
+                                    background: {% if resultado.get_puntaje_porcentaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.get_puntaje_porcentaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                    border-radius: 16px; 
+                                    border: 3px solid {% if resultado.get_puntaje_porcentaje >= 80 %}#28a745{% elif resultado.get_puntaje_porcentaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    padding: 12px 24px;">
+                            <div class="score-content">
+                                <span class="score-number fw-bold" 
+                                      style="font-size: 2rem; 
+                                             color: {% if resultado.get_puntaje_porcentaje >= 80 %}#28a745{% elif resultado.get_puntaje_porcentaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                             font-family: 'Segoe UI', system-ui, sans-serif;
+                                             letter-spacing: -1px;
+                                             display: block;
+                                             line-height: 1;">
+                                    {{ resultado.get_puntaje_numerico }}
+                                </span>
+                                <div class="score-label" 
+                                     style="font-size: 0.8rem; 
+                                            color: #6c757d; 
+                                            font-weight: 600; 
+                                            text-transform: uppercase; 
+                                            letter-spacing: 1px; 
+                                            margin-top: 4px;">
+                                    NOTA FINAL
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="row text-center mb-4">
+                    <div class="row text-center mb-5 justify-content-center">
                         <div class="col-6">
-                            <div class="border-end">
-                                <h3 class="text-success mb-1">{{ resultado.get_puntaje_numerico }}</h3>
-                                <p class="text-muted mb-0">Puntaje</p>
+                            <div class="stat-card h-100 p-4 border-0 bg-light rounded-4">
+                                <div class="stat-icon mb-3">
+                                    <i class="bi bi-stopwatch text-info" style="font-size: 2rem;"></i>
+                                </div>
+                                <h3 class="text-info mb-2 fw-bold" style="font-size: 1.5rem;">{{ resultado.get_tiempo_formateado }}</h3>
+                                <p class="text-muted mb-0 fw-medium" style="font-size: 0.85rem; letter-spacing: 0.5px;">TIEMPO USADO</p>
                             </div>
                         </div>
                         <div class="col-6">
-                            <h3 class="text-info mb-1">{{ resultado.tiempo_utilizado }} min</h3>
-                            <p class="text-muted mb-0">Tiempo</p>
+                            <div class="stat-card h-100 p-4 border-0 bg-light rounded-4">
+                                <div class="stat-icon mb-3">
+                                    <i class="bi bi-list-check text-secondary" style="font-size: 2rem;"></i>
+                                </div>
+                                <h3 class="text-secondary mb-2 fw-bold" style="font-size: 1.5rem;">{{ total_questions }}</h3>
+                                <p class="text-muted mb-0 fw-medium" style="font-size: 0.85rem; letter-spacing: 0.5px;">PREGUNTAS</p>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="mb-4">
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>Total de preguntas:</strong> {{ total_questions }}
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            <a href="{% url 'quizzes:quiz' %}" class="btn btn-primary btn-lg w-100 shadow-sm" style="background: linear-gradient(135deg, #007bff, #0056b3); border: none; border-radius: 12px; padding: 14px 24px;">
+                                <i class="bi bi-arrow-left me-2"></i>
+                                Volver a Evaluaciones
+                            </a>
                         </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <div class="alert alert-secondary">
-                            <i class="bi bi-clock me-2"></i>
-                            <strong>Tiempo utilizado:</strong> {{ resultado.get_tiempo_formateado }}
+                        <div class="col-12 col-md-6">
+                            <a href="{% url 'quizzes:dashboard' %}" class="btn btn-outline-primary btn-lg w-100 shadow-sm" style="border-radius: 12px; padding: 14px 24px; border: 2px solid #007bff;">
+                                <i class="bi bi-house me-2"></i>
+                                Ir al Dashboard
+                            </a>
                         </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        {% if resultado.get_puntaje_porcentaje >= 80 %}
-                            <div class="alert alert-success">
-                                <i class="bi bi-emoji-smile me-2"></i>
-                                <strong>¡Excelente trabajo!</strong> Has obtenido una puntuación sobresaliente.
-                            </div>
-                        {% elif resultado.get_puntaje_porcentaje >= 60 %}
-                            <div class="alert alert-warning">
-                                <i class="bi bi-emoji-neutral me-2"></i>
-                                <strong>Buen trabajo.</strong> Has aprobado la evaluación.
-                            </div>
-                        {% else %}
-                            <div class="alert alert-danger">
-                                <i class="bi bi-emoji-frown me-2"></i>
-                                <strong>Necesitas mejorar.</strong> Te recomendamos repasar el material.
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="d-grid gap-2">
-                        <a href="{% url 'quizzes:quiz' %}" class="btn btn-primary btn-lg">
-                            <i class="bi bi-arrow-left me-2"></i>
-                            Volver a Evaluaciones
-                        </a>
-                        <a href="{% url 'quizzes:dashboard' %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-house me-2"></i>
-                            Ir al Dashboard
-                        </a>
                     </div>
                 </div>
             </div>
@@ -94,30 +90,269 @@
 </div>
 
 <style>
+/* Mejoras generales */
 .bg-gradient-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-}
-
-.progress-circle {
-    position: relative;
-}
-
-.progress-circle svg {
-    transform: rotate(-90deg);
-}
-
-.progress-circle circle {
-    transition: stroke-dasharray 1s ease-in-out;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
 }
 
 .card {
-    border-radius: 15px;
+    border-radius: 20px !important;
+    overflow: hidden;
+    border: none !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1) !important;
+}
+
+.card-header {
+    border-bottom: none !important;
+    position: relative;
     overflow: hidden;
 }
 
-.btn-lg {
-    padding: 12px 24px;
-    font-size: 1.1rem;
+.card-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Score Badge Styles */
+.score-badge {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+    transform: translateY(0);
+}
+
+.score-badge:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.8s;
+}
+
+.score-badge:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.15);
+}
+
+.score-badge:hover:before {
+    left: 100%;
+}
+
+.score-content {
+    z-index: 1;
+    position: relative;
+}
+
+/* Stat Cards */
+.stat-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    background: linear-gradient(145deg, #f8f9fa, #ffffff) !important;
+    position: relative;
+    overflow: hidden;
+    min-height: 140px; /* Altura mínima más generosa */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.stat-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12) !important;
+    border-color: rgba(0, 123, 255, 0.25) !important;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    transform: scaleX(0);
+    transition: transform 0.4s ease;
+}
+
+.stat-card:hover::before {
+    transform: scaleX(1);
+}
+
+.stat-icon {
+    transition: all 0.4s ease;
+}
+
+.stat-card:hover .stat-icon {
+    transform: scale(1.15) translateY(-2px);
+}
+
+.stat-card:hover h3 {
+    transform: scale(1.05);
+    transition: transform 0.3s ease;
+}
+
+/* Mejoras para el texto de las stats */
+.stat-card h3 {
+    transition: transform 0.3s ease;
+    line-height: 1.2;
+}
+
+.stat-card p {
+    text-transform: uppercase;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+}
+
+.stat-card:hover p {
+    opacity: 1;
+}
+
+/* Alert Improvements */
+/* Sección eliminada - ya no se usan alertas */
+
+/* Button Improvements */
+.btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 8px 25px rgba(0, 123, 255, 0.4) !important;
+}
+
+.btn-outline-primary:hover {
+    box-shadow: 0 8px 25px rgba(0, 123, 255, 0.2) !important;
+    background: linear-gradient(135deg, #007bff, #0056b3) !important;
+    color: white !important;
+    border-color: transparent !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .score-badge {
+        min-width: 180px !important;
+        height: 70px !important;
+        padding: 10px 20px !important;
+    }
+    
+    .score-number {
+        font-size: 1.6rem !important;
+    }
+    
+    .score-label {
+        font-size: 0.7rem !important;
+    }
+    
+    .stat-card {
+        min-height: 120px !important;
+        padding: 1rem !important;
+        margin-bottom: 0.75rem;
+    }
+    
+    .stat-card h3 {
+        font-size: 1.3rem !important;
+    }
+    
+    .stat-card .stat-icon i {
+        font-size: 1.7rem !important;
+    }
+    
+    .card-body {
+        padding: 2rem !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .score-badge {
+        min-width: 160px !important;
+        height: 60px !important;
+    }
+    
+    .score-number {
+        font-size: 1.4rem !important;
+    }
+    
+    .stat-card {
+        min-height: 100px !important;
+        padding: 0.75rem !important;
+        margin-bottom: 1rem;
+    }
+    
+    .stat-card h3 {
+        font-size: 1.1rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .stat-card p {
+        font-size: 0.75rem !important;
+    }
+    
+    .stat-card .stat-icon i {
+        font-size: 1.5rem !important;
+    }
+    
+    .stat-card .stat-icon {
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Stack the columns vertically on very small screens */
+    .row.text-center .col-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    .row.text-center .col-6:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* Animation for page load */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.score-badge {
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+}
+
+.stat-card {
+    animation: fadeInUp 0.8s ease-out 0.4s both;
 }
 </style>
 {% endblock %}

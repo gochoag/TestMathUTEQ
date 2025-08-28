@@ -40,19 +40,32 @@
                                 </div>
                                 <div class="card-body text-center">
                                     <div class="mb-3">
-                                        <div class="position-relative d-inline-block">
-                                            <div class="progress-circle" style="width: 120px; height: 120px;">
-                                                <svg width="120" height="120" viewBox="0 0 120 120">
-                                                    <circle cx="60" cy="60" r="50" fill="none" stroke="#e9ecef" stroke-width="8"/>
-                                                    <circle cx="60" cy="60" r="50" fill="none" 
-                                                            stroke="{% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}" 
-                                                            stroke-width="8" 
-                                                            stroke-dasharray="{{ resultado.puntaje|floatformat:0|add:'0' }} 100" 
-                                                            stroke-dashoffset="25" 
-                                                            transform="rotate(-90 60 60)"/>
-                                                </svg>
-                                                <div class="position-absolute top-50 start-50 translate-middle text-center">
-                                                    <h3 class="mb-0 fw-bold">{{ resultado.get_puntaje_numerico }}</h3>
+                                        <div class="score-badge d-inline-block text-center" 
+                                             style="min-width: 160px; height: 60px; 
+                                                    background: {% if resultado.puntaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                                    border-radius: 12px; 
+                                                    border: 2px solid {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                                    box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+                                                    display: flex;
+                                                    align-items: center;
+                                                    justify-content: center;
+                                                    padding: 8px 16px;">
+                                            <div class="score-content">
+                                                <span class="score-number fw-bold" 
+                                                      style="font-size: 1.3rem; 
+                                                             color: {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                                             font-family: 'Segoe UI', system-ui, sans-serif;
+                                                             letter-spacing: -0.5px;">
+                                                    {{ resultado.get_puntaje_numerico }}
+                                                </span>
+                                                <div class="score-label" 
+                                                     style="font-size: 0.7rem; 
+                                                            color: #6c757d; 
+                                                            font-weight: 500; 
+                                                            text-transform: uppercase; 
+                                                            letter-spacing: 0.5px; 
+                                                            margin-top: -2px;">
+                                                    NOTA FINAL
                                                 </div>
                                             </div>
                                         </div>
@@ -121,12 +134,46 @@
 </div>
 
 <style>
-.progress-circle {
+.score-badge {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.score-badge:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.6s;
+}
+
+.score-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+}
+
+.score-badge:hover:before {
+    left: 100%;
+}
+
+.score-content {
+    z-index: 1;
     position: relative;
 }
 
-.progress-circle svg {
-    transform: rotate(-90deg);
+.score-number {
+    display: block;
+    line-height: 1.1;
+}
+
+.score-label {
+    display: block;
+    font-weight: 600 !important;
 }
 
 /* Responsive adjustments */
@@ -134,11 +181,34 @@
     .card {
         min-height: 350px;
     }
+    
+    .score-badge {
+        min-width: 140px !important;
+        height: 50px !important;
+        padding: 6px 12px !important;
+    }
+    
+    .score-number {
+        font-size: 1.1rem !important;
+    }
+    
+    .score-label {
+        font-size: 0.65rem !important;
+    }
 }
 
 @media (min-width: 1200px) {
     .card {
         min-height: 450px;
+    }
+    
+    .score-badge {
+        min-width: 180px;
+        height: 65px;
+    }
+    
+    .score-number {
+        font-size: 1.4rem !important;
     }
 }
 

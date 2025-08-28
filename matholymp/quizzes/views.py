@@ -820,10 +820,18 @@ def registrar_cambio_pestana(request, pk):
 def verificar_estado_evaluacion(request, pk):
     """
     Endpoint para verificar si la evaluación fue finalizada administrativamente
+    y obtener el estado actualizado de cambios de pestañas
     """
     try:
         evaluacion = get_object_or_404(Evaluacion, pk=pk)
         participante = Participantes.objects.get(user=request.user)
+        
+        # Obtener resultado activo (no completado)
+        resultado_activo = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=False
+        ).first()
         
         # Verificar si la evaluación fue finalizada administrativamente
         monitoreo = MonitoreoEvaluacion.objects.filter(
@@ -832,14 +840,24 @@ def verificar_estado_evaluacion(request, pk):
             estado='finalizado'
         ).first()
         
+        response_data = {'finalizada_admin': False}
+        
         if monitoreo and monitoreo.finalizado_por_admin:
-            return JsonResponse({
+            response_data.update({
                 'finalizada_admin': True,
                 'motivo': monitoreo.motivo_finalizacion,
                 'admin': monitoreo.finalizado_por_admin.get_full_name() or monitoreo.finalizado_por_admin.username
             })
         
-        return JsonResponse({'finalizada_admin': False})
+        # Incluir información actualizada de cambios de pestañas si hay resultado activo
+        if resultado_activo:
+            cambios_actuales = getattr(resultado_activo, 'cambios_pestana', 0) or 0
+            response_data.update({
+                'cambios_pestana_actuales': cambios_actuales,
+                'cambios_pestana_maximo': 3
+            })
+        
+        return JsonResponse(response_data)
         
     except Exception as e:
         return JsonResponse({'finalizada_admin': False, 'error': str(e)})
@@ -2839,7 +2857,7 @@ def gestionar_participantes_evaluacion(request, pk):
 @login_required
 def exportar_resultado_pdf(request, pk):
     """
-    Vista para exportar resultado de evaluación a PDF
+    Vista para exportar resultado de evaluación a PDF con diseño moderno y profesional
     """
     try:
         evaluacion = get_object_or_404(Evaluacion, pk=pk)
@@ -2856,91 +2874,314 @@ def exportar_resultado_pdf(request, pk):
             messages.error(request, 'No tienes resultados para esta evaluación.')
             return redirect('quizzes:student_results')
         
-        # Generar PDF usando reportlab
-        from reportlab.lib.pagesizes import letter, A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.lib import colors
-        from io import BytesIO
-        from django.http import HttpResponse
+        # Crear el PDF
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="resultado_{evaluacion.title}_{participante.cedula}.pdf"'
         
-        # Crear buffer para PDF
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        story = []
+        # Crear el documento PDF con márgenes optimizados
+        doc = SimpleDocTemplate(response, pagesize=A4, 
+                              leftMargin=0.6*inch, rightMargin=0.6*inch,
+                              topMargin=0.6*inch, bottomMargin=0.6*inch)
+        elements = []
         
-        # Estilos
+        # Definir paleta de colores moderna y elegante
+        primary_color = colors.Color(0.15, 0.35, 0.75)  # Azul corporativo
+        secondary_color = colors.Color(0.95, 0.95, 0.98)  # Gris muy claro
+        accent_color = colors.Color(0.12, 0.55, 0.35)  # Verde moderno
+        header_bg = colors.Color(0.08, 0.25, 0.55)  # Azul más oscuro para encabezado
+        success_color = colors.Color(0.1, 0.6, 0.1)  # Verde para éxito
+        warning_color = colors.Color(0.8, 0.6, 0.1)  # Amarillo para advertencia
+        danger_color = colors.Color(0.8, 0.1, 0.1)  # Rojo para peligro
+        
+        # Estilos mejorados
         styles = getSampleStyleSheet()
+        
         title_style = ParagraphStyle(
-            'CustomTitle',
+            'ModernTitle',
             parent=styles['Heading1'],
-            fontSize=18,
-            spaceAfter=30,
-            alignment=1  # Centrado
+            fontSize=22,
+            spaceAfter=18,
+            alignment=1,  # Centrado
+            textColor=primary_color,
+            fontName='Helvetica-Bold',
+            spaceBefore=8,
+            leading=26
         )
         
-        # Título
-        story.append(Paragraph(f"Resultado de Evaluación", title_style))
-        story.append(Spacer(1, 20))
+        subtitle_style = ParagraphStyle(
+            'ModernSubtitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=12,
+            alignment=1,  # Centrado
+            textColor=colors.Color(0.3, 0.3, 0.3),
+            fontName='Helvetica',
+            leading=18
+        )
         
-        # Información de la evaluación
-        story.append(Paragraph(f"<b>Evaluación:</b> {evaluacion.title}", styles['Normal']))
-        story.append(Paragraph(f"<b>Etapa:</b> {evaluacion.get_etapa_display()}", styles['Normal']))
-        story.append(Paragraph(f"<b>Participante:</b> {participante.NombresCompletos}", styles['Normal']))
-        story.append(Paragraph(f"<b>Cédula:</b> {participante.cedula}", styles['Normal']))
-        story.append(Spacer(1, 20))
+        etapa_style = ParagraphStyle(
+            'EtapaStyle',
+            parent=styles['Heading2'],
+            fontSize=18,
+            spaceAfter=20,
+            alignment=1,  # Centrado
+            textColor=accent_color,
+            fontName='Helvetica-Bold',
+            spaceBefore=10,
+            leading=22
+        )
         
-        # Resultados
-        story.append(Paragraph("<b>Resultados:</b>", styles['Heading2']))
-        story.append(Spacer(1, 10))
+        info_style = ParagraphStyle(
+            'InfoStyle',
+            parent=styles['Normal'],
+            fontSize=12,
+            spaceAfter=8,
+            textColor=colors.Color(0.2, 0.2, 0.2),
+            fontName='Helvetica',
+            leading=16
+        )
         
-        # Tabla de resultados
-        data = [
-            ['Métrica', 'Valor'],
-            ['Puntuación', f"{resultado.puntaje}%"],
-            ['Tiempo Utilizado', resultado.get_tiempo_formateado()],
-            ['Fecha de Completado', resultado.fecha_fin.strftime("%d/%m/%Y %H:%M")],
+        # Título principal con mejor formato
+        title = Paragraph("OLIMPIADAS DE MATEMÁTICAS<br/>CARRERA MECÁNICA", title_style)
+        elements.append(title)
+        
+        # Manejo mejorado de logos
+        logo_mecanica = None
+        logo_uteq = None
+        
+        # Cargar Logo Mecánica
+        logo_mecanica_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logoMecanica.png')
+        if os.path.exists(logo_mecanica_path):
+            try:
+                logo_mecanica = Image(logo_mecanica_path, width=1.6*inch, height=1.2*inch)
+            except Exception as e:
+                print(f"Error al cargar logo Mecánica: {e}")
+        
+        # Cargar Logo UTEQ
+        logo_uteq_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logo-uteq.png')
+        if os.path.exists(logo_uteq_path):
+            try:
+                logo_uteq = Image(logo_uteq_path, width=1.6*inch, height=1.2*inch)
+            except Exception as e:
+                print(f"Error al cargar logo UTEQ: {e}")
+        
+        # Tabla de logos mejorada
+        if logo_mecanica or logo_uteq:
+            logo_row = []
+            
+            if logo_mecanica:
+                logo_row.append(logo_mecanica)
+            else:
+                logo_row.append(Paragraph("", styles['Normal']))
+            
+            logo_row.append(Paragraph("", styles['Normal']))  # Espacio central
+            
+            if logo_uteq:
+                logo_row.append(logo_uteq)
+            else:
+                logo_row.append(Paragraph("", styles['Normal']))
+            
+            logo_table = Table([logo_row], colWidths=[2.4*inch, 1.2*inch, 2.4*inch])
+            logo_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, 0), 0),
+                ('RIGHTPADDING', (0, 0), (-1, 0), 0),
+                ('TOPPADDING', (0, 0), (-1, 0), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+            ]))
+            
+            elements.append(logo_table)
+            elements.append(Spacer(1, 20))
+        
+        # Información de la etapa
+        etapa_text = f"CERTIFICADO DE PARTICIPACIÓN - ETAPA {evaluacion.etapa}"
+        elements.append(Paragraph(etapa_text, etapa_style))
+        
+        # Información adicional
+        evaluacion_info = f"Evaluación: {evaluacion.title}"
+        elements.append(Paragraph(evaluacion_info, subtitle_style))
+        elements.append(Spacer(1, 20))
+        
+        # Información del participante en un recuadro elegante
+        participante_info = [
+            ['Campo', 'Información'],
+            ['Participante', participante.NombresCompletos],
+            ['Cédula de Identidad', participante.cedula],
+            ['Correo Electrónico', participante.email if participante.email else 'No registrado'],
         ]
         
-        table = Table(data, colWidths=[2*inch, 3*inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        info_table = Table(participante_info, colWidths=[2.2*inch, 3.8*inch])
+        info_table.setStyle(TableStyle([
+            # Encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            
+            # Cuerpo
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('TOPPADDING', (0, 1), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            
+            # Bordes
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.7, 0.7, 0.7)),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
+            
+            # Alineación
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            
+            # Filas alternadas
+            ('BACKGROUND', (0, 1), (-1, 1), colors.white),
+            ('BACKGROUND', (0, 2), (-1, 2), secondary_color),
+            ('BACKGROUND', (0, 3), (-1, 3), colors.white),
         ]))
         
-        story.append(table)
-        story.append(Spacer(1, 20))
+        elements.append(info_table)
+        elements.append(Spacer(1, 25))
         
-        # Mensaje según puntuación
-        if resultado.puntaje >= 80:
-            mensaje = "¡Excelente trabajo! Has obtenido una puntuación sobresaliente."
-            color = colors.green
-        elif resultado.puntaje >= 60:
-            mensaje = "Buen trabajo. Has aprobado la evaluación."
-            color = colors.orange
+        # Resultados de la evaluación
+        results_title_style = ParagraphStyle(
+            'ResultsTitle',
+            parent=styles['Heading2'],
+            fontSize=16,
+            spaceAfter=15,
+            alignment=1,
+            textColor=primary_color,
+            fontName='Helvetica-Bold'
+        )
+        
+        elements.append(Paragraph("RESULTADOS DE LA EVALUACIÓN", results_title_style))
+        
+        # Calcular puntuación en formato mejorado
+        puntaje_porcentaje = resultado.puntaje if hasattr(resultado, 'puntaje') else (resultado.puntos_obtenidos / resultado.puntos_totales * 100 if resultado.puntos_totales > 0 else 0)
+        puntaje_numerico = resultado.puntos_obtenidos if hasattr(resultado, 'puntos_obtenidos') else 0
+        puntos_totales = resultado.puntos_totales if hasattr(resultado, 'puntos_totales') else 0
+        
+        # Tabla de resultados mejorada
+        resultados_data = [
+            ['Métrica', 'Resultado'],
+            ['Nota Final', f"{puntaje_numerico:.4f}"],
+            ['Tiempo Utilizado', resultado.get_tiempo_formateado()],
+            ['Fecha de Finalización', resultado.fecha_fin.strftime("%d/%m/%Y a las %H:%M") if resultado.fecha_fin else 'No disponible'],
+        ]
+        
+        results_table = Table(resultados_data, colWidths=[2.5*inch, 3.5*inch])
+        results_table.setStyle(TableStyle([
+            # Encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 15),
+            ('TOPPADDING', (0, 0), (-1, 0), 15),
+            
+            # Cuerpo
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 11),
+            ('TOPPADDING', (0, 1), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 12),
+            ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+            
+            # Bordes elegantes
+            ('GRID', (0, 0), (-1, -1), 1, colors.Color(0.6, 0.6, 0.6)),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
+            
+            # Alineación
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            
+            # Filas alternadas
+            ('BACKGROUND', (0, 1), (-1, 1), secondary_color),
+            ('BACKGROUND', (0, 2), (-1, 2), colors.white),
+            ('BACKGROUND', (0, 3), (-1, 3), secondary_color),
+        ]))
+        
+        # Destacar la puntuación final con color según el rendimiento
+        if puntaje_porcentaje >= 80:
+            results_table.setStyle(TableStyle([
+                ('BACKGROUND', (1, 1), (1, 1), success_color),
+                ('TEXTCOLOR', (1, 1), (1, 1), colors.white),
+                ('FONTNAME', (1, 1), (1, 1), 'Helvetica-Bold'),
+            ]))
+        elif puntaje_porcentaje >= 60:
+            results_table.setStyle(TableStyle([
+                ('BACKGROUND', (1, 1), (1, 1), warning_color),
+                ('TEXTCOLOR', (1, 1), (1, 1), colors.white),
+                ('FONTNAME', (1, 1), (1, 1), 'Helvetica-Bold'),
+            ]))
         else:
-            mensaje = "Necesitas mejorar. Te recomendamos repasar el material."
-            color = colors.red
+            results_table.setStyle(TableStyle([
+                ('BACKGROUND', (1, 1), (1, 1), danger_color),
+                ('TEXTCOLOR', (1, 1), (1, 1), colors.white),
+                ('FONTNAME', (1, 1), (1, 1), 'Helvetica-Bold'),
+            ]))
         
-        story.append(Paragraph(f"<b>Comentario:</b> {mensaje}", styles['Normal']))
+        elements.append(results_table)
+        elements.append(Spacer(1, 25))
         
-        # Construir PDF
-        doc.build(story)
-        buffer.seek(0)
+        # Comentario personalizado según puntuación
+        comment_style = ParagraphStyle(
+            'CommentStyle',
+            parent=styles['Normal'],
+            fontSize=11,
+            spaceAfter=10,
+            alignment=1,  # Centrado
+            fontName='Helvetica',
+            leading=16
+        )
         
-        # Crear respuesta HTTP
-        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="resultado_{evaluacion.title}_{participante.cedula}.pdf"'
+        if puntaje_porcentaje >= 90:
+            mensaje = "<b>¡EXCELENTE DESEMPEÑO!</b><br/>"
+        elif puntaje_porcentaje >= 80:
+            mensaje = "<b>¡MUY BUEN TRABAJO!</b><br/>"
+        elif puntaje_porcentaje >= 70:
+            mensaje = "<b>BUEN DESEMPEÑO</b><br/>"
+        elif puntaje_porcentaje >= 60:
+            mensaje = "<b>DESEMPEÑO ACEPTABLE</b><br/>"
+        else:
+            mensaje = "<b>OPORTUNIDAD DE MEJORA</b><br/>"
+
+        
+        comment_paragraph = Paragraph(mensaje, comment_style)
+        elements.append(comment_paragraph)
+        elements.append(Spacer(1, 20))
+        
+        # Pie de página con información institucional
+        footer_style = ParagraphStyle(
+            'FooterStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=1,  # Centrado
+            textColor=colors.Color(0.4, 0.4, 0.4),
+            fontName='Helvetica-Oblique',
+            leading=12
+        )
+        
+        fecha_emision = timezone.now().strftime("%d de %B de %Y")
+        footer_text = f"<i>Documento generado automáticamente el {fecha_emision}<br/>Universidad Técnica Estatal de Quevedo - Carrera de Ingeniería Mecánica</i>"
+        elements.append(Paragraph(footer_text, footer_style))
+        
+        # Construir el PDF
+        doc.build(elements)
         
         return response
         
+    except Participantes.DoesNotExist:
+        messages.error(request, 'No se encontró información del participante.')
+        return redirect('quizzes:student_results')
     except Exception as e:
         messages.error(request, f'Error generando PDF: {str(e)}')
         return redirect('quizzes:student_results')
@@ -3511,71 +3752,108 @@ def profile_view(request):
 def exportar_ranking_pdf(request, pk):
     """
     Genera un PDF del ranking de una evaluación específica con diseño moderno
+    Muestra solo el mejor resultado de cada participante
     """
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
     
-    # Obtener resultados ordenados por puntaje descendente
-    resultados = ResultadoEvaluacion.objects.filter(
-        evaluacion=evaluacion
-    ).select_related('participante').order_by('-puntaje', 'tiempo_utilizado')
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
+        return redirect('quizzes:dashboard')
+    
+    # Obtener resultados únicos por participante - SOLO EL MEJOR PUNTAJE
+    from django.db.models import Max
+    
+    # Obtener el mejor puntaje por participante
+    mejores_puntajes = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        completada=True
+    ).values('participante').annotate(
+        mejor_puntaje=Max('puntos_obtenidos')
+    )
+    
+    # Obtener los resultados únicos con mejor puntaje
+    participantes_con_mejor_puntaje = []
+    for item in mejores_puntajes:
+        participante_id = item['participante']
+        mejor_puntaje = item['mejor_puntaje']
+        
+        # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
+        mejor_resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante_id=participante_id,
+            completada=True,
+            puntos_obtenidos=mejor_puntaje
+        ).order_by('tiempo_utilizado').first()
+        
+        if mejor_resultado:
+            participantes_con_mejor_puntaje.append(mejor_resultado)
+    
+    # Ordenar por puntaje descendente y tiempo ascendente
+    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
     
     # Crear el PDF
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ranking_etapa_{evaluacion.etapa}_{evaluacion.title}.pdf"'
     
-    # Crear el documento PDF con márgenes más pequeños para mejor aprovechamiento
+    # Crear el documento PDF con márgenes optimizados
     doc = SimpleDocTemplate(response, pagesize=A4, 
-                          leftMargin=0.5*inch, rightMargin=0.5*inch,
-                          topMargin=0.5*inch, bottomMargin=0.5*inch)
+                          leftMargin=0.6*inch, rightMargin=0.6*inch,
+                          topMargin=0.6*inch, bottomMargin=0.6*inch)
     elements = []
     
-    # Definir colores modernos y elegantes
-    primary_color = colors.Color(0.2, 0.4, 0.8)  # Azul moderno
-    secondary_color = colors.Color(0.9, 0.9, 0.95)  # Gris muy claro
-    accent_color = colors.Color(0.1, 0.6, 0.3)  # Verde moderno
-    gold_color = colors.Color(1, 0.843, 0)  # Dorado
+    # Definir paleta de colores moderna y elegante
+    primary_color = colors.Color(0.15, 0.35, 0.75)  # Azul corporativo
+    secondary_color = colors.Color(0.95, 0.95, 0.98)  # Gris muy claro
+    accent_color = colors.Color(0.12, 0.55, 0.35)  # Verde moderno
+    header_bg = colors.Color(0.08, 0.25, 0.55)  # Azul más oscuro para encabezado
+    gold_color = colors.Color(1, 0.84, 0)  # Oro
     silver_color = colors.Color(0.75, 0.75, 0.75)  # Plata
-    bronze_color = colors.Color(0.804, 0.498, 0.196)  # Bronce
+    bronze_color = colors.Color(0.80, 0.50, 0.20)  # Bronce
     
-    # Estilos modernos
+    # Estilos mejorados
     styles = getSampleStyleSheet()
+    
     title_style = ParagraphStyle(
         'ModernTitle',
         parent=styles['Heading1'],
-        fontSize=24,
-        spaceAfter=20,
+        fontSize=22,
+        spaceAfter=18,
         alignment=1,  # Centrado
         textColor=primary_color,
         fontName='Helvetica-Bold',
-        spaceBefore=10
+        spaceBefore=8,
+        leading=26
     )
     
     subtitle_style = ParagraphStyle(
         'ModernSubtitle',
         parent=styles['Heading2'],
-        fontSize=16,
-        spaceAfter=15,
+        fontSize=14,
+        spaceAfter=12,
         alignment=1,  # Centrado
-        textColor=primary_color,
-        fontName='Helvetica-Bold'
+        textColor=colors.Color(0.3, 0.3, 0.3),
+        fontName='Helvetica',
+        leading=18
     )
     
     etapa_style = ParagraphStyle(
         'EtapaStyle',
         parent=styles['Heading2'],
-        fontSize=20,
-        spaceAfter=25,
+        fontSize=18,
+        spaceAfter=20,
         alignment=1,  # Centrado
         textColor=accent_color,
         fontName='Helvetica-Bold',
-        spaceBefore=15
+        spaceBefore=10,
+        leading=22
     )
     
-    # Título principal
-    title = Paragraph("OLIMPIADAS DE MATEMÁTICAS - CARRERA MECÁNICA", title_style)
+    # Título principal con mejor formato
+    title = Paragraph("OLIMPIADAS DE MATEMÁTICAS<br/>CARRERA MECÁNICA", title_style)
     elements.append(title)
     
-    # Logos lado a lado
+    # Manejo mejorado de logos
     logo_mecanica = None
     logo_uteq = None
     
@@ -3583,7 +3861,7 @@ def exportar_ranking_pdf(request, pk):
     logo_mecanica_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logoMecanica.png')
     if os.path.exists(logo_mecanica_path):
         try:
-            logo_mecanica = Image(logo_mecanica_path, width=1.8*inch, height=1.3*inch)
+            logo_mecanica = Image(logo_mecanica_path, width=1.6*inch, height=1.2*inch)
         except Exception as e:
             print(f"Error al cargar logo Mecánica: {e}")
     
@@ -3591,131 +3869,137 @@ def exportar_ranking_pdf(request, pk):
     logo_uteq_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logo-uteq.png')
     if os.path.exists(logo_uteq_path):
         try:
-            logo_uteq = Image(logo_uteq_path, width=1.8*inch, height=1.3*inch)
+            logo_uteq = Image(logo_uteq_path, width=1.6*inch, height=1.2*inch)
         except Exception as e:
             print(f"Error al cargar logo UTEQ: {e}")
     
-    # Crear tabla para logos lado a lado
+    # Tabla de logos mejorada
     if logo_mecanica or logo_uteq:
-        logo_table_data = []
         logo_row = []
         
-        # Logo Mecánica a la izquierda
         if logo_mecanica:
             logo_row.append(logo_mecanica)
         else:
             logo_row.append(Paragraph("", styles['Normal']))
         
-        # Espacio central
-        logo_row.append(Paragraph("", styles['Normal']))
+        logo_row.append(Paragraph("", styles['Normal']))  # Espacio central
         
-        # Logo UTEQ a la derecha
         if logo_uteq:
             logo_row.append(logo_uteq)
         else:
             logo_row.append(Paragraph("", styles['Normal']))
         
-        logo_table_data.append(logo_row)
-        
-        # Crear tabla de logos
-        logo_table = Table(logo_table_data, colWidths=[2.5*inch, 1*inch, 2.5*inch])
-        logo_table_style = TableStyle([
-            ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Logo Mecánica centrado
-            ('ALIGN', (2, 0), (2, 0), 'CENTER'),  # Logo UTEQ centrado
+        logo_table = Table([logo_row], colWidths=[2.4*inch, 1.2*inch, 2.4*inch])
+        logo_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('ALIGN', (2, 0), (2, 0), 'CENTER'),
             ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
             ('LEFTPADDING', (0, 0), (-1, 0), 0),
             ('RIGHTPADDING', (0, 0), (-1, 0), 0),
-            ('TOPPADDING', (0, 0), (-1, 0), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 0),
-        ])
-        logo_table.setStyle(logo_table_style)
+            ('TOPPADDING', (0, 0), (-1, 0), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+        ]))
         
         elements.append(logo_table)
-        elements.append(Spacer(1, 25))
+        elements.append(Spacer(1, 20))
     
-    # Etapa
-    etapa_text = f"RESULTADOS DE LA ETAPA {evaluacion.etapa}"
-    etapa_paragraph = Paragraph(etapa_text, etapa_style)
-    elements.append(etapa_paragraph)
+    # Información de la etapa
+    etapa_text = f"RESULTADOS OFICIALES - ETAPA {evaluacion.etapa}"
+    elements.append(Paragraph(etapa_text, etapa_style))
     
-    # Subtítulo
-    subtitle = Paragraph("Ranking de los participantes:", subtitle_style)
-    elements.append(subtitle)
-    elements.append(Spacer(1, 20))
+    # Información adicional
+    fecha_info = f"Evaluación: {evaluacion.title}"
+    elements.append(Paragraph(fecha_info, subtitle_style))
+    elements.append(Spacer(1, 15))
     
-    # Datos de la tabla
-    table_data = [['Posición', 'Participante', 'Cédula', 'Puntaje', 'Tiempo', 'Estado']]
+    # Subtítulo del ranking
+    ranking_subtitle = Paragraph("Ranking Final de Participantes", subtitle_style)
+    elements.append(ranking_subtitle)
+    elements.append(Spacer(1, 15))
+    
+    # Preparar datos de la tabla
+    table_data = [['Pos.', 'Participante', 'Cédula', 'Puntaje', 'Tiempo', 'Estado']]
+    
+    from .models import SystemConfig
+    num_etapas = SystemConfig.get_num_etapas()
     
     for i, resultado in enumerate(resultados, 1):
         # Determinar estado según la etapa y configuración
-        from .models import SystemConfig
-        num_etapas = SystemConfig.get_num_etapas()
         if evaluacion.etapa == 1 and i <= (15 if num_etapas == 3 else 5):
             estado = "Clasificado"
         elif evaluacion.etapa == 2 and num_etapas == 3 and i <= 5:
             estado = "Finalista"
         elif evaluacion.etapa == 3:
             if i == 1:
-                estado = "Oro"
+                estado = "🥇 Oro"
             elif i == 2 or i == 3:
-                estado = "Plata"
+                estado = "🥈 Plata"
             elif i == 4 or i == 5:
-                estado = "Bronce"
+                estado = "🥉 Bronce"
             else:
                 estado = "Participante"
         else:
             estado = "Participante"
+        
+        # Formatear puntaje - usar puntos_obtenidos directamente
+        puntaje_str = f"{resultado.puntos_obtenidos:.1f}"
         
         # Agregar fila a la tabla
         table_data.append([
             str(i),
             resultado.participante.NombresCompletos,
             resultado.participante.cedula,
-            str(resultado.get_puntaje_numerico()),
+            puntaje_str,
             resultado.get_tiempo_formateado(),
             estado
         ])
     
     # Crear tabla con anchos optimizados
-    table = Table(table_data, colWidths=[0.7*inch, 2.8*inch, 1.3*inch, 0.8*inch, 1.1*inch, 1.3*inch])
+    table = Table(table_data, colWidths=[0.6*inch, 2.6*inch, 1.2*inch, 0.8*inch, 1.0*inch, 1.3*inch])
     
-    # Estilo moderno de la tabla
+    # Estilo moderno y elegante de la tabla
     table_style = TableStyle([
-        # Encabezado
-        ('BACKGROUND', (0, 0), (-1, 0), primary_color),
+        # Encabezado principal
+        ('BACKGROUND', (0, 0), (-1, 0), header_bg),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 15),
-        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
         
-        # Filas alternadas para mejor legibilidad
-        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-        ('BACKGROUND', (0, 2), (-1, -1), secondary_color),
-        
-        # Bordes suaves
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, primary_color),
-        
-        # Tipografía
+        # Cuerpo de la tabla
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('TOPPADDING', (0, 1), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        
+        # Bordes elegantes
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.7, 0.7, 0.7)),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
         
         # Alineación
-        ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Nombres a la izquierda
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Nombres a la izquierda
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Posición centrada
         ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Cédula centrada
         ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Puntaje centrado
         ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Tiempo centrado
         ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Estado centrado
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ])
     
-    # Aplicar colores de estado con diseño moderno
+    # Aplicar filas alternadas correctamente
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:  # Filas pares (índice par, pero es fila impar visualmente)
+            table_style.add('BACKGROUND', (0, i), (-1, i), secondary_color)
+        else:  # Filas impares (índice impar, pero es fila par visualmente)
+            table_style.add('BACKGROUND', (0, i), (-1, i), colors.white)
+    
+    # Aplicar colores especiales para estados de medalleros
     for i, resultado in enumerate(resultados, 1):
-        row_index = i  # +1 porque la primera fila es el encabezado
+        row_index = i  # i ya es el índice correcto (empieza en 1)
         
         if evaluacion.etapa == 3:
             if i == 1:  # Oro
@@ -3730,17 +4014,33 @@ def exportar_ranking_pdf(request, pk):
                 table_style.add('BACKGROUND', (5, row_index), (5, row_index), bronze_color)
                 table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
                 table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-        elif evaluacion.etapa == 1 and i <= (15 if SystemConfig.get_num_etapas() == 3 else 5):
-            table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
-            table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
-            table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-        elif evaluacion.etapa == 2 and SystemConfig.get_num_etapas() == 3 and i <= 5:
+        elif (evaluacion.etapa == 1 and i <= (15 if num_etapas == 3 else 5)) or \
+             (evaluacion.etapa == 2 and num_etapas == 3 and i <= 5):
             table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
             table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
             table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
     
     table.setStyle(table_style)
     elements.append(table)
+    
+    # Agregar información de estadísticas al final
+    if resultados:
+        elements.append(Spacer(1, 20))
+        
+        stats_style = ParagraphStyle(
+            'StatsStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=1,  # Centrado
+            textColor=colors.Color(0.4, 0.4, 0.4),
+            fontName='Helvetica'
+        )
+        
+        total_participantes = len(resultados)
+        promedio_puntos = sum(r.puntos_obtenidos for r in resultados) / total_participantes
+        
+        stats_text = f"Total de participantes: {total_participantes} | Promedio general: {promedio_puntos:.1f} puntos"
+        elements.append(Paragraph(stats_text, stats_style))
     
     # Construir el PDF
     doc.build(elements)
@@ -3958,7 +4258,10 @@ def obtener_estado_monitoreo(request, pk):
             'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None,
             # CAMPOS DE INTENTOS
             'intentos_disponibles': intentos_disponibles,
-            'intentos_usados': intentos_usados
+            'intentos_usados': intentos_usados,
+            # CAMPOS DE CAMBIOS DE PESTAÑAS
+            'cambios_pestana_actuales': resultado_en_progreso.cambios_pestana if resultado_en_progreso and hasattr(resultado_en_progreso, 'cambios_pestana') else (resultado.cambios_pestana if resultado and hasattr(resultado, 'cambios_pestana') else 0),
+            'cambios_pestana_maximo': 3  # Límite máximo de cambios de pestañas
         })
     
     return JsonResponse({
@@ -4376,5 +4679,102 @@ def dar_nuevo_intento_evaluacion(request, pk):
     
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@csrf_exempt
+@login_required
+def reducir_cambios_pestana(request, pk):
+    """
+    Vista para reducir la cantidad de cambios de pestañas a un participante
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+    
+    # Verificar permisos básicos (solo admins pueden reducir cambios de pestañas)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'}, status=403)
+    
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    try:
+        data = json.loads(request.body)
+        participante_id = data.get('participante_id')
+        cantidad_reduccion = int(data.get('cantidad_reduccion', 1))
+        
+        if not participante_id:
+            return JsonResponse({'success': False, 'error': 'ID del participante requerido'})
+        
+        if cantidad_reduccion <= 0:
+            return JsonResponse({'success': False, 'error': 'La cantidad de reducción debe ser mayor a 0'})
+        
+        participante = get_object_or_404(Participantes, id=participante_id)
+        
+        # Verificar que el participante esté autorizado para esta evaluación
+        participantes_autorizados = evaluacion.get_participantes_autorizados()
+        if participante not in participantes_autorizados:
+            return JsonResponse({'success': False, 'error': 'Participante no autorizado para esta evaluación'})
+        
+        # Obtener el resultado activo (no completado) del participante
+        resultado_activo = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante,
+            completada=False
+        ).first()
+        
+        if not resultado_activo:
+            return JsonResponse({'success': False, 'error': 'El participante no tiene una evaluación activa'})
+        
+        # Verificar que el participante tenga cambios de pestañas registrados
+        cambios_actuales = resultado_activo.cambios_pestana or 0
+        
+        if cambios_actuales == 0:
+            return JsonResponse({'success': False, 'error': 'El participante no ha realizado cambios de pestañas'})
+        
+        # Calcular nueva cantidad (no puede ser menor a 0)
+        nuevos_cambios = max(0, cambios_actuales - cantidad_reduccion)
+        
+        # Actualizar el resultado
+        resultado_activo.cambios_pestana = nuevos_cambios
+        resultado_activo.save()
+        
+        # También actualizar el monitoreo si existe
+        monitoreo = MonitoreoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante=participante
+        ).first()
+        
+        if monitoreo:
+            monitoreo.cambios_pestana = nuevos_cambios
+            
+            # Agregar una alerta administrativa del cambio
+            from datetime import datetime
+            alerta = {
+                'tipo': 'admin_reduccion_pestanas',
+                'mensaje': f'Cambios de pestaña reducidos por administrador: {cambios_actuales} → {nuevos_cambios}',
+                'timestamp': datetime.now().isoformat(),
+                'admin_usuario': request.user.username,
+                'cantidad_reducida': cantidad_reduccion
+            }
+            
+            if monitoreo.alertas is None:
+                monitoreo.alertas = []
+            
+            monitoreo.alertas.append(alerta)
+            monitoreo.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Se redujeron {cantidad_reduccion} cambios de pestaña a {participante.NombresCompletos}',
+            'cambios_anteriores': cambios_actuales,
+            'cambios_nuevos': nuevos_cambios,
+            'cantidad_reducida': cantidad_reduccion
+        })
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'La cantidad de reducción debe ser un número válido'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
