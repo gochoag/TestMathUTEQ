@@ -11,7 +11,7 @@ import random
 from django.core.management.base import BaseCommand
 
 from django.contrib.auth.models import User
-from quizzes.models import Participantes, Representante, GrupoParticipantes
+from quizzes.models import Participantes, Representante, GrupoParticipantes, SystemConfig
 
 class Command(BaseCommand):
     help = 'Genera 30 participantes de prueba con datos aleatorios'
@@ -103,13 +103,17 @@ class Command(BaseCommand):
         dominios = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com']
         dominio = random.choice(dominios)
         
+        # Limpiar nombres de caracteres especiales y acentos
+        nombre_limpio = self.limpiar_para_email(nombre)
+        apellido_limpio = self.limpiar_para_email(apellido)
+        
         # Diferentes formatos de email para evitar duplicados
         formatos = [
-            f"{nombre.lower()}.{apellido.lower()}@{dominio}",
-            f"{nombre.lower()}{apellido.lower()}@{dominio}",
-            f"{nombre.lower()}_{apellido.lower()}@{dominio}",
-            f"{nombre.lower()}{random.randint(100, 999)}@{dominio}",
-            f"{nombre.lower()}.{apellido.lower()}{random.randint(10, 99)}@{dominio}",
+            f"{nombre_limpio}.{apellido_limpio}@{dominio}",
+            f"{nombre_limpio}{apellido_limpio}@{dominio}",
+            f"{nombre_limpio}_{apellido_limpio}@{dominio}",
+            f"{nombre_limpio}{random.randint(100, 999)}@{dominio}",
+            f"{nombre_limpio}.{apellido_limpio}{random.randint(10, 99)}@{dominio}",
         ]
         
         # Probar cada formato hasta encontrar uno único
@@ -118,54 +122,100 @@ class Command(BaseCommand):
                 return formato
         
         # Si todos los formatos están ocupados, agregar un número aleatorio
-        return f"{nombre.lower()}.{apellido.lower()}{random.randint(1000, 9999)}@{dominio}"
+        return f"{nombre_limpio}.{apellido_limpio}{random.randint(1000, 9999)}@{dominio}"
+
+    def limpiar_para_email(self, texto):
+        """Limpia texto removiendo acentos y caracteres especiales para emails"""
+        # Diccionario de reemplazos para caracteres con acentos
+        reemplazos = {
+            'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a',
+            'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+            'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+            'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'õ': 'o',
+            'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+            'ñ': 'n',
+            'ç': 'c',
+            'Á': 'A', 'À': 'A', 'Ä': 'A', 'Â': 'A', 'Ã': 'A',
+            'É': 'E', 'È': 'E', 'Ë': 'E', 'Ê': 'E',
+            'Í': 'I', 'Ì': 'I', 'Ï': 'I', 'Î': 'I',
+            'Ó': 'O', 'Ò': 'O', 'Ö': 'O', 'Ô': 'O', 'Õ': 'O',
+            'Ú': 'U', 'Ù': 'U', 'Ü': 'U', 'Û': 'U',
+            'Ñ': 'N',
+            'Ç': 'C'
+        }
+        
+        # Aplicar reemplazos
+        texto_limpio = texto
+        for caracter_original, caracter_reemplazo in reemplazos.items():
+            texto_limpio = texto_limpio.replace(caracter_original, caracter_reemplazo)
+        
+        # Convertir a minúsculas y quitar espacios
+        texto_limpio = texto_limpio.lower().strip()
+        
+        # Quitar cualquier caracter que no sea letra o número
+        texto_limpio = ''.join(c for c in texto_limpio if c.isalnum())
+        
+        # Si el texto quedó vacío, generar un nombre genérico
+        if not texto_limpio:
+            texto_limpio = f"user{random.randint(100, 999)}"
+        
+        return texto_limpio
 
     def generar_nombres(self):
-        """Lista de nombres ecuatorianos comunes"""
+        """Lista de nombres ecuatorianos comunes sin caracteres especiales"""
         nombres = [
-            "Juan", "María", "Carlos", "Ana", "Luis", "Carmen", "Pedro", "Rosa",
-            "Miguel", "Isabel", "José", "Patricia", "Fernando", "Lucía", "Roberto",
-            "Elena", "Diego", "Sofia", "Andrés", "Valeria", "Ricardo", "Camila",
+            "Juan", "Maria", "Carlos", "Ana", "Luis", "Carmen", "Pedro", "Rosa",
+            "Miguel", "Isabel", "Jose", "Patricia", "Fernando", "Lucia", "Roberto",
+            "Elena", "Diego", "Sofia", "Andres", "Valeria", "Ricardo", "Camila",
             "Francisco", "Daniela", "Alejandro", "Gabriela", "Manuel", "Natalia",
-            "David", "Andrea", "Jorge", "Paula", "Héctor", "Mariana", "Alberto",
-            "Carolina", "Eduardo", "Verónica", "Raúl", "Diana", "Santiago", "Laura"
+            "David", "Andrea", "Jorge", "Paula", "Hector", "Mariana", "Alberto",
+            "Carolina", "Eduardo", "Veronica", "Raul", "Diana", "Santiago", "Laura"
         ]
         return random.choice(nombres)
 
     def generar_apellidos(self):
-        """Lista de apellidos ecuatorianos comunes"""
+        """Lista de apellidos ecuatorianos comunes sin caracteres especiales"""
         apellidos = [
-            "García", "Rodríguez", "González", "Fernández", "López", "Martínez",
-            "Sánchez", "Pérez", "Gómez", "Martin", "Jiménez", "Ruiz", "Hernández",
-            "Díaz", "Moreno", "Muñoz", "Álvarez", "Romero", "Alonso", "Gutiérrez",
-            "Navarro", "Torres", "Domínguez", "Vázquez", "Ramos", "Gil", "Ramírez",
-            "Serrano", "Blanco", "Suárez", "Molina", "Morales", "Ortega", "Delgado",
-            "Castro", "Ortiz", "Rubio", "Marín", "Sanz", "Iglesias", "Medina"
+            "Garcia", "Rodriguez", "Gonzalez", "Fernandez", "Lopez", "Martinez",
+            "Sanchez", "Perez", "Gomez", "Martin", "Jimenez", "Ruiz", "Hernandez",
+            "Diaz", "Moreno", "Munoz", "Alvarez", "Romero", "Alonso", "Gutierrez",
+            "Navarro", "Torres", "Dominguez", "Vazquez", "Ramos", "Gil", "Ramirez",
+            "Serrano", "Blanco", "Suarez", "Molina", "Morales", "Ortega", "Delgado",
+            "Castro", "Ortiz", "Rubio", "Marin", "Sanz", "Iglesias", "Medina"
         ]
         return random.choice(apellidos)
 
     def crear_representante(self):
         """Crea un representante de prueba"""
         nombres_colegios = [
-            "Unidad Educativa San José", "Colegio Nacional Mejía", "Instituto Nacional Mejía",
-            "Unidad Educativa Manuela Cañizares", "Colegio Técnico Salesiano",
-            "Instituto Tecnológico Superior Central Técnico", "Colegio Militar Eloy Alfaro",
-            "Unidad Educativa Bilingüe Nuevo Mundo", "Colegio Americano de Quito",
+            "Unidad Educativa San Jose", "Colegio Nacional Mejia", "Instituto Nacional Mejia",
+            "Unidad Educativa Manuela Canizares", "Colegio Tecnico Salesiano",
+            "Instituto Tecnologico Superior Central Tecnico", "Colegio Militar Eloy Alfaro",
+            "Unidad Educativa Bilingue Nuevo Mundo", "Colegio Americano de Quito",
             "Unidad Educativa San Francisco de Sales"
         ]
         
-        # Generar correos únicos para representantes
-        correo_institucional = f"info{random.randint(100, 999)}@{random.choice(['colegio.edu.ec', 'instituto.edu.ec', 'escuela.edu.ec'])}"
-        correo_representante = f"representante{random.randint(100, 999)}@{random.choice(['gmail.com', 'hotmail.com'])}"
+        # Generar correos únicos para representantes sin caracteres especiales
+        numero_aleatorio = random.randint(1000, 9999)
+        correo_institucional = f"info{numero_aleatorio}@colegio.edu.ec"
+        correo_representante = f"representante{numero_aleatorio}@gmail.com"
+        
+        # Generar nombres sin caracteres especiales para el representante
+        nombres_representantes = [
+            "Ana Rodriguez", "Carlos Martinez", "Maria Gonzalez", "Luis Fernandez",
+            "Carmen Lopez", "Pedro Sanchez", "Rosa Perez", "Miguel Gomez",
+            "Isabel Martin", "Jose Jimenez", "Patricia Ruiz", "Fernando Hernandez"
+        ]
         
         representante = Representante.objects.create(
             NombreColegio=random.choice(nombres_colegios),
             DireccionColegio=f"Av. {random.choice(['Amazonas', '6 de Diciembre', '10 de Agosto', 'Naciones Unidas'])} #123",
             TelefonoInstitucional=self.generar_telefono(),
             CorreoInstitucional=correo_institucional,
-            NombresRepresentante=f"{self.generar_nombres()} {self.generar_apellidos()}",
+            NombresRepresentante=random.choice(nombres_representantes),
             TelefonoRepresentante=self.generar_telefono(),
-            CorreoRepresentante=correo_representante
+            CorreoRepresentante=correo_representante,
+            anio=SystemConfig.get_active_year()  # Usar el año activo del sistema
         )
         return representante
 
@@ -173,6 +223,7 @@ class Command(BaseCommand):
         """Crea un grupo de participantes"""
         grupo = GrupoParticipantes.objects.create(
             name=f"Grupo {numero_grupo} - {representante.NombreColegio}",
-            representante=representante
+            representante=representante,
+            anio=SystemConfig.get_active_year()  # Usar el año activo del sistema
         )
         return grupo 

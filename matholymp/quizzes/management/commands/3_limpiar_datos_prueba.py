@@ -51,7 +51,8 @@ class Command(BaseCommand):
         self.stdout.write("   - Todos los grupos de participantes")
         self.stdout.write("   - Todos los representantes")
         self.stdout.write("   - Todos los resultados de evaluaciones")
-        self.stdout.write("   - Todos los perfiles de usuario asociados")
+        self.stdout.write("   - Todos los perfiles de usuario asociados a participantes")
+        self.stdout.write("   📌 NOTA: Los administradores NO serán eliminados")
         self.stdout.write()
         
         respuesta = input("¿Estás seguro de que quieres continuar? (escribe 'SI' para confirmar): ")
@@ -70,8 +71,7 @@ class Command(BaseCommand):
             'participantes': 0,
             'grupos': 0,
             'representantes': 0,
-            'usuarios': 0,
-            'perfiles_admin': 0,
+            'usuarios_participantes': 0,
             'perfiles_usuario': 0
         }
         
@@ -128,19 +128,22 @@ class Command(BaseCommand):
             representantes.delete()
             self.stdout.write(f"✅ {contadores['representantes']} representantes eliminados")
             
-            # 8. Eliminar perfiles de administradores (no superuser)
-            self.stdout.write("🗑️  Eliminando perfiles de administradores...")
-            perfiles_admin = AdminProfile.objects.all()
-            contadores['perfiles_admin'] = perfiles_admin.count()
-            
-            # Obtener los usuarios asociados antes de eliminar perfiles
-            usuarios_admin = [p.user for p in perfiles_admin]
-            perfiles_admin.delete()
-            self.stdout.write(f"✅ {contadores['perfiles_admin']} perfiles de administradores eliminados")
-            
-            # 9. Eliminar perfiles de usuario
+            # 8. Eliminar perfiles de usuario (solo los que no pertenecen a admins)
             self.stdout.write("🗑️  Eliminando perfiles de usuario...")
-            perfiles_usuario = UserProfile.objects.all()
+            
+            # Obtener usuarios que son administradores para excluirlos
+            usuarios_admin = set()
+            if AdminProfile.objects.exists():
+                usuarios_admin = set(AdminProfile.objects.values_list('user_id', flat=True))
+            
+            # Obtener superusuarios para excluirlos también
+            usuarios_super = set(User.objects.filter(is_superuser=True).values_list('id', flat=True))
+            
+            # Usuarios a excluir (admins + superusuarios)
+            usuarios_excluir = usuarios_admin.union(usuarios_super)
+            
+            # Filtrar perfiles de usuario que no pertenecen a admins
+            perfiles_usuario = UserProfile.objects.exclude(user_id__in=usuarios_excluir)
             contadores['perfiles_usuario'] = perfiles_usuario.count()
             
             # Obtener los usuarios asociados antes de eliminar perfiles
@@ -148,13 +151,13 @@ class Command(BaseCommand):
             perfiles_usuario.delete()
             self.stdout.write(f"✅ {contadores['perfiles_usuario']} perfiles de usuario eliminados")
             
-            # 10. Eliminar usuarios (participantes, admins y perfiles)
-            self.stdout.write("🗑️  Eliminando usuarios...")
-            todos_usuarios = set(usuarios_participantes + usuarios_admin + usuarios_perfil)
+            # 9. Eliminar usuarios (solo participantes, no admins ni superusuarios)
+            self.stdout.write("🗑️  Eliminando usuarios de participantes...")
+            todos_usuarios = set(usuarios_participantes + usuarios_perfil)
             
-            # Filtrar usuarios que no sean superusuarios
-            usuarios_a_eliminar = [u for u in todos_usuarios if not u.is_superuser]
-            contadores['usuarios'] = len(usuarios_a_eliminar)
+            # Filtrar usuarios que no sean superusuarios ni administradores
+            usuarios_a_eliminar = [u for u in todos_usuarios if not u.is_superuser and u.id not in usuarios_admin]
+            contadores['usuarios_participantes'] = len(usuarios_a_eliminar)
             
             for usuario in usuarios_a_eliminar:
                 try:
@@ -162,7 +165,7 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(f"⚠️  No se pudo eliminar usuario {usuario.username}: {e}")
             
-            self.stdout.write(f"✅ {contadores['usuarios']} usuarios eliminados")
+            self.stdout.write(f"✅ {contadores['usuarios_participantes']} usuarios de participantes eliminados")
             
             self.stdout.write("\n🎉 ¡Limpieza completada exitosamente!")
             
@@ -185,8 +188,11 @@ class Command(BaseCommand):
                 'Grupos': GrupoParticipantes.objects.count(),
                 'Representantes': Representante.objects.count(),
                 'Resultados': ResultadoEvaluacion.objects.count(),
-                'Perfiles Admin': AdminProfile.objects.count(),
-                'Perfiles Usuario': UserProfile.objects.count()
+                'Perfiles Usuario (no admin)': UserProfile.objects.exclude(
+                    user__in=User.objects.filter(is_superuser=True)
+                ).exclude(
+                    user__adminprofile__isnull=False
+                ).count()
             }
             
             elementos_con_datos = {k: v for k, v in elementos_restantes.items() if v > 0}

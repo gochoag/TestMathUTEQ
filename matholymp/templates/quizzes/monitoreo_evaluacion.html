@@ -42,38 +42,59 @@
     </div>
 
     <!-- Estadísticas generales -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ participantes_activos }}</h3>
-                    <p class="mb-0">Activos</p>
+    <div class="row mb-3">
+        <div class="col-md-3 col-6 mb-2">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body py-2 px-3 text-center">
+                    <h5 class="mb-1">{{ participantes_activos }}</h5>
+                    <small class="mb-0">Activos</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ participantes_pendientes }}</h3>
-                    <p class="mb-0">Pendientes</p>
+        <div class="col-md-3 col-6 mb-2">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body py-2 px-3 text-center">
+                    <h5 class="mb-1">{{ participantes_pendientes }}</h5>
+                    <small class="mb-0">Pendientes</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-secondary text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ participantes_finalizados }}</h3>
-                    <p class="mb-0">Finalizados</p>
+        <div class="col-md-3 col-6 mb-2">
+            <div class="card bg-secondary text-white h-100">
+                <div class="card-body py-2 px-3 text-center">
+                    <h5 class="mb-1">{{ participantes_finalizados }}</h5>
+                    <small class="mb-0">Finalizados</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ total_participantes }}</h3>
-                    <p class="mb-0">Total</p>
+        <div class="col-md-3 col-6 mb-2">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body py-2 px-3 text-center">
+                    <h5 class="mb-1">{{ total_participantes }}</h5>
+                    <small class="mb-0">Total</small>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Campo de búsqueda de participantes -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" class="form-control" id="search-participantes" 
+                       placeholder="Buscar por cédula o nombre..." 
+                       autocomplete="off">
+                <button class="btn btn-outline-secondary" type="button" id="clear-search" 
+                        title="Limpiar búsqueda">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div class="col-md-6 d-flex align-items-center justify-content-end">
+            <small class="text-muted" id="search-results-count">Cargando participantes...</small>
         </div>
     </div>
 
@@ -406,6 +427,58 @@
     font-size: 1.2rem !important;
     padding: 0.5rem 1rem !important;
     transition: transform 0.2s ease, background-color 0.3s ease;
+}
+
+/* Estilos para la búsqueda */
+#search-participantes {
+    transition: all 0.3s ease;
+}
+
+#search-participantes:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: #80bdff;
+}
+
+#clear-search {
+    border-left: none;
+}
+
+#clear-search:hover {
+    background-color: #e9ecef;
+}
+
+/* Estilos para el highlight de búsqueda */
+mark.bg-warning {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+/* Animación para resultados de búsqueda */
+#search-results-count {
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.search-no-results {
+    opacity: 0.7;
+}
+
+/* Mejorar el aspecto del input group */
+.input-group .input-group-text {
+    border-right: none;
+    background-color: #f8f9fa;
+}
+
+.input-group .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: none;
+}
+
+.input-group .form-control:focus + .btn {
+    border-color: #80bdff;
 }
 </style>
 {% endblock %}
@@ -801,6 +874,13 @@ function cargarMonitoreo() {
             // Actualizar timestamp
             document.getElementById('last-update').textContent = 
                 new Date(data.timestamp).toLocaleTimeString();
+            
+            // Actualizar contador de participantes y reactivar búsqueda
+            setTimeout(() => {
+                const filas = document.querySelectorAll('#tabla-monitoreo tbody tr');
+                updateSearchCounter(filas.length, '');
+                refreshSearch(); // Mantener búsqueda activa después de actualizar
+            }, 100);
         })
         .catch(error => {
             console.error('Error al cargar monitoreo:', error);
@@ -1221,6 +1301,223 @@ function actualizarNuevoTotalCambios() {
         nuevoTotalElement.style.transform = 'scale(1)';
     }, 200);
 }
+
+// ==================== FUNCIONALIDAD DE BÚSQUEDA ====================
+
+// Variables globales para la búsqueda
+let searchTimeout;
+const originalParticipantes = document.querySelectorAll('#tabla-monitoreo tbody tr');
+const totalParticipantes = originalParticipantes.length;
+
+// Función para normalizar texto (remover acentos y convertir a minúsculas)
+function normalizeText(text) {
+    return text.toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+        .trim();
+}
+
+// Función principal de búsqueda
+function searchParticipantes(searchTerm) {
+    const normalizedSearch = normalizeText(searchTerm);
+    let visibleCount = 0;
+    
+    // Buscar en las filas de la tabla
+    const filas = document.querySelectorAll('#tabla-monitoreo tbody tr');
+    
+    filas.forEach(fila => {
+        const participanteCell = fila.querySelector('td:first-child');
+        if (!participanteCell) return;
+        
+        const textoParticipante = participanteCell.textContent || '';
+        const normalizedTexto = normalizeText(textoParticipante);
+        
+        const matches = normalizedTexto.includes(normalizedSearch);
+        
+        if (matches || searchTerm === '') {
+            fila.style.display = '';
+            fila.classList.remove('search-no-results');
+            visibleCount++;
+            
+            // Highlight del texto encontrado
+            if (searchTerm !== '') {
+                highlightText(fila, searchTerm);
+            } else {
+                removeHighlight(fila);
+            }
+        } else {
+            fila.style.display = 'none';
+            fila.classList.add('search-no-results');
+        }
+    });
+    
+    // Actualizar contador de resultados
+    updateSearchCounter(visibleCount, searchTerm);
+    
+    // Manejar mensaje de "sin resultados"
+    handleNoResults(visibleCount, searchTerm);
+}
+
+// Función para resaltar texto encontrado
+function highlightText(fila, searchTerm) {
+    removeHighlight(fila);
+    
+    const participanteCell = fila.querySelector('td:first-child');
+    if (participanteCell) {
+        participanteCell.innerHTML = highlightMatch(participanteCell.textContent, searchTerm);
+    }
+}
+
+// Función para crear el highlight
+function highlightMatch(text, searchTerm) {
+    if (!searchTerm) return text;
+    
+    const normalizedText = normalizeText(text);
+    const normalizedSearch = normalizeText(searchTerm);
+    
+    if (normalizedText.includes(normalizedSearch)) {
+        const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
+        return text.replace(regex, '<mark class="bg-warning">$1</mark>');
+    }
+    
+    return text;
+}
+
+// Función para escapar caracteres especiales en regex
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Función para remover highlights
+function removeHighlight(fila) {
+    const highlightedElements = fila.querySelectorAll('mark.bg-warning');
+    highlightedElements.forEach(el => {
+        el.outerHTML = el.textContent;
+    });
+}
+
+// Función para actualizar el contador de resultados
+function updateSearchCounter(visibleCount, searchTerm) {
+    const counter = document.getElementById('search-results-count');
+    const totalActual = document.querySelectorAll('#tabla-monitoreo tbody tr').length || totalParticipantes;
+    
+    if (searchTerm === '') {
+        counter.textContent = `Mostrando ${totalActual} participante${totalActual !== 1 ? 's' : ''}`;
+        counter.className = 'text-muted';
+    } else {
+        counter.textContent = `${visibleCount} de ${totalActual} participante${visibleCount !== 1 ? 's' : ''} encontrado${visibleCount !== 1 ? 's' : ''}`;
+        counter.className = visibleCount > 0 ? 
+            'text-info' : 
+            'text-warning';
+    }
+}
+
+// Función para manejar el mensaje de "sin resultados"
+function handleNoResults(visibleCount, searchTerm) {
+    let noResultsMsg = document.getElementById('no-results-message');
+    
+    if (visibleCount === 0 && searchTerm !== '') {
+        if (!noResultsMsg) {
+            noResultsMsg = document.createElement('tr');
+            noResultsMsg.id = 'no-results-message';
+            noResultsMsg.innerHTML = `
+                <td colspan="8" class="text-center py-5 text-muted">
+                    <i class="fas fa-search-minus fa-3x mb-3 d-block"></i>
+                    <h5>No se encontraron participantes</h5>
+                    <p class="mb-0">Intenta con otros términos de búsqueda o verifica la ortografía.</p>
+                </td>
+            `;
+            
+            // Insertar en el tbody de la tabla
+            const tbody = document.querySelector('#tabla-monitoreo tbody');
+            if (tbody) {
+                tbody.appendChild(noResultsMsg);
+            }
+        }
+        noResultsMsg.style.display = '';
+    } else if (noResultsMsg) {
+        noResultsMsg.style.display = 'none';
+    }
+}
+
+// Función para limpiar búsqueda
+function clearSearch() {
+    const searchInput = document.getElementById('search-participantes');
+    searchInput.value = '';
+    searchInput.focus();
+    
+    // Limpiar resultados
+    searchParticipantes('');
+    
+    // Efecto visual
+    searchInput.style.transition = 'all 0.3s ease';
+    searchInput.style.transform = 'scale(1.02)';
+    setTimeout(() => {
+        searchInput.style.transform = 'scale(1)';
+    }, 150);
+}
+
+// Event Listeners para la búsqueda
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('search-participantes');
+    const clearButton = document.getElementById('clear-search');
+    
+    if (searchInput) {
+        // Búsqueda con debounce
+        searchInput.addEventListener('input', function(e) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchParticipantes(e.target.value);
+            }, 300);
+        });
+        
+        // Búsqueda inmediata al pegar
+        searchInput.addEventListener('paste', function(e) {
+            setTimeout(() => {
+                searchParticipantes(e.target.value);
+            }, 100);
+        });
+        
+        // Manejar Enter
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(searchTimeout);
+                searchParticipantes(e.target.value);
+            }
+        });
+        
+        // Manejar Escape para limpiar
+        searchInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Escape') {
+                clearSearch();
+            }
+        });
+    }
+    
+    if (clearButton) {
+        clearButton.addEventListener('click', clearSearch);
+    }
+    
+    // Inicializar conteo total dinámicamente
+    setTimeout(() => {
+        const filas = document.querySelectorAll('#tabla-monitoreo tbody tr');
+        if (filas.length > 0) {
+            totalParticipantes = filas.length;
+            updateSearchCounter(filas.length, '');
+        }
+    }, 1000);
+});
+
+// Función adicional para actualizar la búsqueda cuando se carga contenido dinámico
+function refreshSearch() {
+    const searchInput = document.getElementById('search-participantes');
+    if (searchInput && searchInput.value) {
+        searchParticipantes(searchInput.value);
+    }
+}
+
+// ==================== FIN FUNCIONALIDAD DE BÚSQUEDA ====================
 
 
 </script>
