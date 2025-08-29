@@ -147,8 +147,12 @@
                             <tbody>
                                 {% for resultado in resultados %}
                                 <tr
-                                    {% if evaluacion.etapa == 1 and forloop.counter <= 15 %}
-                                        class="table-success"
+                                    {% if evaluacion.etapa == 1 %}
+                                        {% if num_etapas == 2 and forloop.counter <= 5 %}
+                                            class="table-success"
+                                        {% elif num_etapas == 3 and forloop.counter <= 15 %}
+                                            class="table-success"
+                                        {% endif %}
                                     {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
                                         class="table-success"
                                     {% elif evaluacion.etapa == 3 and forloop.counter <= 5 %}
@@ -179,8 +183,14 @@
                                     </td>
                                     <td>{{ resultado.fecha_fin|date:"d/m/Y H:i" }}</td>
                                     <td>
-                                        {% if evaluacion.etapa == 1 and forloop.counter <= 15 %}
-                                            <span class="badge bg-success">Clasificado</span>
+                                        {% if evaluacion.etapa == 1 %}
+                                            {% if num_etapas == 2 and forloop.counter <= 5 %}
+                                                <span class="badge bg-success">Clasificado</span>
+                                            {% elif num_etapas == 3 and forloop.counter <= 15 %}
+                                                <span class="badge bg-success">Clasificado</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Participante</span>
+                                            {% endif %}
                                         {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
                                             <span class="badge bg-success">Finalista</span>
                                         {% elif evaluacion.etapa == 3 %}

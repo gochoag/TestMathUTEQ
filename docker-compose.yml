@@ -1,40 +1,31 @@
-version: "3.9"
-
 services:
-  
-  webtestmathuteq:
-    container_name: webtestmathuteq
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: testmath
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  web:
     build: .
     command: python matholymp/manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
-      - "8500:8000"
-    env_file:
-      - .env
-    restart: always
-    networks:
-      - djangotestmathuteq_bridge
-
-  nginx_ssl_django_webtestmathuteq:
-    container_name: nginx_ssl_django_webtestmathuteq
-    image: nginx
-    tty: true
-    ports:
-      - 9051:443
-      - 9050:444
-    volumes:
-      - ./nginx/config/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/ssl:/ssl/
-      - ./nginx/html/:/var/www/html
-      - ./nginx/logs:/etc/nginx/logs
-      - ./matholymp/static/:/var/www/static
-    restart: always
+      - "8000:8000"
     depends_on:
-      - webtestmathuteq
-    networks:
-      - djangotestmathuteq_bridge
+      db:
+        condition: service_healthy
 
-networks:
-  djangotestmathuteq_bridge:
-    driver: bridge
+volumes:
+  db_data:

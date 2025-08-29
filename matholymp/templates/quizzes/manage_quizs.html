@@ -1008,7 +1008,9 @@ function renderizarParticipantesIndividuales(participantes, participantesAsignad
         // Para etapas 2 y 3: mostrar participantes automáticos con opción de edición para superusuarios
         if (participantes.length > 0) {
             participantes.forEach(participante => {
-                const isSelected = participantesAsignados.some(p => p.id === participante.id);
+                const participanteAsignado = participantesAsignados.find(p => p.id === participante.id);
+                const isSelected = !!participanteAsignado;
+                const esAutomatico = participanteAsignado && participanteAsignado.automatico;
                 const div = document.createElement('div');
                 
                 if (isSuperUser) {
@@ -1020,26 +1022,46 @@ function renderizarParticipantesIndividuales(participantes, participantesAsignad
                         <label class="form-check-label" for="participante_${participante.id}">
                             <strong>${participante.NombresCompletos}</strong>
                             <small class="text-muted">(${participante.cedula})</small>
-                            <span class="badge bg-success ms-2">Automático</span>
+                            ${esAutomatico ? '<span class="badge bg-success ms-2">Preseleccionado</span>' : 
+                             '<span class="badge bg-primary ms-2">Manual</span>'}
                         </label>
                     `;
                 } else {
                     // Para otros usuarios: mostrar solo información
-                    div.className = 'alert alert-success mb-2';
-                    div.innerHTML = `
-                        <i class="bi bi-person-check me-2"></i>
-                        <strong>${participante.NombresCompletos}</strong> - ${participante.cedula}
-                        <span class="badge bg-success ms-2">Automático</span>
-                    `;
+                    if (isSelected) {
+                        div.className = 'alert alert-success mb-2';
+                        div.innerHTML = `
+                            <i class="bi bi-person-check me-2"></i>
+                            <strong>${participante.NombresCompletos}</strong> - ${participante.cedula}
+                            ${esAutomatico ? '<span class="badge bg-success ms-2">Preseleccionado</span>' : 
+                             '<span class="badge bg-primary ms-2">Manual</span>'}
+                        `;
+                    }
                 }
-                individualesList.appendChild(div);
+                
+                if (div.innerHTML.trim()) {
+                    individualesList.appendChild(div);
+                }
             });
+            
+            // Mostrar información adicional si hay preseleccionados automáticos
+            const tienePreseleccionados = participantesAsignados.some(p => p.automatico);
+            if (tienePreseleccionados && !isSuperUser) {
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'alert alert-info mb-2';
+                infoDiv.innerHTML = `
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Información:</strong> Los participantes marcados como "Preseleccionado" fueron 
+                    seleccionados automáticamente basándose en el ranking de la etapa anterior.
+                `;
+                individualesList.appendChild(infoDiv);
+            }
         } else {
             const div = document.createElement('div');
             div.className = 'alert alert-warning mb-2';
             div.innerHTML = `
                 <i class="bi bi-exclamation-triangle me-2"></i>
-                No hay participantes automáticos para esta evaluación
+                No hay participantes preseleccionados para esta evaluación
             `;
             individualesList.appendChild(div);
         }

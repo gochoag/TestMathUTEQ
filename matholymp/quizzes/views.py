@@ -2766,21 +2766,27 @@ def gestionar_participantes_evaluacion(request, pk):
                 })
             
             # Para superusuarios en etapas avanzadas, incluir automáticos si no hay asignados manualmente
+            participantes_automaticos = []
             if has_full_access(request.user) and evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.exists():
                 from .models import SystemConfig
                 if evaluacion.etapa == 2 and SystemConfig.get_num_etapas() == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa2()
                 elif evaluacion.etapa == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
-                else:
-                    participantes_automaticos = []
                 
+                # Agregar información de que son automáticos
                 for participante in participantes_automaticos:
                     participantes_asignados.append({
                         'id': participante.id,
                         'NombresCompletos': participante.NombresCompletos,
-                        'cedula': participante.cedula
+                        'cedula': participante.cedula,
+                        'automatico': True  # Marcar como automático
                     })
+            
+            # Para otros casos, marcar como manual
+            if not participantes_automaticos:
+                for item in participantes_asignados:
+                    item['automatico'] = False
             
             return JsonResponse({
                 'success': True,

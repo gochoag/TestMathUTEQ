@@ -495,11 +495,39 @@ class Evaluacion(models.Model):
         num_etapas = SystemConfig.get_num_etapas()
         top_n = 15 if num_etapas == 3 else 5
 
-        # Obtener los mejores resultados de la etapa 1
-        mejores_resultados = ResultadoEvaluacion.objects.filter(
+        # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
+        from django.db.models import Max
+        
+        # Primero, obtener el mejor puntaje por participante
+        mejores_puntajes = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion_etapa1,
             completada=True
-        ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:top_n]
+        ).values('participante').annotate(
+            mejor_puntaje=Max('puntos_obtenidos')
+        )
+        
+        # Crear una lista de participantes con sus mejores puntajes
+        participantes_con_mejor_puntaje = []
+        for item in mejores_puntajes:
+            participante_id = item['participante']
+            mejor_puntaje = item['mejor_puntaje']
+            
+            # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
+            mejor_resultado = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion_etapa1,
+                participante_id=participante_id,
+                completada=True,
+                puntos_obtenidos=mejor_puntaje
+            ).order_by('tiempo_utilizado').first()
+            
+            if mejor_resultado:
+                participantes_con_mejor_puntaje.append(mejor_resultado)
+        
+        # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
+        resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+        
+        # Tomar solo los mejores según la configuración
+        mejores_resultados = resultados_ordenados[:top_n]
         
         return [resultado.participante for resultado in mejores_resultados]
     
@@ -516,19 +544,80 @@ class Evaluacion(models.Model):
             evaluacion_etapa2 = Evaluacion.objects.filter(etapa=2, anio=self.anio).first()
             if not evaluacion_etapa2:
                 return []
-            mejores_resultados = ResultadoEvaluacion.objects.filter(
+            
+            # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
+            from django.db.models import Max
+            
+            # Primero, obtener el mejor puntaje por participante
+            mejores_puntajes = ResultadoEvaluacion.objects.filter(
                 evaluacion=evaluacion_etapa2,
                 completada=True
-            ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
+            ).values('participante').annotate(
+                mejor_puntaje=Max('puntos_obtenidos')
+            )
+            
+            # Crear una lista de participantes con sus mejores puntajes
+            participantes_con_mejor_puntaje = []
+            for item in mejores_puntajes:
+                participante_id = item['participante']
+                mejor_puntaje = item['mejor_puntaje']
+                
+                # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
+                mejor_resultado = ResultadoEvaluacion.objects.filter(
+                    evaluacion=evaluacion_etapa2,
+                    participante_id=participante_id,
+                    completada=True,
+                    puntos_obtenidos=mejor_puntaje
+                ).order_by('tiempo_utilizado').first()
+                
+                if mejor_resultado:
+                    participantes_con_mejor_puntaje.append(mejor_resultado)
+            
+            # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
+            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+            
+            # Tomar solo los mejores 5
+            mejores_resultados = resultados_ordenados[:5]
+            
         else:
             # Flujo de 2 etapas: tomar top 5 directamente desde etapa 1 (saltando etapa 2)
             evaluacion_etapa1 = Evaluacion.objects.filter(etapa=1, anio=self.anio).first()
             if not evaluacion_etapa1:
                 return []
-            mejores_resultados = ResultadoEvaluacion.objects.filter(
+            
+            # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
+            from django.db.models import Max
+            
+            # Primero, obtener el mejor puntaje por participante
+            mejores_puntajes = ResultadoEvaluacion.objects.filter(
                 evaluacion=evaluacion_etapa1,
                 completada=True
-            ).order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5]
+            ).values('participante').annotate(
+                mejor_puntaje=Max('puntos_obtenidos')
+            )
+            
+            # Crear una lista de participantes con sus mejores puntajes
+            participantes_con_mejor_puntaje = []
+            for item in mejores_puntajes:
+                participante_id = item['participante']
+                mejor_puntaje = item['mejor_puntaje']
+                
+                # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
+                mejor_resultado = ResultadoEvaluacion.objects.filter(
+                    evaluacion=evaluacion_etapa1,
+                    participante_id=participante_id,
+                    completada=True,
+                    puntos_obtenidos=mejor_puntaje
+                ).order_by('tiempo_utilizado').first()
+                
+                if mejor_resultado:
+                    participantes_con_mejor_puntaje.append(mejor_resultado)
+            
+            # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
+            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+            
+            # Tomar solo los mejores 5
+            mejores_resultados = resultados_ordenados[:5]
         
         return [resultado.participante for resultado in mejores_resultados]
     
