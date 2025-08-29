@@ -2584,19 +2584,36 @@ def ranking_evaluacion(request, pk):
         participante_id = item['participante']
         mejor_puntaje = item['mejor_puntaje']
         
-        # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
-        mejor_resultado = ResultadoEvaluacion.objects.filter(
+        # Obtener todos los intentos con el mejor puntaje para este participante
+        intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante_id=participante_id,
             completada=True,
-            puntos_obtenidos=mejor_puntaje
-        ).order_by('tiempo_utilizado').first()
+            puntos_obtenidos=mejor_puntaje,
+            fecha_inicio__isnull=False,
+            fecha_fin__isnull=False
+        )
+        
+        # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
+        mejor_resultado = None
+        menor_tiempo = float('inf')
+        
+        for intento in intentos_con_mejor_puntaje:
+            tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
+            if tiempo_real < menor_tiempo:
+                menor_tiempo = tiempo_real
+                mejor_resultado = intento
         
         if mejor_resultado:
             participantes_con_mejor_puntaje.append(mejor_resultado)
     
-    # Ordenar por puntaje descendente y tiempo ascendente
-    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+    # Ordenar por puntaje descendente y tiempo real ascendente
+    def get_tiempo_real(resultado):
+        if resultado.fecha_inicio and resultado.fecha_fin:
+            return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+        return float('inf')  # Si no tiene fechas, lo colocamos al final
+    
+    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
     
     # Calcular estadísticas
     total_participantes = len(resultados)
@@ -3784,19 +3801,36 @@ def exportar_ranking_pdf(request, pk):
         participante_id = item['participante']
         mejor_puntaje = item['mejor_puntaje']
         
-        # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
-        mejor_resultado = ResultadoEvaluacion.objects.filter(
+        # Obtener todos los intentos con el mejor puntaje para este participante
+        intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante_id=participante_id,
             completada=True,
-            puntos_obtenidos=mejor_puntaje
-        ).order_by('tiempo_utilizado').first()
+            puntos_obtenidos=mejor_puntaje,
+            fecha_inicio__isnull=False,
+            fecha_fin__isnull=False
+        )
+        
+        # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
+        mejor_resultado = None
+        menor_tiempo = float('inf')
+        
+        for intento in intentos_con_mejor_puntaje:
+            tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
+            if tiempo_real < menor_tiempo:
+                menor_tiempo = tiempo_real
+                mejor_resultado = intento
         
         if mejor_resultado:
             participantes_con_mejor_puntaje.append(mejor_resultado)
     
-    # Ordenar por puntaje descendente y tiempo ascendente
-    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+    # Ordenar por puntaje descendente y tiempo real ascendente
+    def get_tiempo_real(resultado):
+        if resultado.fecha_inicio and resultado.fecha_fin:
+            return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+        return float('inf')  # Si no tiene fechas, lo colocamos al final
+    
+    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
     
     # Crear el PDF
     response = HttpResponse(content_type='application/pdf')

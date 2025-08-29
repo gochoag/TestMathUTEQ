@@ -512,19 +512,36 @@ class Evaluacion(models.Model):
             participante_id = item['participante']
             mejor_puntaje = item['mejor_puntaje']
             
-            # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
-            mejor_resultado = ResultadoEvaluacion.objects.filter(
+            # Obtener todos los intentos con el mejor puntaje para este participante
+            intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
                 evaluacion=evaluacion_etapa1,
                 participante_id=participante_id,
                 completada=True,
-                puntos_obtenidos=mejor_puntaje
-            ).order_by('tiempo_utilizado').first()
+                puntos_obtenidos=mejor_puntaje,
+                fecha_inicio__isnull=False,
+                fecha_fin__isnull=False
+            )
+            
+            # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
+            mejor_resultado = None
+            menor_tiempo = float('inf')
+            
+            for intento in intentos_con_mejor_puntaje:
+                tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
+                if tiempo_real < menor_tiempo:
+                    menor_tiempo = tiempo_real
+                    mejor_resultado = intento
             
             if mejor_resultado:
                 participantes_con_mejor_puntaje.append(mejor_resultado)
         
-        # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
-        resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+        # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
+        def get_tiempo_real(resultado):
+            if resultado.fecha_inicio and resultado.fecha_fin:
+                return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+            return float('inf')  # Si no tiene fechas, lo colocamos al final
+        
+        resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
         
         # Tomar solo los mejores según la configuración
         mejores_resultados = resultados_ordenados[:top_n]
@@ -562,19 +579,36 @@ class Evaluacion(models.Model):
                 participante_id = item['participante']
                 mejor_puntaje = item['mejor_puntaje']
                 
-                # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
-                mejor_resultado = ResultadoEvaluacion.objects.filter(
+                # Obtener todos los intentos con el mejor puntaje para este participante
+                intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
                     evaluacion=evaluacion_etapa2,
                     participante_id=participante_id,
                     completada=True,
-                    puntos_obtenidos=mejor_puntaje
-                ).order_by('tiempo_utilizado').first()
+                    puntos_obtenidos=mejor_puntaje,
+                    fecha_inicio__isnull=False,
+                    fecha_fin__isnull=False
+                )
+                
+                # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
+                mejor_resultado = None
+                menor_tiempo = float('inf')
+                
+                for intento in intentos_con_mejor_puntaje:
+                    tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
+                    if tiempo_real < menor_tiempo:
+                        menor_tiempo = tiempo_real
+                        mejor_resultado = intento
                 
                 if mejor_resultado:
                     participantes_con_mejor_puntaje.append(mejor_resultado)
             
-            # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
-            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+            # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
+            def get_tiempo_real(resultado):
+                if resultado.fecha_inicio and resultado.fecha_fin:
+                    return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+                return float('inf')  # Si no tiene fechas, lo colocamos al final
+            
+            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
             
             # Tomar solo los mejores 5
             mejores_resultados = resultados_ordenados[:5]
@@ -602,19 +636,36 @@ class Evaluacion(models.Model):
                 participante_id = item['participante']
                 mejor_puntaje = item['mejor_puntaje']
                 
-                # Obtener el resultado con el mejor puntaje (si hay empate, el más rápido)
-                mejor_resultado = ResultadoEvaluacion.objects.filter(
+                # Obtener todos los intentos con el mejor puntaje para este participante
+                intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
                     evaluacion=evaluacion_etapa1,
                     participante_id=participante_id,
                     completada=True,
-                    puntos_obtenidos=mejor_puntaje
-                ).order_by('tiempo_utilizado').first()
+                    puntos_obtenidos=mejor_puntaje,
+                    fecha_inicio__isnull=False,
+                    fecha_fin__isnull=False
+                )
+                
+                # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
+                mejor_resultado = None
+                menor_tiempo = float('inf')
+                
+                for intento in intentos_con_mejor_puntaje:
+                    tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
+                    if tiempo_real < menor_tiempo:
+                        menor_tiempo = tiempo_real
+                        mejor_resultado = intento
                 
                 if mejor_resultado:
                     participantes_con_mejor_puntaje.append(mejor_resultado)
             
-            # Ordenar por puntaje descendente y tiempo ascendente (igual que el ranking)
-            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, x.tiempo_utilizado))
+            # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
+            def get_tiempo_real(resultado):
+                if resultado.fecha_inicio and resultado.fecha_fin:
+                    return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
+                return float('inf')  # Si no tiene fechas, lo colocamos al final
+            
+            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
             
             # Tomar solo los mejores 5
             mejores_resultados = resultados_ordenados[:5]

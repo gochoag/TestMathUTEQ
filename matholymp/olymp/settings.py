@@ -10,7 +10,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-#CSRF_TRUSTED_ORIGINS = ['https://aplicaciones.uteq.edu.ec:9051']
+CSRF_TRUSTED_ORIGINS = ['https://aplicaciones.uteq.edu.ec:9051']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
