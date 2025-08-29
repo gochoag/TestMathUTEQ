@@ -3093,7 +3093,7 @@ def exportar_resultado_pdf(request, pk):
         # Tabla de resultados mejorada
         resultados_data = [
             ['Métrica', 'Resultado'],
-            ['Nota Final', f"{puntaje_numerico:.4f}"],
+            ['Nota Final', f"{puntaje_numerico:.3f}"],
             ['Tiempo Utilizado', resultado.get_tiempo_formateado()],
             ['Fecha de Finalización', resultado.fecha_fin.strftime("%d/%m/%Y a las %H:%M") if resultado.fecha_fin else 'No disponible'],
         ]
@@ -3971,18 +3971,18 @@ def exportar_ranking_pdf(request, pk):
             estado = "Finalista"
         elif evaluacion.etapa == 3:
             if i == 1:
-                estado = "🥇 Oro"
+                estado = "Oro"
             elif i == 2 or i == 3:
-                estado = "🥈 Plata"
+                estado = "Plata"
             elif i == 4 or i == 5:
-                estado = "🥉 Bronce"
+                estado = "Bronce"
             else:
                 estado = "Participante"
         else:
             estado = "Participante"
         
         # Formatear puntaje - usar puntos_obtenidos directamente
-        puntaje_str = f"{resultado.puntos_obtenidos:.1f}"
+        puntaje_str = f"{resultado.puntos_obtenidos:.3f}"
         
         # Agregar fila a la tabla
         table_data.append([
