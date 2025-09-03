@@ -4018,9 +4018,9 @@ def exportar_ranking_pdf(request, pk):
         elif evaluacion.etapa == 3:
             if i == 1:
                 estado = "Oro"
-            elif i == 2 or i == 3:
+            elif i == 2:
                 estado = "Plata"
-            elif i == 4 or i == 5:
+            elif i == 3:
                 estado = "Bronce"
             else:
                 estado = "Participante"
@@ -4092,11 +4092,11 @@ def exportar_ranking_pdf(request, pk):
                 table_style.add('BACKGROUND', (5, row_index), (5, row_index), gold_color)
                 table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
                 table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-            elif i == 2 or i == 3:  # Plata
+            elif i == 2:  # Plata
                 table_style.add('BACKGROUND', (5, row_index), (5, row_index), silver_color)
                 table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
                 table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-            elif i == 4 or i == 5:  # Bronce
+            elif i == 3:  # Bronce
                 table_style.add('BACKGROUND', (5, row_index), (5, row_index), bronze_color)
                 table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
                 table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')

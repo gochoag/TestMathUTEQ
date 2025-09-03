@@ -92,9 +92,9 @@
                                             {% if evaluacion.etapa == 3 %}
                                                 {% if forloop.counter == 1 %}
                                                     <i class="bi bi-trophy-fill" style="font-size: 2rem; color: #FFD700;" title="ORO"></i>
-                                                {% elif forloop.counter == 2 or forloop.counter == 3 %}
+                                                {% elif forloop.counter == 2 %}
                                                     <i class="bi bi-award-fill text-secondary" style="font-size: 2rem;" title="PLATA"></i>
-                                                {% elif forloop.counter == 4 or forloop.counter == 5 %}
+                                                {% elif forloop.counter == 3 %}
                                                     <i class="bi bi-award-fill" style="font-size: 2rem; color: #CD7F32;" title="BRONCE"></i>
                                                 {% else %}
                                                     <span class="badge bg-primary" style="font-size: 1.2rem;">{{ forloop.counter }}</span>
@@ -155,7 +155,7 @@
                                         {% endif %}
                                     {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
                                         class="table-success"
-                                    {% elif evaluacion.etapa == 3 and forloop.counter <= 5 %}
+                                    {% elif evaluacion.etapa == 3 and forloop.counter <= 3 %}
                                         class="table-warning"
                                     {% endif %}
                                 >
@@ -163,9 +163,9 @@
                                         {% if evaluacion.etapa == 3 %}
                                             {% if forloop.counter == 1 %}
                                                 <i class="bi bi-trophy-fill" style="color: #FFD700;"></i>
-                                            {% elif forloop.counter == 2 or forloop.counter == 3 %}
+                                            {% elif forloop.counter == 2 %}
                                                 <i class="bi bi-award-fill text-secondary"></i>
-                                            {% elif forloop.counter == 4 or forloop.counter == 5 %}
+                                            {% elif forloop.counter == 3 %}
                                                 <i class="bi bi-award-fill" style="color: #CD7F32;"></i>
                                             {% endif %}
                                         {% endif %}
@@ -196,9 +196,9 @@
                                         {% elif evaluacion.etapa == 3 %}
                                             {% if forloop.counter == 1 %}
                                                 <span class="badge" style="background-color: #FFD700; color: #000;">Oro</span>
-                                            {% elif forloop.counter == 2 or forloop.counter == 3 %}
+                                            {% elif forloop.counter == 2 %}
                                                 <span class="badge bg-secondary">Plata</span>
-                                            {% elif forloop.counter == 4 or forloop.counter == 5 %}
+                                            {% elif forloop.counter == 3 %}
                                                 <span class="badge" style="background-color: #CD7F32; color: #fff;">Bronce</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">Participante</span>
