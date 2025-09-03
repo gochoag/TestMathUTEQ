@@ -548,6 +548,55 @@ class Evaluacion(models.Model):
         
         return [resultado.participante for resultado in mejores_resultados]
     
+    def has_students_taking_exam(self):
+        """Verifica si hay estudiantes que están actualmente rindiendo la evaluación"""
+        # Si la evaluación no está guardada en la BD, no puede tener estudiantes rindiendo
+        if not self.pk:
+            return False
+            
+        # Un estudiante está rindiendo si tiene un ResultadoEvaluacion no completado y activo
+        from django.utils import timezone
+        now = timezone.now()
+        
+        # Verificar si hay resultados activos (no completados) donde la última actividad
+        # fue hace menos de 1 hora (consideramos que aún está activo)
+        resultados_activos = self.resultados.filter(
+            completada=False,
+            fecha_inicio__isnull=False,
+            ultima_actividad__gte=now - timezone.timedelta(hours=1)
+        )
+        
+        return resultados_activos.exists()
+    
+    def can_modify_questions(self):
+        """
+        Verifica si se pueden modificar las preguntas del banco de la evaluación.
+        No se puede modificar si:
+        1. La evaluación está en estado "Disponible" (activa)
+        2. Hay estudiantes rindiendo actualmente
+        """
+        # Si la evaluación está disponible (activa)
+        if self.is_available():
+            return False
+        
+        # Si hay estudiantes rindiendo
+        if self.has_students_taking_exam():
+            return False
+        
+        return True
+    
+    def get_question_modification_restriction_message(self):
+        """
+        Retorna el mensaje de restricción apropiado para modificar preguntas
+        """
+        if self.is_available():
+            return "No se pueden modificar las preguntas mientras la evaluación esté disponible."
+        
+        if self.has_students_taking_exam():
+            return "No se pueden modificar las preguntas mientras hay estudiantes rindiendo la evaluación."
+        
+        return ""
+
     def get_participantes_etapa3(self):
         """Obtiene los 5 mejores de la etapa 2 (flujo actual) o directamente de etapa 1 si hay solo 2 etapas."""
         if self.etapa != 3:
@@ -1005,8 +1054,8 @@ class MonitoreoEvaluacion(models.Model):
             self.save()
     
     def esta_activo(self):
-        """Verifica si el estudiante está activo (última actividad en los últimos 5 minutos)"""
-        tiempo_limite = timezone.now() - timezone.timedelta(minutes=5)
+        """Verifica si el estudiante está activo (última actividad en la última hora)"""
+        tiempo_limite = timezone.now() - timezone.timedelta(hours=1)
         return self.ultima_actividad > tiempo_limite
     
     def get_estado_display_color(self):

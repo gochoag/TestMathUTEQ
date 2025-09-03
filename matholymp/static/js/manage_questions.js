@@ -147,6 +147,20 @@ async function processBase64Images(content) {
 
 // Función principal para guardar pregunta
 async function saveQuestion() {
+    // Verificar si se pueden modificar las preguntas
+    if (window.canModifyQuestions === false) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Operación no permitida',
+            text: window.restrictionMessage || 'No se pueden agregar preguntas en este momento.',
+            confirmButtonText: 'Entendido',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+
     // Obtener datos de los editores CKEditor
     let pregunta = CKEDITOR.instances.editorPregunta.getData();
     let opciones = [];
@@ -307,6 +321,20 @@ async function saveQuestion() {
 
 // Función para eliminar pregunta
 function deletePregunta(preguntaId) {
+    // Verificar si se pueden modificar las preguntas
+    if (window.canModifyQuestions === false) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Operación no permitida',
+            text: window.restrictionMessage || 'No se pueden eliminar preguntas en este momento.',
+            confirmButtonText: 'Entendido',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+
     Swal.fire({
         title: '¿Estás seguro?',
         text: "Esta acción no se puede deshacer. Se eliminará la pregunta y todas sus opciones.",
@@ -380,6 +408,20 @@ function deletePregunta(preguntaId) {
 
 // Función para editar pregunta
 async function editPregunta(preguntaId) {
+    // Verificar si se pueden modificar las preguntas
+    if (window.canModifyQuestions === false) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Operación no permitida',
+            text: window.restrictionMessage || 'No se pueden editar preguntas en este momento.',
+            confirmButtonText: 'Entendido',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+
     try {
         // Mostrar loading
         Swal.fire({
@@ -537,6 +579,27 @@ function clearForm() {
 
 // Función para actualizar puntos de una pregunta
 async function actualizarPuntos(preguntaId, puntos) {
+    // Verificar si se pueden modificar las preguntas
+    if (window.canModifyQuestions === false) {
+        // Mostrar mensaje y revertir el valor
+        Swal.fire({
+            icon: 'warning',
+            title: 'Operación no permitida',
+            text: window.restrictionMessage || 'No se pueden modificar preguntas en este momento.',
+            confirmButtonText: 'Entendido',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        
+        // Revertir el valor del input
+        const input = document.querySelector(`[onchange="actualizarPuntos(${preguntaId}, this.value)"]`);
+        if (input) {
+            input.value = input.defaultValue || input.getAttribute('data-original-value') || 1;
+        }
+        return;
+    }
+
     try {
         const response = await fetch(`/pregunta/${preguntaId}/puntos/`, {
             method: 'POST',

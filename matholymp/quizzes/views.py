@@ -59,6 +59,16 @@ def has_full_access(user):
     except AdminProfile.DoesNotExist:
         return False
 
+def check_question_modification_allowed(evaluacion):
+    """
+    Verifica si se pueden modificar las preguntas de una evaluación.
+    Retorna una tupla (allowed: bool, message: str)
+    """
+    if not evaluacion.can_modify_questions():
+        message = evaluacion.get_question_modification_restriction_message()
+        return False, message
+    return True, ""
+
 
 # Función para validar contraseñas de forma robusta
 def validate_password_strength(password, username):
@@ -278,13 +288,11 @@ def take_quiz(request, pk):
                     pregunta_key = f'pregunta_{pregunta.id}'
                     if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
                         # Nuevo sistema de puntuación:
-                        # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
+                        # Correcta: +1 punto, Incorrecta: 0 puntos, No respondida: 0 puntos
                         if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
                             score += 1
                             puntos_obtenidos += 1  # +1 punto por respuesta correcta
-                        else:
-                            puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
-                    # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
+                        
                 
                 # Ponderar a escala de 10 puntos
                 puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
@@ -401,15 +409,12 @@ def take_quiz(request, pk):
                 respuestas_finales[f'pregunta_{pregunta.id}'] = selected
                 
                 # Nuevo sistema de puntuación:
-                # Correcta: +1 punto, Incorrecta: -0.25 puntos, No respondida: 0 puntos
+                # Correcta: +1 punto, Incorrecta: 0 puntos, No respondida: 0 puntos
                 if selected:
                     if pregunta.opciones.filter(id=selected, is_correct=True).exists():
                         score += 1
                         puntos_obtenidos += 1  # +1 punto por respuesta correcta
-                    else:
-                        puntos_obtenidos -= 0.25  # -0.25 puntos por respuesta incorrecta
-                # Si no hay respuesta seleccionada, no se suma ni resta nada (0 puntos)
-            
+                   
             # Ponderar a escala de 10 puntos
             puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
             # Asegurar que el puntaje no sea negativo
@@ -1976,11 +1981,18 @@ def manage_questions(request, eval_id):
     Vista para gestionar las preguntas de una evaluación específica
     """
     evaluacion = get_object_or_404(Evaluacion, pk=eval_id)
+    
+    # Verificar si se pueden modificar las preguntas
+    can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+    
     # Optimizar consulta para incluir opciones y evitar N+1
     preguntas = evaluacion.preguntas.prefetch_related('opciones').order_by('id')
+    
     context = {
         'evaluacion': evaluacion,
-        'preguntas': preguntas
+        'preguntas': preguntas,
+        'can_modify_questions': can_modify,
+        'restriction_message': restriction_message,
     }
     return render(request, 'quizzes/manage_questions.html', context)
 
@@ -2128,6 +2140,14 @@ def save_question(request, eval_id):
             # Obtener la evaluación
             evaluacion = get_object_or_404(Evaluacion, pk=eval_id)
             
+            # Verificar si se pueden modificar las preguntas
+            can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+            if not can_modify:
+                return JsonResponse({
+                    'success': False, 
+                    'error': restriction_message
+                }, status=403)
+            
             # Obtener datos del formulario
             pregunta_texto = data.get('pregunta', '').strip()
             opciones = data.get('opciones', [])
@@ -2226,6 +2246,14 @@ def delete_question(request, pk):
             pregunta = get_object_or_404(Pregunta, pk=pk)
             evaluacion = pregunta.evaluacion
             
+            # Verificar si se pueden modificar las preguntas
+            can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+            if not can_modify:
+                return JsonResponse({
+                    'success': False, 
+                    'error': restriction_message
+                }, status=403)
+            
             # Eliminar la pregunta (esto también eliminará las opciones por CASCADE)
             pregunta.delete()
             
@@ -2297,6 +2325,15 @@ def update_question(request, pk):
         try:
             data = json.loads(request.body)
             pregunta = get_object_or_404(Pregunta, pk=pk)
+            evaluacion = pregunta.evaluacion
+            
+            # Verificar si se pueden modificar las preguntas
+            can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+            if not can_modify:
+                return JsonResponse({
+                    'success': False, 
+                    'error': restriction_message
+                }, status=403)
             
             # Validar datos
             pregunta_texto = data.get('pregunta', '').strip()
@@ -3219,6 +3256,15 @@ def actualizar_puntos_pregunta(request, pk):
         try:
             data = json.loads(request.body)
             pregunta = get_object_or_404(Pregunta, pk=pk)
+            evaluacion = pregunta.evaluacion
+            
+            # Verificar si se pueden modificar las preguntas
+            can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+            if not can_modify:
+                return JsonResponse({
+                    'success': False, 
+                    'error': restriction_message
+                }, status=403)
             
             puntos = data.get('puntos', 1)
             
@@ -4111,7 +4157,7 @@ def monitoreo_evaluacion(request, pk):
     
     # Estadísticas generales
     total_participantes = len(evaluacion.get_participantes_autorizados())
-    participantes_activos = monitoreos.filter(ultima_actividad__gte=timezone.now() - timezone.timedelta(minutes=5)).count()
+    participantes_activos = monitoreos.filter(ultima_actividad__gte=timezone.now() - timezone.timedelta(hours=1)).count()
     participantes_finalizados = MonitoreoEvaluacion.objects.filter(
         evaluacion=evaluacion,
         estado='finalizado'
@@ -4168,10 +4214,10 @@ def actualizar_monitoreo(request, pk):
         monitoreo.tiempo_activo = data.get('tiempo_activo', monitoreo.tiempo_activo)
         monitoreo.tiempo_inactivo = data.get('tiempo_inactivo', monitoreo.tiempo_inactivo)
         
-        # Verificar inactividad (más de 5 minutos sin actividad)
+        # Verificar inactividad (más de 1 hora sin actividad)
         tiempo_ultima_actividad = (timezone.now() - monitoreo.ultima_actividad).total_seconds()
-        if tiempo_ultima_actividad > 300:  # 5 minutos
-            monitoreo.agregar_alerta('inactividad', f'Estudiante inactivo por {int(tiempo_ultima_actividad/60)} minutos', 'media')
+        if tiempo_ultima_actividad > 3600:  # 1 hora
+            monitoreo.agregar_alerta('inactividad', f'Estudiante inactivo por {int(tiempo_ultima_actividad/3600)} horas', 'media')
         
         monitoreo.save()
         

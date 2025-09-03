@@ -109,8 +109,8 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 
 
 
-# Tiempo de sesión en segundos (30 minutos = 1800 segundos)
-SESSION_COOKIE_AGE = 1800
+# Tiempo de sesión en segundos (60 minutos = 3600 segundos)
+SESSION_COOKIE_AGE = 3600
 
 # La sesión expira cuando el usuario cierra el navegador
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
