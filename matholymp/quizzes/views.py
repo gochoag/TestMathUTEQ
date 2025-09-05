@@ -228,7 +228,7 @@ def take_quiz(request, pk):
                 
                 if monitoreo:
                     # Obtener preguntas para calcular progreso actual
-                    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
                     respuestas_actuales = resultado_activo.respuestas_guardadas or {}
                     preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
                     
@@ -262,7 +262,7 @@ def take_quiz(request, pk):
                     
                     if monitoreo:
                         # Obtener preguntas para calcular progreso actual
-                        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
                         respuestas_actuales = resultado_activo.respuestas_guardadas or {}
                         preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
                         
@@ -278,7 +278,7 @@ def take_quiz(request, pk):
             else:
                 # Si se acabó el tiempo, finalizar este intento
                 respuestas_guardadas = resultado_activo.respuestas_guardadas or {}
-                preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+                preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
                 
                 score = 0
                 puntos_obtenidos = 0
@@ -400,7 +400,8 @@ def take_quiz(request, pk):
             score = 0
             puntos_obtenidos = 0
             puntos_totales = 0
-            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            numero_intento_actual = resultado_activo.numero_intento if resultado_activo else 1
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, numero_intento_actual)
             total_questions = len(preguntas_mostradas)
             
             respuestas_finales = {}
@@ -534,7 +535,13 @@ def take_quiz(request, pk):
         })
     
     # Obtener preguntas para este estudiante específico
-    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+    # Si hay un resultado activo, usar su número de intento, si no, obtener el siguiente
+    if resultado_activo:
+        numero_intento = resultado_activo.numero_intento
+    else:
+        numero_intento = ResultadoEvaluacion.get_siguiente_numero_intento(evaluacion, participante)
+    
+    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, numero_intento)
     
     if not preguntas_mostradas:
         messages.error(request, 'Esta evaluación no tiene preguntas configuradas.')
@@ -692,7 +699,7 @@ def guardar_respuesta_automatica(request, pk):
             
             # Calcular estadísticas del monitoreo
             preguntas_respondidas = len([r for r in respuestas.values() if r])
-            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id)
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento)
             total_preguntas = len(preguntas_mostradas)
             
             # Actualizar datos del monitoreo

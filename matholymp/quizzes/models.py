@@ -754,8 +754,8 @@ class Evaluacion(models.Model):
         # Obtener preguntas aleatorias
         return list(self.preguntas.prefetch_related('opciones').order_by('?')[:self.preguntas_a_mostrar])
     
-    def get_preguntas_para_estudiante(self, participante_id):
-        """Obtiene preguntas específicas para un estudiante (consistente)"""
+    def get_preguntas_para_estudiante(self, participante_id, numero_intento=1):
+        """Obtiene preguntas específicas para un estudiante para un intento específico"""
         import hashlib
         
         total_preguntas = self.preguntas.count()
@@ -766,8 +766,9 @@ class Evaluacion(models.Model):
         if total_preguntas <= self.preguntas_a_mostrar:
             return list(self.preguntas.prefetch_related('opciones').all())
         
-        # Usar hash del participante para selección consistente pero aleatoria
-        hash_participante = hashlib.md5(f"{self.id}_{participante_id}".encode()).hexdigest()
+        # Usar hash del participante + número de intento para selección aleatoria por intento
+        hash_base = f"{self.id}_{participante_id}_{numero_intento}"
+        hash_participante = hashlib.md5(hash_base.encode()).hexdigest()
         seed = int(hash_participante[:8], 16)
         
         # Obtener todas las preguntas ordenadas por ID
