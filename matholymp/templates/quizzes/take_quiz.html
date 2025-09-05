@@ -317,7 +317,7 @@ let modalMostrandose = false; // Variable para controlar si el modal ya se está
 
 // Variables para control de cambios de pestaña
 let cambiosPestana = {% if continuar_evaluacion and resultado.cambios_pestana %}{{ resultado.cambios_pestana }}{% else %}0{% endif %};
-const maxCambiosPestana = 3;
+const maxCambiosPestana = 4;
 let documentoVisible = true;
 let advertenciasMostradas = false;
 
@@ -468,8 +468,8 @@ function verificarEstadoEvaluacion() {
                             <div class="text-center">
                                 <p>Un administrador ha reducido tus cambios de pestaña:</p>
                                 <div class="alert alert-info">
-                                    <strong>Anterior:</strong> ${cambiosAnteriores}/3<br>
-                                    <strong>Nuevo:</strong> ${cambiosPestana}/3
+                                    <strong>Anterior:</strong> ${cambiosAnteriores}/4<br>
+                                    <strong>Nuevo:</strong> ${cambiosPestana}/4
                                 </div>
                                 <p class="text-success">
                                     <i class="bi bi-check-circle"></i>
@@ -600,7 +600,9 @@ function actualizarContadorCambiosPestana() {
             contador.className = 'fw-bold fs-6 text-warning';
         } else if (cambiosPestana === 2) {
             contador.className = 'fw-bold fs-6 text-danger';
-        } else if (cambiosPestana >= 3) {
+        } else if (cambiosPestana === 3) {
+            contador.className = 'fw-bold fs-6 text-danger';
+        } else if (cambiosPestana >= 4) {
             contador.className = 'fw-bold fs-6 text-danger bg-danger text-white px-2 rounded';
         }
     }

@@ -308,7 +308,7 @@
                     <div class="col-6">
                         <div class="text-center p-2 border rounded bg-light">
                             <small class="text-muted d-block">Máximo Permitido</small>
-                            <h4 class="mb-0 text-warning" id="cambios-maximo">3</h4>
+                            <h4 class="mb-0 text-warning" id="cambios-maximo">4</h4>
                         </div>
                     </div>
                 </div>
@@ -649,7 +649,7 @@ function generarFilaMonitoreo(monitoreo) {
             ${(() => {
                 // Mostrar cambios de pestañas con colores según la cantidad
                 const cambiosActuales = monitoreo.cambios_pestana_actuales || 0;
-                const cambiosMaximo = monitoreo.cambios_pestana_maximo || 3;
+                const cambiosMaximo = monitoreo.cambios_pestana_maximo || 4;
                 
                 let badgeColor = 'bg-success';
                 if (cambiosActuales >= cambiosMaximo) {
@@ -698,7 +698,7 @@ function generarFilaMonitoreo(monitoreo) {
                                     <i class="bi bi-exclamation-triangle"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-danger" 
-                                        onclick="reducirCambiosPestana(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${monitoreo.cambios_pestana_actuales || 0}, ${monitoreo.cambios_pestana_maximo || 3})" 
+                                        onclick="reducirCambiosPestana(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${monitoreo.cambios_pestana_actuales || 0}, ${monitoreo.cambios_pestana_maximo || 4})" 
                                         title="Reducir cambios de pestañas">
                                     <i class="bi bi-dash-circle"></i>
                                 </button>
@@ -1218,7 +1218,7 @@ function darNuevoIntento(participanteId, nombreParticipante, intentosUsados = 0,
 }
 
 // Función para reducir cambios de pestañas (nueva funcionalidad)
-function reducirCambiosPestana(participanteId, nombreParticipante, cambiosActuales = 0, cambiosMaximo = 3) {
+function reducirCambiosPestana(participanteId, nombreParticipante, cambiosActuales = 0, cambiosMaximo = 4) {
     // Validar que el participante tiene cambios de pestañas para reducir
     if (cambiosActuales === 0) {
         showDynamicToast({
@@ -1242,7 +1242,7 @@ function reducirCambiosPestana(participanteId, nombreParticipante, cambiosActual
     // Configurar el select con opciones válidas (no se puede reducir más de lo que tiene)
     const selectReducir = document.getElementById('cantidad-reducir');
     selectReducir.innerHTML = '';
-    for (let i = 1; i <= Math.min(cambiosActuales, 3); i++) {
+    for (let i = 1; i <= Math.min(cambiosActuales, 4); i++) {
         const option = document.createElement('option');
         option.value = i;
         option.textContent = `${i} cambio${i > 1 ? 's' : ''}`;

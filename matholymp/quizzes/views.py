@@ -460,15 +460,15 @@ def take_quiz(request, pk):
                     
                     monitoreo.alertas.append({
                         'tipo': 'finalizacion_automatica',
-                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (3/3)',
+                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
                         'timestamp': timezone.now().isoformat(),
                         'motivo': 'cambios_pestana_excedidos',
-                        'cambios_realizados': monitoreo.cambios_pestana or 3
+                        'cambios_realizados': monitoreo.cambios_pestana or 4
                     })
                     
                     # Marcar la finalización administrativa en el monitoreo
                     monitoreo.finalizado_por_admin = request.user
-                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (3/3)'
+                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
                     monitoreo.fecha_finalizacion_admin = timezone.now()
                 
                 monitoreo.save()
@@ -507,23 +507,23 @@ def take_quiz(request, pk):
                     
                     monitoreo.alertas.append({
                         'tipo': 'finalizacion_automatica',
-                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (3/3)',
+                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
                         'timestamp': timezone.now().isoformat(),
                         'motivo': 'cambios_pestana_excedidos',
-                        'cambios_realizados': monitoreo.cambios_pestana or 3
+                        'cambios_realizados': monitoreo.cambios_pestana or 4
                     })
                     
                     # Marcar la finalización administrativa en el monitoreo
                     monitoreo.finalizado_por_admin = request.user
-                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (3/3)'
+                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
                     monitoreo.fecha_finalizacion_admin = timezone.now()
                 
                 monitoreo.save()
         
         # Agregar un mensaje específico si fue finalizada por cambios de pestaña
         if finalizada_por_cambios_pestana:
-            messages.warning(request, 'Tu evaluación fue finalizada automáticamente por exceder el límite de cambios de pestaña permitidos (3/3). Tu puntaje es 0/10.')
-        
+            messages.warning(request, 'Tu evaluación fue finalizada automáticamente por exceder el límite de cambios de pestaña permitidos (4/4). Tu puntaje es 0/10.')
+
         return render(request, 'quizzes/result.html', {
             'evaluacion': evaluacion, 
             'resultado': resultado_activo if resultado_activo else nuevo_resultado,
@@ -859,7 +859,7 @@ def verificar_estado_evaluacion(request, pk):
             cambios_actuales = getattr(resultado_activo, 'cambios_pestana', 0) or 0
             response_data.update({
                 'cambios_pestana_actuales': cambios_actuales,
-                'cambios_pestana_maximo': 3
+                'cambios_pestana_maximo': 4
             })
         
         return JsonResponse(response_data)
@@ -4347,7 +4347,7 @@ def obtener_estado_monitoreo(request, pk):
             'intentos_usados': intentos_usados,
             # CAMPOS DE CAMBIOS DE PESTAÑAS
             'cambios_pestana_actuales': resultado_en_progreso.cambios_pestana if resultado_en_progreso and hasattr(resultado_en_progreso, 'cambios_pestana') else (resultado.cambios_pestana if resultado and hasattr(resultado, 'cambios_pestana') else 0),
-            'cambios_pestana_maximo': 3  # Límite máximo de cambios de pestañas
+            'cambios_pestana_maximo': 4  # Límite máximo de cambios de pestañas
         })
     
     return JsonResponse({
