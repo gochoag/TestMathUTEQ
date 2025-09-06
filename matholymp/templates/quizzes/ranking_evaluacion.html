@@ -20,47 +20,75 @@
                     <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left me-1"></i> Volver
                     </a>
-                                    <a href="{% url 'quizzes:exportar_ranking_pdf' evaluacion.pk %}" class="btn btn-primary">
-                    <i class="bi bi-printer me-1"></i> Exportar PDF
-                </a>
+                    <a href="{% url 'quizzes:exportar_ranking_pdf' evaluacion.pk %}?estado={{ filtro_estado }}" class="btn btn-primary">
+                        <i class="bi bi-printer me-1"></i> Exportar PDF
+                    </a>
                 </div>
             </div>
 
             <!-- Información de la evaluación -->
             <div class="row mb-4">
                 <div class="col-md-3">
-                    <div class="card bg-primary text-white">
+                    <div class="card bg-primary text-white stats-card">
                         <div class="card-body text-center">
-                            <i class="bi bi-people display-4"></i>
-                            <h4 class="mt-2">{{ total_participantes }}</h4>
-                            <p class="mb-0">Participantes</p>
+                            <i class="bi bi-people stats-icon"></i>
+                            <h5 class="mt-1 mb-0">{{ total_participantes }}</h5>
+                            <small class="mb-0">Participantes</small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-success text-white">
+                    <div class="card bg-success text-white stats-card">
                         <div class="card-body text-center">
-                            <i class="bi bi-graph-up display-4"></i>
-                            <h4 class="mt-2">{{ promedio_puntaje|floatformat:3 }}</h4>
-                            <p class="mb-0">Promedio</p>
+                            <i class="bi bi-graph-up stats-icon"></i>
+                            <h5 class="mt-1 mb-0">{{ promedio_puntaje|floatformat:3 }}</h5>
+                            <small class="mb-0">Promedio</small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-info text-white">
+                    <div class="card bg-info text-white stats-card">
                         <div class="card-body text-center">
-                            <i class="bi bi-clock display-4"></i>
-                            <h4 class="mt-2">{{ promedio_tiempo|floatformat:1 }}m</h4>
-                            <p class="mb-0">Tiempo Promedio</p>
+                            <i class="bi bi-clock stats-icon"></i>
+                            <h5 class="mt-1 mb-0">{{ promedio_tiempo|floatformat:1 }}m</h5>
+                            <small class="mb-0">Tiempo Promedio</small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="card bg-warning text-dark">
+                    <div class="card bg-warning text-dark stats-card">
                         <div class="card-body text-center">
-                            <i class="bi bi-flag display-4"></i>
-                            <h4 class="mt-2">{{ evaluacion.etapa }}</h4>
-                            <p class="mb-0">Etapa</p>
+                            <i class="bi bi-flag stats-icon"></i>
+                            <h5 class="mt-1 mb-0">{{ evaluacion.etapa }}</h5>
+                            <small class="mb-0">Etapa</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtros de estado -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-title mb-3">
+                                <i class="bi bi-funnel me-2"></i>
+                                Filtrar por estado
+                            </h6>
+                            <div class="btn-group" role="group" aria-label="Filtros de estado">
+                                <a href="?estado=todos" class="btn {% if filtro_estado == 'todos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                    <i class="bi bi-people me-1"></i>
+                                    Todos
+                                </a>
+                                <a href="?estado=clasificados" class="btn {% if filtro_estado == 'clasificados' %}btn-success{% else %}btn-outline-success{% endif %}">
+                                    <i class="bi bi-check-circle me-1"></i>
+                                    Clasificados
+                                </a>
+                                <a href="?estado=no_clasificados" class="btn {% if filtro_estado == 'no_clasificados' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                                    <i class="bi bi-x-circle me-1"></i>
+                                    No clasificados
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -124,10 +152,21 @@
             <!-- Tabla de ranking completo -->
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="bi bi-list-ol me-2"></i>
-                        Ranking Completo
-                    </h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-list-ol me-2"></i>
+                            {% if filtro_estado == 'clasificados' %}
+                                Participantes Clasificados
+                            {% elif filtro_estado == 'no_clasificados' %}
+                                Participantes No Clasificados
+                            {% else %}
+                                Ranking Completo
+                            {% endif %}
+                        </h5>
+                        <span class="badge bg-info">
+                            Mostrando {{ resultados|length }} de {{ total_participantes }} participantes
+                        </span>
+                    </div>
                 </div>
                 <div class="card-body">
                     {% if resultados %}
@@ -135,9 +174,10 @@
                         <table class="table table-hover">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>Posición</th>
+                                    <th>TOP</th>
                                     <th>Participante</th>
                                     <th>Cédula</th>
+                                    <th>Colegio</th>
                                     <th>Puntaje</th>
                                     <th>Tiempo</th>
                                     <th>Fecha</th>
@@ -148,33 +188,40 @@
                                 {% for resultado in resultados %}
                                 <tr
                                     {% if evaluacion.etapa == 1 %}
-                                        {% if num_etapas == 2 and forloop.counter <= 5 %}
+                                        {% if num_etapas == 2 and resultado.posicion_real <= 5 %}
                                             class="table-success"
-                                        {% elif num_etapas == 3 and forloop.counter <= 15 %}
+                                        {% elif num_etapas == 3 and resultado.posicion_real <= 15 %}
                                             class="table-success"
                                         {% endif %}
-                                    {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
+                                    {% elif evaluacion.etapa == 2 and resultado.posicion_real <= 5 %}
                                         class="table-success"
-                                    {% elif evaluacion.etapa == 3 and forloop.counter <= 3 %}
+                                    {% elif evaluacion.etapa == 3 and resultado.posicion_real <= 3 %}
                                         class="table-warning"
                                     {% endif %}
                                 >
                                     <td>
                                         {% if evaluacion.etapa == 3 %}
-                                            {% if forloop.counter == 1 %}
+                                            {% if resultado.posicion_real == 1 %}
                                                 <i class="bi bi-trophy-fill" style="color: #FFD700;"></i>
-                                            {% elif forloop.counter == 2 %}
+                                            {% elif resultado.posicion_real == 2 %}
                                                 <i class="bi bi-award-fill text-secondary"></i>
-                                            {% elif forloop.counter == 3 %}
+                                            {% elif resultado.posicion_real == 3 %}
                                                 <i class="bi bi-award-fill" style="color: #CD7F32;"></i>
                                             {% endif %}
                                         {% endif %}
-                                        <strong>{{ forloop.counter }}</strong>
+                                        <strong>{{ resultado.posicion_real }}</strong>
                                     </td>
                                     <td>
                                         <strong>{{ resultado.participante.NombresCompletos }}</strong>
                                     </td>
                                     <td>{{ resultado.participante.cedula }}</td>
+                                    <td>
+                                        {% if resultado.participante.colegio_nombre %}
+                                            <span>{{ resultado.participante.colegio_nombre }}</span>
+                                        {% else %}
+                                            <span class="text-muted fst-italic">Sin colegio asignado</span>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <span class="badge bg-success fs-6">{{ resultado.get_puntaje_numerico }}</span>
                                     </td>
@@ -184,21 +231,21 @@
                                     <td>{{ resultado.fecha_fin|date:"d/m/Y H:i" }}</td>
                                     <td>
                                         {% if evaluacion.etapa == 1 %}
-                                            {% if num_etapas == 2 and forloop.counter <= 5 %}
+                                            {% if num_etapas == 2 and resultado.posicion_real <= 5 %}
                                                 <span class="badge bg-success">Clasificado</span>
-                                            {% elif num_etapas == 3 and forloop.counter <= 15 %}
+                                            {% elif num_etapas == 3 and resultado.posicion_real <= 15 %}
                                                 <span class="badge bg-success">Clasificado</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">Participante</span>
                                             {% endif %}
-                                        {% elif evaluacion.etapa == 2 and forloop.counter <= 5 %}
+                                        {% elif evaluacion.etapa == 2 and resultado.posicion_real <= 5 %}
                                             <span class="badge bg-success">Finalista</span>
                                         {% elif evaluacion.etapa == 3 %}
-                                            {% if forloop.counter == 1 %}
+                                            {% if resultado.posicion_real == 1 %}
                                                 <span class="badge" style="background-color: #FFD700; color: #000;">Oro</span>
-                                            {% elif forloop.counter == 2 %}
+                                            {% elif resultado.posicion_real == 2 %}
                                                 <span class="badge bg-secondary">Plata</span>
-                                            {% elif forloop.counter == 3 %}
+                                            {% elif resultado.posicion_real == 3 %}
                                                 <span class="badge" style="background-color: #CD7F32; color: #fff;">Bronce</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">Participante</span>
@@ -247,6 +294,40 @@
         }
     }
     
+    /* Estilos para las tarjetas de estadísticas */
+    .stats-card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: none;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .stats-card .card-body {
+        padding: 1rem 0.75rem;
+    }
+    
+    .stats-icon {
+        font-size: 2rem;
+        opacity: 0.9;
+        margin-bottom: 0.25rem;
+    }
+    
+    .stats-card h5 {
+        font-weight: 700;
+        font-size: 1.5rem;
+        line-height: 1.2;
+    }
+    
+    .stats-card small {
+        font-size: 0.8rem;
+        opacity: 0.9;
+        font-weight: 500;
+    }
+    
     /* Estilos para las tarjetas de ganadores */
     .ganadores-card {
         transition: all 0.3s ease;
@@ -257,11 +338,78 @@
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
     
+    /* Estilos para los filtros */
+    .btn-group .btn {
+        transition: all 0.3s ease;
+        font-weight: 500;
+    }
+    
+    .btn-group .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .btn-group .btn.btn-primary,
+    .btn-group .btn.btn-success {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Estilos para la tabla de ranking */
+    .table-responsive {
+        border-radius: 0.375rem;
+        overflow: hidden;
+    }
+    
+    .table th {
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    /* Estilo especial para la columna de colegio */
+    .table td:nth-child(4) {
+        max-width: 200px;
+        word-wrap: break-word;
+        font-size: 0.9em;
+    }
+    
     /* Responsive para tarjetas de ganadores */
     @media (max-width: 768px) {
         .col-md-2 {
             flex: 0 0 50%;
             max-width: 50%;
+        }
+        
+        .btn-group {
+            width: 100%;
+        }
+        
+        .btn-group .btn {
+            flex: 1;
+            margin-bottom: 5px;
+        }
+        
+        /* Ajustes para las tarjetas de estadísticas en tablets */
+        .stats-card .card-body {
+            padding: 0.75rem 0.5rem;
+        }
+        
+        .stats-card h5 {
+            font-size: 1.3rem;
+        }
+        
+        .stats-icon {
+            font-size: 1.75rem;
+        }
+        
+        /* Ajustes para la tabla en tablets */
+        .table td:nth-child(4) {
+            max-width: 150px;
+            font-size: 0.85em;
+        }
+        
+        .table th, .table td {
+            padding: 0.5rem 0.3rem;
+            font-size: 0.9rem;
         }
     }
     
@@ -269,6 +417,58 @@
         .col-md-2 {
             flex: 0 0 100%;
             max-width: 100%;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+        
+        .btn-group .btn {
+            border-radius: 0.375rem !important;
+            margin-bottom: 5px;
+        }
+        
+        .btn-group .btn:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* Hacer las tarjetas de estadísticas aún más compactas en móviles */
+        .stats-card .card-body {
+            padding: 0.5rem 0.25rem;
+        }
+        
+        .stats-card h5 {
+            font-size: 1.1rem;
+        }
+        
+        .stats-icon {
+            font-size: 1.5rem;
+        }
+        
+        .stats-card small {
+            font-size: 0.7rem;
+        }
+        
+        /* Hacer la tabla más compacta en móviles */
+        .table th, .table td {
+            padding: 0.4rem 0.2rem;
+            font-size: 0.8rem;
+        }
+        
+        .table td:nth-child(4) {
+            max-width: 120px;
+            font-size: 0.75em;
+        }
+        
+        /* Ocultar algunas columnas en móviles muy pequeños */
+        .table th:nth-child(3), .table td:nth-child(3) {
+            display: none;
+        }
+        
+        .table th:nth-child(7), .table td:nth-child(7) {
+            display: none;
         }
     }
 </style>
