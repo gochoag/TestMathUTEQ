@@ -1983,6 +1983,67 @@ def student_results(request):
     return render(request, 'quizzes/student_results.html', context)
 
 @login_required
+def revisar_intento_evaluacion(request, pk):
+    """
+    Vista para revisar el intento de una evaluación específica del estudiante
+    """
+    # Verificar que sea estudiante
+    if not Participantes.objects.filter(user=request.user).exists():
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    participante = Participantes.objects.get(user=request.user)
+    
+    # Obtener el resultado específico
+    resultado = get_object_or_404(ResultadoEvaluacion, pk=pk, participante=participante, completada=True)
+    evaluacion = resultado.evaluacion
+    
+    # Obtener solo las preguntas que le tocaron a este participante en este intento específico
+    preguntas_del_intento = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento)
+    preguntas_con_respuestas = []
+    respuestas_guardadas = resultado.respuestas_guardadas or {}
+    
+    for pregunta in preguntas_del_intento:
+        pregunta_key = f"pregunta_{pregunta.id}"
+        respuesta_estudiante_id = respuestas_guardadas.get(pregunta_key)
+        
+        # Obtener las opciones
+        opciones_data = []
+        opcion_correcta = None
+        respuesta_estudiante = None
+        
+        for opcion in pregunta.opciones.all():
+            opciones_data.append({
+                'id': opcion.id,
+                'text': opcion.text,
+                'is_correct': opcion.is_correct,
+                'seleccionada': str(opcion.id) == str(respuesta_estudiante_id)
+            })
+            
+            if opcion.is_correct:
+                opcion_correcta = opcion
+            
+            if str(opcion.id) == str(respuesta_estudiante_id):
+                respuesta_estudiante = opcion
+        
+        preguntas_con_respuestas.append({
+            'pregunta': pregunta,
+            'opciones': opciones_data,
+            'respuesta_estudiante': respuesta_estudiante,
+            'opcion_correcta': opcion_correcta,
+            'es_correcta': respuesta_estudiante and respuesta_estudiante.is_correct if respuesta_estudiante else False
+        })
+    
+    context = {
+        'participante': participante,
+        'resultado': resultado,
+        'evaluacion': evaluacion,
+        'preguntas_con_respuestas': preguntas_con_respuestas,
+        'role': 'student'
+    }
+    return render(request, 'quizzes/revisar_intento.html', context)
+
+@login_required
 def manage_questions(request, eval_id):
     """
     Vista para gestionar las preguntas de una evaluación específica
@@ -2611,6 +2672,9 @@ def ranking_evaluacion(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
+    # Obtener el filtro de estado
+    filtro_estado = request.GET.get('estado', 'todos')
+    
     # Obtener resultados ordenados por puntaje y tiempo - solo el mejor por participante
     from django.db.models import Max
     
@@ -2693,14 +2757,61 @@ def ranking_evaluacion(request, pk):
     elif evaluacion.etapa == 3 and total_participantes >= 5:
         ganadores = resultados[:5]
     
+    # Aplicar filtro de estado y agregar posición real
+    # Primero pre-cargar la información de colegios para optimizar consultas
+    participante_ids = [resultado.participante.id for resultado in resultados]
+    from .models import GrupoParticipantes
+    grupos_info = {}
+    grupos_queryset = GrupoParticipantes.objects.filter(
+        participantes__id__in=participante_ids
+    ).select_related('representante').prefetch_related('participantes')
+    
+    for grupo in grupos_queryset:
+        for participante in grupo.participantes.all():
+            if participante.id not in grupos_info:
+                grupos_info[participante.id] = grupo.representante.NombreColegio if grupo.representante else None
+    
+    resultados_con_posicion = []
+    for i, resultado in enumerate(resultados, 1):
+        resultado.posicion_real = i
+        
+        # Asignar el colegio desde la información pre-cargada
+        resultado.participante.colegio_nombre = grupos_info.get(resultado.participante.id, None)
+        
+        resultados_con_posicion.append(resultado)
+    
+    resultados_filtrados = resultados_con_posicion
+    if filtro_estado == 'clasificados':
+        if evaluacion.etapa == 1:
+            top_n = 15 if num_etapas == 3 else 5
+            resultados_filtrados = resultados_con_posicion[:top_n]
+        elif evaluacion.etapa == 2:
+            if num_etapas == 3:
+                resultados_filtrados = resultados_con_posicion[:5]
+        elif evaluacion.etapa == 3:
+            resultados_filtrados = resultados_con_posicion[:5]
+    elif filtro_estado == 'no_clasificados':
+        if evaluacion.etapa == 1:
+            top_n = 15 if num_etapas == 3 else 5
+            resultados_filtrados = resultados_con_posicion[top_n:] if len(resultados_con_posicion) > top_n else []
+        elif evaluacion.etapa == 2:
+            if num_etapas == 3:
+                resultados_filtrados = resultados_con_posicion[5:] if len(resultados_con_posicion) > 5 else []
+            else:
+                resultados_filtrados = []  # En flujo de 2 etapas, etapa 2 no debería existir
+        elif evaluacion.etapa == 3:
+            resultados_filtrados = resultados_con_posicion[5:] if len(resultados_con_posicion) > 5 else []
+    
     context = {
         'evaluacion': evaluacion,
-        'resultados': resultados,
+        'resultados': resultados_filtrados,
+        'resultados_totales': resultados,  # Guardamos los resultados completos para estadísticas
         'total_participantes': total_participantes,
         'promedio_puntaje': round(promedio_puntos, 3),  # Mostrar como número con 3 decimales
         'promedio_tiempo': round(promedio_tiempo, 1),   # Mostrar tiempo en minutos con 1 decimal
         'ganadores': ganadores,
-        'num_etapas': num_etapas
+        'num_etapas': num_etapas,
+        'filtro_estado': filtro_estado
     }
     
     return render(request, 'quizzes/ranking_evaluacion.html', context)
@@ -3829,6 +3940,7 @@ def exportar_ranking_pdf(request, pk):
     """
     Genera un PDF del ranking de una evaluación específica con diseño moderno
     Muestra solo el mejor resultado de cada participante
+    Respeta los filtros de estado aplicados
     """
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
     
@@ -3836,6 +3948,9 @@ def exportar_ranking_pdf(request, pk):
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
         return redirect('quizzes:dashboard')
+    
+    # Obtener el filtro de estado desde los parámetros GET
+    filtro_estado = request.GET.get('estado', 'todos')
     
     # Obtener resultados únicos por participante - SOLO EL MEJOR PUNTAJE
     from django.db.models import Max
@@ -3885,9 +4000,60 @@ def exportar_ranking_pdf(request, pk):
     
     resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
     
+    # Aplicar filtro de estado y agregar información del colegio
+    from .models import SystemConfig, GrupoParticipantes
+    num_etapas = SystemConfig.get_num_etapas()
+    
+    # Pre-cargar información de colegios para optimizar consultas
+    participante_ids = [resultado.participante.id for resultado in resultados]
+    grupos_info = {}
+    grupos_queryset = GrupoParticipantes.objects.filter(
+        participantes__id__in=participante_ids
+    ).select_related('representante').prefetch_related('participantes')
+    
+    for grupo in grupos_queryset:
+        for participante in grupo.participantes.all():
+            if participante.id not in grupos_info:
+                grupos_info[participante.id] = grupo.representante.NombreColegio if grupo.representante else None
+    
+    # Agregar posición real y colegio a cada resultado
+    resultados_con_info = []
+    for i, resultado in enumerate(resultados, 1):
+        resultado.posicion_real = i
+        resultado.participante.colegio_nombre = grupos_info.get(resultado.participante.id, None)
+        resultados_con_info.append(resultado)
+    
+    # Aplicar filtro de estado
+    resultados_filtrados = resultados_con_info
+    titulo_filtro = "Ranking Completo"
+    
+    if filtro_estado == 'clasificados':
+        titulo_filtro = "Participantes Clasificados"
+        if evaluacion.etapa == 1:
+            top_n = 15 if num_etapas == 3 else 5
+            resultados_filtrados = resultados_con_info[:top_n]
+        elif evaluacion.etapa == 2:
+            if num_etapas == 3:
+                resultados_filtrados = resultados_con_info[:5]
+        elif evaluacion.etapa == 3:
+            resultados_filtrados = resultados_con_info[:5]
+    elif filtro_estado == 'no_clasificados':
+        titulo_filtro = "Participantes No Clasificados"
+        if evaluacion.etapa == 1:
+            top_n = 15 if num_etapas == 3 else 5
+            resultados_filtrados = resultados_con_info[top_n:] if len(resultados_con_info) > top_n else []
+        elif evaluacion.etapa == 2:
+            if num_etapas == 3:
+                resultados_filtrados = resultados_con_info[5:] if len(resultados_con_info) > 5 else []
+            else:
+                resultados_filtrados = []
+        elif evaluacion.etapa == 3:
+            resultados_filtrados = resultados_con_info[5:] if len(resultados_con_info) > 5 else []
+    
     # Crear el PDF
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="ranking_etapa_{evaluacion.etapa}_{evaluacion.title}.pdf"'
+    filename_suffix = f"_{filtro_estado}" if filtro_estado != 'todos' else ""
+    response['Content-Disposition'] = f'attachment; filename="ranking_etapa_{evaluacion.etapa}_{evaluacion.title}{filename_suffix}.pdf"'
     
     # Crear el documento PDF con márgenes optimizados
     doc = SimpleDocTemplate(response, pagesize=A4, 
@@ -4005,29 +4171,27 @@ def exportar_ranking_pdf(request, pk):
     elements.append(Paragraph(fecha_info, subtitle_style))
     elements.append(Spacer(1, 15))
     
-    # Subtítulo del ranking
-    ranking_subtitle = Paragraph("Ranking Final de Participantes", subtitle_style)
+    # Subtítulo del ranking con filtro aplicado
+    ranking_subtitle = Paragraph(titulo_filtro, subtitle_style)
     elements.append(ranking_subtitle)
     elements.append(Spacer(1, 15))
     
-    # Preparar datos de la tabla
-    table_data = [['Pos.', 'Participante', 'Cédula', 'Puntaje', 'Tiempo', 'Estado']]
+    # Preparar datos de la tabla con columna de colegio
+    table_data = [['Pos.', 'Participante', 'Cédula', 'Colegio', 'Puntaje', 'Tiempo', 'Estado']]
     
-    from .models import SystemConfig
-    num_etapas = SystemConfig.get_num_etapas()
-    
-    for i, resultado in enumerate(resultados, 1):
+    for resultado in resultados_filtrados:
         # Determinar estado según la etapa y configuración
-        if evaluacion.etapa == 1 and i <= (15 if num_etapas == 3 else 5):
+        pos = resultado.posicion_real
+        if evaluacion.etapa == 1 and pos <= (15 if num_etapas == 3 else 5):
             estado = "Clasificado"
-        elif evaluacion.etapa == 2 and num_etapas == 3 and i <= 5:
+        elif evaluacion.etapa == 2 and num_etapas == 3 and pos <= 5:
             estado = "Finalista"
         elif evaluacion.etapa == 3:
-            if i == 1:
+            if pos == 1:
                 estado = "Oro"
-            elif i == 2:
+            elif pos == 2:
                 estado = "Plata"
-            elif i == 3:
+            elif pos == 3:
                 estado = "Bronce"
             else:
                 estado = "Participante"
@@ -4037,18 +4201,24 @@ def exportar_ranking_pdf(request, pk):
         # Formatear puntaje - usar puntos_obtenidos directamente
         puntaje_str = f"{resultado.puntos_obtenidos:.3f}"
         
+        # Formatear nombre del colegio para el PDF (máximo 30 caracteres)
+        colegio_nombre = resultado.participante.colegio_nombre or "Sin colegio"
+        if len(colegio_nombre) > 30:
+            colegio_nombre = colegio_nombre[:27] + "..."
+        
         # Agregar fila a la tabla
         table_data.append([
-            str(i),
+            str(pos),
             resultado.participante.NombresCompletos,
             resultado.participante.cedula,
+            colegio_nombre,
             puntaje_str,
             resultado.get_tiempo_formateado(),
             estado
         ])
     
-    # Crear tabla con anchos optimizados
-    table = Table(table_data, colWidths=[0.6*inch, 2.6*inch, 1.2*inch, 0.8*inch, 1.0*inch, 1.3*inch])
+    # Crear tabla con anchos optimizados para incluir columna de colegio
+    table = Table(table_data, colWidths=[0.5*inch, 2.2*inch, 1.0*inch, 1.8*inch, 0.7*inch, 0.9*inch, 1.1*inch])
     
     # Estilo moderno y elegante de la tabla
     table_style = TableStyle([
@@ -4073,13 +4243,14 @@ def exportar_ranking_pdf(request, pk):
         ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.7, 0.7, 0.7)),
         ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
         
-        # Alineación
+        # Alineación actualizada para 7 columnas
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Nombres a la izquierda
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Posición centrada
         ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Cédula centrada
-        ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Puntaje centrado
-        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Tiempo centrado
-        ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Estado centrado
+        ('ALIGN', (3, 1), (3, -1), 'LEFT'),    # Colegio a la izquierda
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'),  # Puntaje centrado
+        ('ALIGN', (5, 1), (5, -1), 'CENTER'),  # Tiempo centrado
+        ('ALIGN', (6, 1), (6, -1), 'CENTER'),  # Estado centrado
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ])
     
@@ -4090,34 +4261,41 @@ def exportar_ranking_pdf(request, pk):
         else:  # Filas impares (índice impar, pero es fila par visualmente)
             table_style.add('BACKGROUND', (0, i), (-1, i), colors.white)
     
-    # Aplicar colores especiales para estados de medalleros
-    for i, resultado in enumerate(resultados, 1):
-        row_index = i  # i ya es el índice correcto (empieza en 1)
+    # Aplicar colores especiales para estados de medalleros (columna 6 ahora)
+    for resultado in resultados_filtrados:
+        # Encontrar la fila correspondiente en la tabla
+        pos = resultado.posicion_real
+        row_index = None
+        for i, row in enumerate(table_data[1:], 1):  # Empezar desde 1 para saltar header
+            if int(row[0]) == pos:  # Comparar posición
+                row_index = i
+                break
         
-        if evaluacion.etapa == 3:
-            if i == 1:  # Oro
-                table_style.add('BACKGROUND', (5, row_index), (5, row_index), gold_color)
-                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
-                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-            elif i == 2:  # Plata
-                table_style.add('BACKGROUND', (5, row_index), (5, row_index), silver_color)
-                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.black)
-                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-            elif i == 3:  # Bronce
-                table_style.add('BACKGROUND', (5, row_index), (5, row_index), bronze_color)
-                table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
-                table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
-        elif (evaluacion.etapa == 1 and i <= (15 if num_etapas == 3 else 5)) or \
-             (evaluacion.etapa == 2 and num_etapas == 3 and i <= 5):
-            table_style.add('BACKGROUND', (5, row_index), (5, row_index), accent_color)
-            table_style.add('TEXTCOLOR', (5, row_index), (5, row_index), colors.white)
-            table_style.add('FONTNAME', (5, row_index), (5, row_index), 'Helvetica-Bold')
+        if row_index is not None:
+            if evaluacion.etapa == 3:
+                if pos == 1:  # Oro
+                    table_style.add('BACKGROUND', (6, row_index), (6, row_index), gold_color)
+                    table_style.add('TEXTCOLOR', (6, row_index), (6, row_index), colors.black)
+                    table_style.add('FONTNAME', (6, row_index), (6, row_index), 'Helvetica-Bold')
+                elif pos == 2:  # Plata
+                    table_style.add('BACKGROUND', (6, row_index), (6, row_index), silver_color)
+                    table_style.add('TEXTCOLOR', (6, row_index), (6, row_index), colors.black)
+                    table_style.add('FONTNAME', (6, row_index), (6, row_index), 'Helvetica-Bold')
+                elif pos == 3:  # Bronce
+                    table_style.add('BACKGROUND', (6, row_index), (6, row_index), bronze_color)
+                    table_style.add('TEXTCOLOR', (6, row_index), (6, row_index), colors.white)
+                    table_style.add('FONTNAME', (6, row_index), (6, row_index), 'Helvetica-Bold')
+            elif (evaluacion.etapa == 1 and pos <= (15 if num_etapas == 3 else 5)) or \
+                 (evaluacion.etapa == 2 and num_etapas == 3 and pos <= 5):
+                table_style.add('BACKGROUND', (6, row_index), (6, row_index), accent_color)
+                table_style.add('TEXTCOLOR', (6, row_index), (6, row_index), colors.white)
+                table_style.add('FONTNAME', (6, row_index), (6, row_index), 'Helvetica-Bold')
     
     table.setStyle(table_style)
     elements.append(table)
     
-    # Agregar información de estadísticas al final
-    if resultados:
+    # Agregar información de estadísticas al final con datos filtrados
+    if resultados_filtrados:
         elements.append(Spacer(1, 20))
         
         stats_style = ParagraphStyle(
@@ -4129,10 +4307,15 @@ def exportar_ranking_pdf(request, pk):
             fontName='Helvetica'
         )
         
-        total_participantes = len(resultados)
-        promedio_puntos = sum(r.puntos_obtenidos for r in resultados) / total_participantes
+        total_mostrados = len(resultados_filtrados)
+        total_general = len(resultados_con_info)
+        promedio_puntos = sum(r.puntos_obtenidos for r in resultados_filtrados) / total_mostrados
         
-        stats_text = f"Total de participantes: {total_participantes} | Promedio general: {promedio_puntos:.1f} puntos"
+        if filtro_estado == 'todos':
+            stats_text = f"Total de participantes: {total_mostrados} | Promedio general: {promedio_puntos:.1f} puntos"
+        else:
+            stats_text = f"Mostrando {total_mostrados} de {total_general} participantes | Promedio mostrado: {promedio_puntos:.1f} puntos"
+        
         elements.append(Paragraph(stats_text, stats_style))
     
     # Construir el PDF

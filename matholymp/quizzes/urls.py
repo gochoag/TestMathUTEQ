@@ -20,6 +20,7 @@ urlpatterns = [
     path('evaluaciones/', views.quiz_view, name='quiz'),  # Nueva URL para evaluaciones
     path('evaluaciones/crear/', views.create_evaluacion, name='create_evaluacion'),
     path('mis-resultados/', views.student_results, name='student_results'),
+    path('resultado/<int:pk>/revisar/', views.revisar_intento_evaluacion, name='revisar_intento_evaluacion'),
     path('resultado/<int:pk>/pdf/', views.exportar_resultado_pdf, name='exportar_resultado_pdf'),
     path('evaluacion/<int:eval_id>/preguntas/', views.manage_questions, name='manage_questions'),
     path('evaluacion/<int:eval_id>/preguntas/guardar/', views.save_question, name='save_question'),

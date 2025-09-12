@@ -1,0 +1,346 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Revisar Intento - {{ evaluacion.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">
+                        <i class="bi bi-search me-2"></i>
+                        Revisar Intento
+                    </h2>
+                    <p class="text-muted mb-0">{{ participante.NombresCompletos }}</p>
+                </div>
+                <a href="{% url 'quizzes:student_results' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left me-1"></i> Volver a Mis Resultados
+                </a>
+            </div>
+
+            <!-- Resumen de la Evaluación -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clipboard-data me-2"></i>
+                        Resumen de la Evaluación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4 class="text-primary mb-3">{{ evaluacion.title }}</h4>
+                            <div class="row">
+                                <div class="col-sm-6 mb-2">
+                                    <strong>Etapa:</strong> {{ evaluacion.get_etapa_display }}
+                                </div>
+                                <div class="col-sm-6 mb-2">
+                                    <strong>Fecha de realización:</strong> {{ resultado.fecha_fin|date:"d/m/Y H:i" }}
+                                </div>
+                                <div class="col-sm-6 mb-2">
+                                    <strong>Tiempo utilizado:</strong> {{ resultado.get_tiempo_formateado }}
+                                </div>
+                                <div class="col-sm-6 mb-2">
+                                    <strong>Total de preguntas:</strong> {{ preguntas_con_respuestas|length }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <div class="result-summary-badge d-inline-block" 
+                                 style="min-width: 200px; height: 80px; 
+                                        background: {% if resultado.puntaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                        border-radius: 15px; 
+                                        border: 3px solid {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        padding: 10px 20px;">
+                                <div class="result-content">
+                                    <span class="result-score fw-bold" 
+                                          style="font-size: 1.8rem; 
+                                                 color: {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                                 font-family: 'Segoe UI', system-ui, sans-serif;
+                                                 letter-spacing: -0.5px;">
+                                        {{ resultado.get_puntaje_numerico }}
+                                    </span>
+                                    <div class="result-label" 
+                                         style="font-size: 0.8rem; 
+                                                color: #6c757d; 
+                                                font-weight: 600; 
+                                                text-transform: uppercase; 
+                                                letter-spacing: 0.5px; 
+                                                margin-top: -3px;">
+                                        NOTA FINAL
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {% if resultado.puntaje >= 80 %}
+                                <div class="alert alert-success mt-3 py-2">
+                                    <i class="bi bi-emoji-smile me-1"></i>
+                                    <strong>¡Excelente trabajo!</strong>
+                                </div>
+                            {% elif resultado.puntaje >= 60 %}
+                                <div class="alert alert-warning mt-3 py-2">
+                                    <i class="bi bi-emoji-neutral me-1"></i>
+                                    <strong>Buen desempeño</strong>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-danger mt-3 py-2">
+                                    <i class="bi bi-emoji-frown me-1"></i>
+                                    <strong>Puedes mejorar</strong>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preguntas y Respuestas -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-question-circle me-2"></i>
+                        Preguntas y Respuestas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for item in preguntas_con_respuestas %}
+                        <div class="question-review-item mb-4 p-4 border rounded-lg">
+                            <!-- Pregunta -->
+                            <div class="question-header mb-3">
+                                <h6 class="fw-bold text-primary mb-2">
+                                    <i class="bi bi-patch-question me-1"></i>
+                                    Pregunta {{ forloop.counter }}
+                                    <span class="badge {% if item.es_correcta %}bg-success{% else %}bg-danger{% endif %} ms-2">
+                                        {% if item.es_correcta %}
+                                            <i class="bi bi-check-circle me-1"></i>Correcta
+                                        {% else %}
+                                            <i class="bi bi-x-circle me-1"></i>Incorrecta
+                                        {% endif %}
+                                    </span>
+                                </h6>
+                                <div class="question-text p-3 bg-light rounded">
+                                    {{ item.pregunta.text|safe }}
+                                </div>
+                            </div>
+
+                            <!-- Opciones -->
+                            <div class="options-section">
+                                <h6 class="fw-bold mb-3">Opciones:</h6>
+                                
+                                <!-- Verificar si no seleccionó ninguna opción -->
+                                {% if not item.respuesta_estudiante %}
+                                    <div class="alert alert-warning py-2 mb-3">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        <small><strong>No seleccionó ninguna opción</strong></small>
+                                    </div>
+                                {% endif %}
+                                
+                                {% for opcion in item.opciones %}
+                                    <div class="option-item mb-2 p-3 rounded
+                                        {% if opcion.seleccionada %}
+                                            bg-primary bg-opacity-10 border border-primary
+                                        {% else %}
+                                            bg-light border border-light
+                                        {% endif %}">
+                                        
+                                        <div class="d-flex align-items-start">
+                                            <div class="option-indicator me-3 mt-1">
+                                                {% if opcion.seleccionada %}
+                                                    <i class="bi bi-check-square-fill text-primary fs-5"></i>
+                                                {% else %}
+                                                    <i class="bi bi-square text-muted"></i>
+                                                {% endif %}
+                                            </div>
+                                            
+                                            <div class="option-content flex-grow-1">
+                                                <div class="option-text mb-1">
+                                                    {{ opcion.text|safe }}
+                                                </div>
+                                                
+                                                {% if opcion.seleccionada %}
+                                                    <small class="fw-bold text-primary">
+                                                        <i class="bi bi-person-check me-1"></i>
+                                                        Esta fue tu respuesta
+                                                    </small>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+
+                            <!-- Respuesta correcta destacada (siempre se muestra) -->
+                            <div class="correct-answer-highlight mt-3 p-3 rounded" 
+                                 style="background: linear-gradient(145deg, #fff3cd, #ffeaa7); 
+                                        border: 2px solid #ffc107; 
+                                        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);">
+                                <h6 class="fw-bold text-warning mb-2">
+                                    <i class="bi bi-lightbulb-fill me-1"></i>
+                                    Respuesta Correcta:
+                                </h6>
+                                <div class="text-dark">
+                                    {{ item.opcion_correcta.text|safe }}
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if not forloop.last %}
+                            <hr class="my-4">
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Botón para regresar -->
+            <div class="text-center mt-4 mb-4">
+                <a href="{% url 'quizzes:student_results' %}" class="btn btn-primary btn-lg">
+                    <i class="bi bi-arrow-left me-2"></i>
+                    Volver a Mis Resultados
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.question-review-item {
+    transition: all 0.3s ease;
+    background: linear-gradient(145deg, #ffffff, #f8f9fa);
+    border: 1px solid #e9ecef !important;
+}
+
+.question-review-item:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.result-summary-badge {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.result-summary-badge:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.6s;
+}
+
+.result-summary-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.result-summary-badge:hover:before {
+    left: 100%;
+}
+
+.option-item {
+    transition: all 0.2s ease;
+}
+
+.option-item:hover {
+    transform: translateX(5px);
+}
+
+.correct-answer-highlight {
+    animation: highlightPulse 2s ease-in-out;
+}
+
+@keyframes highlightPulse {
+    0% { 
+        transform: scale(1); 
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2); 
+    }
+    50% { 
+        transform: scale(1.02); 
+        box-shadow: 0 4px 15px rgba(255, 193, 7, 0.4); 
+    }
+    100% { 
+        transform: scale(1); 
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2); 
+    }
+}
+
+.question-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.option-text {
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .result-summary-badge {
+        min-width: 150px !important;
+        height: 60px !important;
+        padding: 8px 15px !important;
+    }
+    
+    .result-score {
+        font-size: 1.4rem !important;
+    }
+    
+    .result-label {
+        font-size: 0.7rem !important;
+    }
+    
+    .question-review-item {
+        padding: 20px 15px !important;
+    }
+    
+    .option-item {
+        padding: 15px 10px !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .result-summary-badge {
+        min-width: 120px !important;
+        height: 50px !important;
+        padding: 6px 12px !important;
+    }
+    
+    .result-score {
+        font-size: 1.2rem !important;
+    }
+    
+    .result-label {
+        font-size: 0.65rem !important;
+    }
+}
+
+/* Print styles */
+@media print {
+    .btn, .card-header {
+        display: none !important;
+    }
+    
+    .question-review-item {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    
+    .correct-answer-highlight {
+        background: #fff3cd !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+</style>
+{% endblock %}
