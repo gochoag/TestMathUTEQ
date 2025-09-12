@@ -1,6 +1,19 @@
 #!/usr/bin/env python
 """
 Script para crear una evaluación de prueba para la Etapa 1 con 60 preguntas de matemáticas
+y simular resultados aleatorios para todos los participantes existentes.
+
+Este script:
+1. Crea una evaluación completa para la Etapa 1 con 60 preguntas de múltiple opción
+2. Distribuye las preguntas en categorías: álgebra, geometría, aritmética, probabilidad, trigonometría y cálculo
+3. Asigna la evaluación a todos los grupos de participantes del año activo
+4. Simula resultados realistas para todos los participantes con:
+   - Notas distribuidas normalmente (media: 7.0, desviación: 1.5) en escala 0-10
+   - Tiempos de evaluación realistas (25-120 minutos con distribución ponderada)
+   - Fechas de inicio y fin simuladas
+   - Control de cambios de pestaña aleatorio
+
+Usar después de ejecutar el script 1_generar_participantes.py
 """
 
 import os
@@ -10,11 +23,12 @@ from django.utils import timezone
 from datetime import timedelta
 import random
 from django.core.management.base import BaseCommand
+from decimal import Decimal
 
-from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes, SystemConfig
+from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes, SystemConfig, Participantes, ResultadoEvaluacion
 
 class Command(BaseCommand):
-    help = 'Crea una evaluación completa para la Etapa 1 con 60 preguntas de matemáticas'
+    help = 'Crea una evaluación completa para la Etapa 1 con 60 preguntas de matemáticas y simula resultados para todos los participantes'
 
     def handle(self, *args, **options):
         self.stdout.write("🚀 Iniciando creación de evaluación para Etapa 1...")
@@ -105,6 +119,92 @@ class Command(BaseCommand):
         
         for categoria, cantidad in categorias.items():
             self.stdout.write(f"   - {categoria}: {cantidad} preguntas")
+        
+        # Simular resultados para todos los participantes
+        self.stdout.write(f"\n🎯 Simulando resultados para participantes...")
+        resultados_creados = self.simular_resultados_participantes(evaluacion)
+        
+        self.stdout.write(f"\n🎉 ¡Proceso completado exitosamente!")
+        self.stdout.write(f"📊 Resumen final:")
+        self.stdout.write(f"   - Evaluación: {evaluacion.title}")
+        self.stdout.write(f"   - Preguntas creadas: {preguntas_creadas}")
+        self.stdout.write(f"   - Grupos asignados: {evaluacion.grupos_participantes.count()}")
+        self.stdout.write(f"   - Resultados simulados: {resultados_creados}")
+
+    def simular_resultados_participantes(self, evaluacion):
+        """Simula resultados aleatorios para todos los participantes"""
+        # Obtener todos los participantes del año activo
+        participantes = Participantes.objects.filter(anio=SystemConfig.get_active_year())
+        
+        if not participantes.exists():
+            self.stdout.write("⚠️  No se encontraron participantes para simular resultados")
+            return 0
+        
+        resultados_creados = 0
+        for participante in participantes:
+            # Generar nota y tiempo aleatorio
+            puntos_obtenidos = self.generar_nota_realista()
+            tiempo_utilizado = self.generar_tiempo_realista()
+            
+            # Calcular fechas simuladas
+            fecha_inicio_simulada = evaluacion.start_time + timedelta(
+                minutes=random.randint(0, 60)  # Empezaron en algún momento de la primera hora
+            )
+            fecha_fin_simulada = fecha_inicio_simulada + timedelta(minutes=tiempo_utilizado)
+            
+            try:
+                # Crear el resultado
+                resultado = ResultadoEvaluacion.objects.create(
+                    evaluacion=evaluacion,
+                    participante=participante,
+                    puntaje=round((puntos_obtenidos / 10) * 100, 2),  # Convertir a porcentaje
+                    puntos_obtenidos=puntos_obtenidos,
+                    puntos_totales=10,
+                    tiempo_utilizado=tiempo_utilizado,
+                    fecha_inicio=fecha_inicio_simulada,
+                    fecha_fin=fecha_fin_simulada,
+                    completada=True,
+                    tiempo_restante=max(0, (evaluacion.duration_minutes * 60) - (tiempo_utilizado * 60)),
+                    numero_intento=1,
+                    cambios_pestana=random.randint(0, 3)  # Número aleatorio de cambios de pestaña
+                )
+                
+                resultados_creados += 1
+                self.stdout.write(f"✅ Resultado simulado para {participante.NombresCompletos}: {puntos_obtenidos:.3f}/10 ({tiempo_utilizado}min)")
+                
+            except Exception as e:
+                self.stdout.write(f"❌ Error al crear resultado para {participante.NombresCompletos}: {e}")
+                continue
+        
+        return resultados_creados
+
+    def generar_nota_realista(self):
+        """Genera una nota realista usando distribución normal"""
+        # Usar distribución normal con media 7.0 y desviación estándar 1.5
+        # Esto dará la mayoría de notas entre 4 y 10, con pocas muy bajas o muy altas
+        nota = random.normalvariate(7.0, 1.5)
+        
+        # Asegurar que esté en el rango válido [0, 10]
+        nota = max(0, min(10, nota))
+        
+        # Redondear a 3 decimales para mayor realismo
+        return round(Decimal(str(nota)), 3)
+
+    def generar_tiempo_realista(self):
+        """Genera un tiempo de evaluación realista en minutos"""
+        # La mayoría de estudiantes toman entre 45-100 minutos
+        # Algunos terminan rápido (30-45min) y pocos usan todo el tiempo (100-120min)
+        
+        peso_aleatorio = random.random()
+        
+        if peso_aleatorio < 0.1:  # 10% terminan muy rápido
+            return random.randint(25, 40)
+        elif peso_aleatorio < 0.7:  # 60% toman tiempo normal
+            return random.randint(45, 85)
+        elif peso_aleatorio < 0.95:  # 25% toman bastante tiempo
+            return random.randint(85, 110)
+        else:  # 5% usan casi todo o todo el tiempo
+            return random.randint(110, 120)
 
     def generar_preguntas_algebra(self):
         """Genera preguntas de álgebra"""
