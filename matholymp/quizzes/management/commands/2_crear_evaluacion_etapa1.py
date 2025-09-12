@@ -133,8 +133,10 @@ class Command(BaseCommand):
 
     def simular_resultados_participantes(self, evaluacion):
         """Simula resultados aleatorios para todos los participantes"""
-        # Obtener todos los participantes del año activo
-        participantes = Participantes.objects.filter(anio=SystemConfig.get_active_year())
+        # Obtener todos los participantes del año activo a través de los grupos
+        participantes = Participantes.objects.filter(
+            grupos__anio=SystemConfig.get_active_year()
+        ).distinct()
         
         if not participantes.exists():
             self.stdout.write("⚠️  No se encontraron participantes para simular resultados")
