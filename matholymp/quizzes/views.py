@@ -2617,12 +2617,208 @@ def evaluacion_results(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
+    # Obtener filtro de grupo desde los parámetros GET
+    grupo_filtro = request.GET.get('grupo', 'todos')
+    
+    # Obtener todos los grupos disponibles para esta evaluación
+    grupos_disponibles = GrupoParticipantes.objects.filter(
+        participantes__resultados__evaluacion=evaluacion
+    ).distinct().order_by('name')
+    
+    # Filtrar resultados según el grupo seleccionado
+    if grupo_filtro != 'todos' and grupo_filtro.isdigit():
+        grupo_seleccionado = get_object_or_404(GrupoParticipantes, id=int(grupo_filtro))
+        participantes_filtrados = grupo_seleccionado.participantes.all()
+        
+        # Filtrar resultados por participantes del grupo
+        resultados_completados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion, 
+            completada=True,
+            participante__in=participantes_filtrados
+        )
+        todos_resultados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion,
+            participante__in=participantes_filtrados
+        )
+    else:
+        grupo_seleccionado = None
+        # Obtener todos los resultados
+        resultados_completados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion, 
+            completada=True
+        )
+        todos_resultados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion)
+    
+    # Estadísticas de participación
+    participantes_con_resultados = todos_resultados.values_list('participante', flat=True).distinct().count()
+    participantes_completaron = resultados_completados.values_list('participante', flat=True).distinct().count()
+    participantes_en_progreso = todos_resultados.filter(completada=False).values_list('participante', flat=True).distinct().count()
+    
+    # Obtener participantes elegibles para esta evaluación
+    if grupo_seleccionado:
+        participantes_elegibles = grupo_seleccionado.participantes.count()
+    elif evaluacion.etapa == 1:
+        participantes_elegibles = len(evaluacion.get_participantes_etapa1())
+    else:
+        # Para etapas superiores, usar todos los participantes registrados como referencia
+        participantes_elegibles = Participantes.objects.count()
+    
+    participantes_no_iniciaron = max(0, participantes_elegibles - participantes_con_resultados)
+    
+    # Calcular tasa de participación
+    tasa_participacion = (participantes_con_resultados / participantes_elegibles * 100) if participantes_elegibles > 0 else 0
+    
+    # Estadísticas de rendimiento
+    estadisticas_rendimiento = {}
+    if resultados_completados.exists():
+        from django.db.models import Avg, Max, Min
+        
+        stats = resultados_completados.aggregate(
+            promedio_puntaje=Avg('puntos_obtenidos'),
+            mejor_puntaje=Max('puntos_obtenidos'),
+            peor_puntaje=Min('puntos_obtenidos'),
+            tiempo_promedio=Avg('tiempo_utilizado')
+        )
+        
+        estadisticas_rendimiento = {
+            'promedio_porcentaje': (stats['promedio_puntaje'] / 10 * 100) if stats['promedio_puntaje'] else 0,
+            'mejor_puntaje': stats['mejor_puntaje'] if stats['mejor_puntaje'] else 0,
+            'peor_puntaje': stats['peor_puntaje'] if stats['peor_puntaje'] else 0,
+            'tiempo_promedio': int(stats['tiempo_promedio']) if stats['tiempo_promedio'] else 0,
+        }
+    else:
+        estadisticas_rendimiento = {
+            'promedio_porcentaje': 0,
+            'mejor_puntaje': 0,
+            'peor_puntaje': 0,
+            'tiempo_promedio': 0,
+        }
+    
+    # Análisis por pregunta (preparar datos para gráficos)
+    analisis_preguntas = []
+    for pregunta in evaluacion.preguntas.all():
+        # Contar respuestas correctas e incorrectas en base a respuestas_guardadas
+        # Usar todos los resultados que tengan respuestas guardadas, no solo completados
+        resultados_con_respuestas = todos_resultados.exclude(respuestas_guardadas__isnull=True).exclude(respuestas_guardadas={})
+        
+        correctas = 0
+        incorrectas = 0
+        sin_responder = 0
+        
+        for resultado in resultados_con_respuestas:
+            respuestas = resultado.respuestas_guardadas
+            
+            # Validar que respuestas no sea None o vacío
+            if not respuestas or not isinstance(respuestas, dict):
+                sin_responder += 1
+                continue
+                
+            # Probar diferentes formatos de clave: str(pregunta.id) o pregunta.id
+            pregunta_id_str = str(pregunta.id)
+            pregunta_id_int = pregunta.id
+            
+            opcion_id = None
+            if pregunta_id_str in respuestas:
+                opcion_id = respuestas[pregunta_id_str]
+            elif pregunta_id_int in respuestas:
+                opcion_id = respuestas[pregunta_id_int]
+            elif str(pregunta_id_int) in respuestas:
+                opcion_id = respuestas[str(pregunta_id_int)]
+            
+            if opcion_id is not None:
+                # Verificar si la respuesta es correcta
+                try:
+                    # Convertir a entero si es string
+                    if isinstance(opcion_id, str) and opcion_id.isdigit():
+                        opcion_id = int(opcion_id)
+                    elif not isinstance(opcion_id, int):
+                        sin_responder += 1
+                        continue
+                    
+                    opcion = pregunta.opciones.get(id=opcion_id)
+                    if opcion.is_correct:
+                        correctas += 1
+                    else:
+                        incorrectas += 1
+                except (ValueError, TypeError, Opcion.DoesNotExist):
+                    # Si hay error al convertir o la opción no existe, contar como sin responder
+                    sin_responder += 1
+            else:
+                sin_responder += 1
+        
+        # Calcular totales y porcentajes
+        total_participantes_que_respondieron = correctas + incorrectas
+        total_participantes_considerados = resultados_con_respuestas.count()
+        
+        # Para el cálculo de porcentaje de acierto, usar solo quienes respondieron
+        porcentaje_correctas = (correctas / total_participantes_que_respondieron * 100) if total_participantes_que_respondieron > 0 else 0
+        
+        analisis_preguntas.append({
+            'pregunta': pregunta,
+            'correctas': correctas,
+            'incorrectas': incorrectas,
+            'sin_responder': sin_responder,
+            'porcentaje_correctas': porcentaje_correctas,
+            'dificultad': 'Fácil' if porcentaje_correctas > 70 else 'Media' if porcentaje_correctas > 40 else 'Difícil'
+        })
+    
+    # Crear versión serializable para JavaScript
+    analisis_preguntas_json = []
+    for analisis in analisis_preguntas:
+        analisis_preguntas_json.append({
+            'pregunta_id': analisis['pregunta'].id,
+            'pregunta_text': analisis['pregunta'].text,
+            'correctas': analisis['correctas'],
+            'incorrectas': analisis['incorrectas'],
+            'sin_responder': analisis['sin_responder'],
+            'porcentaje_correctas': analisis['porcentaje_correctas'],
+            'dificultad': analisis['dificultad']
+        })
+    
+    # Distribución de puntajes (para gráficos)
+    distribucion_puntajes = []
+    if resultados_completados.exists():
+        # Crear rangos de puntajes
+        rangos = [(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]
+        for rango_min, rango_max in rangos:
+            count = resultados_completados.filter(
+                puntos_obtenidos__gte=rango_min,
+                puntos_obtenidos__lt=rango_max if rango_max < 10 else 11
+            ).count()
+            distribucion_puntajes.append({
+                'rango': f'{rango_min}-{rango_max}',
+                'count': count
+            })
+    
     context = {
         'evaluacion': evaluacion,
         'total_preguntas': evaluacion.preguntas.count(),
-        'participantes_count': Participantes.objects.count(),
+        'participantes_count': participantes_elegibles,
         'evaluacion_status': evaluacion.get_status(),
-        'evaluacion_status_display': evaluacion.get_status_display()
+        'evaluacion_status_display': evaluacion.get_status_display(),
+        
+        # Filtros y grupos
+        'grupos_disponibles': grupos_disponibles,
+        'grupo_seleccionado': grupo_seleccionado,
+        'grupo_filtro': grupo_filtro,
+        
+        # Estadísticas de participación
+        'participantes_con_resultados': participantes_con_resultados,
+        'participantes_completaron': participantes_completaron,
+        'participantes_en_progreso': participantes_en_progreso,
+        'participantes_no_iniciaron': participantes_no_iniciaron,
+        'tasa_participacion': round(tasa_participacion, 1),
+        
+        # Estadísticas de rendimiento
+        'estadisticas_rendimiento': estadisticas_rendimiento,
+        
+        # Análisis detallado
+        'analisis_preguntas': analisis_preguntas,
+        'analisis_preguntas_json': analisis_preguntas_json,
+        'distribucion_puntajes': distribucion_puntajes,
+        
+        # Top 5 resultados para mostrar
+        'top_resultados': resultados_completados.order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5],
     }
     
     return render(request, 'quizzes/evaluacion_results.html', context)
@@ -4322,6 +4518,268 @@ def exportar_ranking_pdf(request, pk):
     doc.build(elements)
     
     return response
+
+@login_required 
+def exportar_resultados(request, pk):
+    """
+    Exporta los resultados de una evaluación a un archivo Excel
+    Respeta los filtros por grupo si se especifican
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({'error': 'No tienes permisos para esta acción'}, status=403)
+    
+    # Obtener filtro de grupo desde los parámetros GET
+    grupo_filtro = request.GET.get('grupo', 'todos')
+    grupo_seleccionado = None
+    
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        from datetime import datetime
+        
+        # Filtrar resultados según el grupo seleccionado
+        if grupo_filtro != 'todos' and grupo_filtro.isdigit():
+            grupo_seleccionado = get_object_or_404(GrupoParticipantes, id=int(grupo_filtro))
+            participantes_filtrados = grupo_seleccionado.participantes.all()
+            
+            # Filtrar resultados por participantes del grupo
+            resultados_completados = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion, 
+                completada=True,
+                participante__in=participantes_filtrados
+            )
+            todos_resultados = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante__in=participantes_filtrados
+            )
+        else:
+            # Obtener todos los resultados
+            resultados_completados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion, completada=True)
+            todos_resultados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion)
+        
+        # Crear un nuevo workbook
+        wb = Workbook()
+        
+        # === HOJA 1: RESUMEN GENERAL ===
+        ws_resumen = wb.active
+        ws_resumen.title = "Resumen General"
+        
+        # Configurar estilos
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        title_font = Font(bold=True, size=14)
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                       top=Side(style='thin'), bottom=Side(style='thin'))
+        
+        # Título principal
+        titulo_reporte = f"REPORTE DE RESULTADOS - {evaluacion.title}"
+        if grupo_seleccionado:
+            titulo_reporte += f" - {grupo_seleccionado.name}"
+            
+        ws_resumen.merge_cells('A1:F1')
+        ws_resumen['A1'] = titulo_reporte
+        ws_resumen['A1'].font = title_font
+        ws_resumen['A1'].alignment = Alignment(horizontal='center')
+        
+        # Información general
+        ws_resumen['A3'] = "Información General"
+        ws_resumen['A3'].font = header_font
+        ws_resumen['A3'].fill = header_fill
+        
+        ws_resumen['A4'] = "Título:"
+        ws_resumen['B4'] = evaluacion.title
+        ws_resumen['A5'] = "Etapa:"
+        ws_resumen['B5'] = f"Etapa {evaluacion.etapa}"
+        ws_resumen['A6'] = "Fecha de inicio:"
+        ws_resumen['B6'] = evaluacion.start_time.strftime("%d/%m/%Y %H:%M")
+        ws_resumen['A7'] = "Fecha de fin:"
+        ws_resumen['B7'] = evaluacion.end_time.strftime("%d/%m/%Y %H:%M")
+        ws_resumen['A8'] = "Duración:"
+        ws_resumen['B8'] = f"{evaluacion.duration_minutes} minutos"
+        
+        if grupo_seleccionado:
+            ws_resumen['A9'] = "Filtro aplicado:"
+            ws_resumen['B9'] = f"Grupo: {grupo_seleccionado.name}"
+        
+        # Estadísticas de participación
+        participantes_completaron = resultados_completados.values_list('participante', flat=True).distinct().count()
+        participantes_con_resultados = todos_resultados.values_list('participante', flat=True).distinct().count()
+        participantes_en_progreso = todos_resultados.filter(completada=False).values_list('participante', flat=True).distinct().count()
+        
+        ws_resumen['D3'] = "Estadísticas de Participación"
+        ws_resumen['D3'].font = header_font
+        ws_resumen['D3'].fill = header_fill
+        
+        ws_resumen['D4'] = "Participantes que completaron:"
+        ws_resumen['E4'] = participantes_completaron
+        ws_resumen['D5'] = "Participantes en progreso:"
+        ws_resumen['E5'] = participantes_en_progreso
+        ws_resumen['D6'] = "Total con intentos:"
+        ws_resumen['E6'] = participantes_con_resultados
+        
+        # Estadísticas de rendimiento
+        if resultados_completados.exists():
+            from django.db.models import Avg, Max, Min
+            stats = resultados_completados.aggregate(
+                promedio=Avg('puntos_obtenidos'),
+                maximo=Max('puntos_obtenidos'),
+                minimo=Min('puntos_obtenidos'),
+                tiempo_promedio=Avg('tiempo_utilizado')
+            )
+            
+            row_start = 11 if grupo_seleccionado else 10
+            ws_resumen[f'A{row_start}'] = "Estadísticas de Rendimiento"
+            ws_resumen[f'A{row_start}'].font = header_font
+            ws_resumen[f'A{row_start}'].fill = header_fill
+            
+            ws_resumen[f'A{row_start + 1}'] = "Promedio:"
+            ws_resumen[f'B{row_start + 1}'] = f"{stats['promedio']:.2f}/10" if stats['promedio'] else "N/A"
+            ws_resumen[f'A{row_start + 2}'] = "Mejor puntaje:"
+            ws_resumen[f'B{row_start + 2}'] = f"{stats['maximo']:.2f}/10" if stats['maximo'] else "N/A"
+            ws_resumen[f'A{row_start + 3}'] = "Peor puntaje:"
+            ws_resumen[f'B{row_start + 3}'] = f"{stats['minimo']:.2f}/10" if stats['minimo'] else "N/A"
+            ws_resumen[f'A{row_start + 4}'] = "Tiempo promedio:"
+            ws_resumen[f'B{row_start + 4}'] = f"{int(stats['tiempo_promedio'])} min" if stats['tiempo_promedio'] else "N/A"
+        
+        # === HOJA 2: RESULTADOS DETALLADOS ===
+        ws_resultados = wb.create_sheet("Resultados Detallados")
+        
+        # Encabezados
+        headers = ['#', 'Participante', 'Cédula', 'Puntaje', 'Porcentaje', 'Tiempo (min)', 
+                  'Intento', 'Fecha Inicio', 'Fecha Fin', 'Estado']
+        
+        if grupo_seleccionado:
+            headers.insert(3, 'Grupo')
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws_resultados.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        
+        # Datos de resultados
+        resultados = todos_resultados.order_by('-puntos_obtenidos', 'tiempo_utilizado')
+        
+        for row, resultado in enumerate(resultados, 2):
+            col = 1
+            ws_resultados.cell(row=row, column=col, value=row-1)
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.participante.NombresCompletos)
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.participante.cedula)
+            col += 1
+            
+            if grupo_seleccionado:
+                ws_resultados.cell(row=row, column=col, value=grupo_seleccionado.name)
+                col += 1
+            
+            ws_resultados.cell(row=row, column=col, value=f"{resultado.puntos_obtenidos:.2f}")
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=f"{resultado.get_puntaje_porcentaje():.1f}%")
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.tiempo_utilizado)
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.numero_intento)
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.fecha_inicio.strftime("%d/%m/%Y %H:%M") if resultado.fecha_inicio else "N/A")
+            col += 1
+            ws_resultados.cell(row=row, column=col, value=resultado.fecha_fin.strftime("%d/%m/%Y %H:%M") if resultado.fecha_fin else "N/A")
+            col += 1
+            ws_resultados.cell(row=row, column=col, value="Completado" if resultado.completada else "En progreso")
+            
+            # Aplicar bordes
+            for col_idx in range(1, len(headers) + 1):
+                ws_resultados.cell(row=row, column=col_idx).border = border
+        
+        # === HOJA 3: ANÁLISIS POR PREGUNTA ===
+        ws_preguntas = wb.create_sheet("Análisis por Pregunta")
+        
+        # Encabezados
+        headers_preguntas = ['Pregunta', 'Texto', 'Correctas', 'Incorrectas', 'Sin Responder', '% Acierto', 'Dificultad']
+        
+        for col, header in enumerate(headers_preguntas, 1):
+            cell = ws_preguntas.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        
+        # Datos por pregunta
+        for row, pregunta in enumerate(evaluacion.preguntas.all(), 2):
+            correctas = 0
+            incorrectas = 0
+            sin_responder = 0
+            
+            for resultado in resultados_completados:
+                respuestas = resultado.respuestas_guardadas
+                pregunta_id = str(pregunta.id)
+                
+                if pregunta_id in respuestas:
+                    try:
+                        opcion = pregunta.opciones.get(id=respuestas[pregunta_id])
+                        if opcion.is_correct:
+                            correctas += 1
+                        else:
+                            incorrectas += 1
+                    except:
+                        sin_responder += 1
+                else:
+                    sin_responder += 1
+            
+            total = correctas + incorrectas + sin_responder
+            porcentaje = (correctas / total * 100) if total > 0 else 0
+            dificultad = 'Fácil' if porcentaje > 70 else 'Media' if porcentaje > 40 else 'Difícil'
+            
+            ws_preguntas.cell(row=row, column=1, value=f"P{row-1}")
+            ws_preguntas.cell(row=row, column=2, value=pregunta.text[:100] + "..." if len(pregunta.text) > 100 else pregunta.text)
+            ws_preguntas.cell(row=row, column=3, value=correctas)
+            ws_preguntas.cell(row=row, column=4, value=incorrectas)
+            ws_preguntas.cell(row=row, column=5, value=sin_responder)
+            ws_preguntas.cell(row=row, column=6, value=f"{porcentaje:.1f}%")
+            ws_preguntas.cell(row=row, column=7, value=dificultad)
+            
+            # Aplicar bordes
+            for col in range(1, len(headers_preguntas) + 1):
+                ws_preguntas.cell(row=row, column=col).border = border
+        
+        # Ajustar ancho de columnas
+        for ws in [ws_resumen, ws_resultados, ws_preguntas]:
+            for column in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Preparar respuesta HTTP
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Nombre del archivo
+        filename = f'resultados_{evaluacion.title.replace(" ", "_")}'
+        if grupo_seleccionado:
+            filename += f'_{grupo_seleccionado.name.replace(" ", "_")}'
+        filename += f'_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+        
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        wb.save(response)
+        return response
+        
+    except Exception as e:
+        return JsonResponse({'error': f'Error al generar el archivo: {str(e)}'}, status=500)
 
 # ============================================================================
 # VISTAS PARA MONITOREO EN TIEMPO REAL

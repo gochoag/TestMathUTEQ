@@ -33,6 +33,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/ver/', views.view_evaluacion, name='view_evaluacion'),
     path('evaluacion/<int:pk>/editar/', views.edit_evaluacion, name='edit_evaluacion'),
     path('evaluacion/<int:pk>/resultados/', views.evaluacion_results, name='evaluacion_results'),
+    path('evaluacion/<int:pk>/resultados/exportar/', views.exportar_resultados, name='exportar_resultados'),
     path('evaluacion/<int:pk>/eliminar/', views.delete_evaluacion, name='delete_evaluacion'),
     path('evaluacion/<int:pk>/ranking/', views.ranking_evaluacion, name='ranking_evaluacion'),
     path('evaluacion/<int:pk>/ranking/pdf/', views.exportar_ranking_pdf, name='exportar_ranking_pdf'),

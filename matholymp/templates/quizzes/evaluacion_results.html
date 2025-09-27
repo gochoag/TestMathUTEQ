@@ -3,6 +3,129 @@
 
 {% block title %}Resultados - {{ evaluacion.title }}{% endblock %}
 
+{% block extra_css %}
+<style>
+.pregunta-text {
+    font-size: 0.9em;
+    line-height: 1.3;
+}
+
+.stats-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+}
+
+.chart-container {
+    position: relative;
+    margin: 1rem 0;
+}
+
+@media print {
+    .btn, .alert {
+        display: none !important;
+    }
+    
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+    }
+}
+
+.progress-mini {
+    height: 8px;
+    margin-top: 2px;
+}
+
+.badge-lg {
+    font-size: 0.9em;
+    padding: 0.5em 0.7em;
+}
+
+/* Estilos para filtros */
+.filter-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.filter-section {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Estilos para modales */
+.modal-xl {
+    max-width: 90%;
+}
+
+.question-content {
+    font-size: 1.1em;
+    line-height: 1.6;
+}
+
+.option-item {
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.option-item.correct {
+    background-color: #d1edff;
+    border-color: #0d6efd;
+}
+
+/* Animaciones para cargas */
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Mejoras responsivas */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.9em;
+    }
+    
+    .progress {
+        min-width: 60px !important;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+}
+
+/* Estilos para retroalimentación */
+.feedback-section {
+    border-left: 4px solid #28a745;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.improvement-area {
+    border-left: 4px solid #ffc107;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.strength-area {
+    border-left: 4px solid #28a745;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -12,6 +135,9 @@
                     <h2 class="mb-0">
                         <i class="bi bi-graph-up me-2"></i>
                         Resultados de la Evaluación
+                        {% if grupo_seleccionado %}
+                            <small class="text-muted">- {{ grupo_seleccionado.name }}</small>
+                        {% endif %}
                     </h2>
                     <small class="text-muted">Análisis y estadísticas de rendimiento</small>
                 </div>
@@ -22,6 +148,55 @@
                     <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left me-1"></i> Volver
                     </a>
+                </div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="card-title mb-0">
+                        <i class="bi bi-funnel me-2"></i>
+                        Filtros de Análisis
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-end">
+                        <div class="col-md-4">
+                            <label for="grupoSelect" class="form-label">Filtrar por Grupo/Colegio:</label>
+                            <select id="grupoSelect" class="form-select" onchange="aplicarFiltroGrupo()">
+                                <option value="todos" {% if grupo_filtro == 'todos' %}selected{% endif %}>
+                                    Todos los Participantes
+                                </option>
+                                {% for grupo in grupos_disponibles %}
+                                    <option value="{{ grupo.id }}" {% if grupo_filtro == grupo.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ grupo.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-primary" onclick="limpiarFiltros()">
+                                    <i class="bi bi-arrow-clockwise me-1"></i> Limpiar
+                                </button>
+                                {% if grupo_seleccionado %}
+                                <button class="btn btn-outline-success" onclick="generarRetroalimentacion()">
+                                    <i class="bi bi-chat-dots me-1"></i> Generar Retroalimentación
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            {% if grupo_seleccionado %}
+                                <div class="alert alert-info mb-0 py-2">
+                                    <small>
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        Mostrando resultados del grupo: <strong>{{ grupo_seleccionado.name }}</strong>
+                                    </small>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -37,7 +212,7 @@
             <div class="row">
                 <!-- Información General -->
                 <div class="col-md-8">
-                    <div class="card shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4 stats-card">
                         <div class="card-header bg-primary text-white">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-info-circle me-2"></i>
@@ -92,7 +267,7 @@
                     </div>
 
                     <!-- Estadísticas de Participación -->
-                    <div class="card shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4 stats-card">
                         <div class="card-header bg-success text-white">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-people me-2"></i>
@@ -103,24 +278,24 @@
                             <div class="row text-center">
                                 <div class="col-md-3 mb-3">
                                     <div class="border-end">
-                                        <h3 class="text-primary">{{ participantes_count }}</h3>
+                                        <h3 class="text-primary">{{ participantes_con_resultados }}</h3>
                                         <small class="text-muted">Total Participantes</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-3">
                                     <div class="border-end">
-                                        <h3 class="text-success">0</h3>
+                                        <h3 class="text-success">{{ participantes_completaron }}</h3>
                                         <small class="text-muted">Completaron</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-3">
                                     <div class="border-end">
-                                        <h3 class="text-warning">0</h3>
+                                        <h3 class="text-warning">{{ participantes_en_progreso }}</h3>
                                         <small class="text-muted">En Progreso</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-3">
-                                    <h3 class="text-secondary">0</h3>
+                                    <h3 class="text-secondary">{{ participantes_no_iniciaron }}</h3>
                                     <small class="text-muted">No Iniciaron</small>
                                 </div>
                             </div>
@@ -129,8 +304,8 @@
                             <div class="mt-3">
                                 <h6 class="text-muted">Tasa de Participación</h6>
                                 <div class="progress" style="height: 25px;">
-                                    <div class="progress-bar bg-success" role="progressbar" style="width: 0%">
-                                        0%
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ tasa_participacion }}%">
+                                        {{ tasa_participacion }}%
                                     </div>
                                 </div>
                             </div>
@@ -138,7 +313,7 @@
                     </div>
 
                     <!-- Resultados por Pregunta -->
-                    <div class="card shadow-sm">
+                    <div class="card shadow-sm stats-card">
                         <div class="card-header bg-info text-white">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-list-check me-2"></i>
@@ -146,16 +321,82 @@
                             </h5>
                         </div>
                         <div class="card-body">
-                            <div class="text-center py-4">
-                                <i class="bi bi-graph-up display-4 text-muted"></i>
-                                <h5 class="mt-3 text-muted">Análisis en Desarrollo</h5>
-                                <p class="text-muted">Esta funcionalidad estará disponible próximamente</p>
-                                <div class="alert alert-info">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    <strong>Próximamente:</strong> Estadísticas detalladas por pregunta, 
-                                    tiempo promedio de respuesta, y análisis de dificultad.
+                            {% if analisis_preguntas %}
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Pregunta</th>
+                                                <th class="text-center">Correctas</th>
+                                                <th class="text-center">Incorrectas</th>
+                                                <th class="text-center">Sin Responder</th>
+                                                <th class="text-center">% Acierto</th>
+                                                <th class="text-center">Dificultad</th>
+                                                <th class="text-center">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for analisis in analisis_preguntas %}
+                                            <tr>
+                                                <td>
+                                                    <div class="pregunta-text" style="max-width: 300px;">
+                                                        {{ analisis.pregunta.text|truncatewords:10 }}
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-success">{{ analisis.correctas }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-danger">{{ analisis.incorrectas }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-secondary">{{ analisis.sin_responder }}</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <div class="progress" style="height: 20px; min-width: 80px;">
+                                                        <div class="progress-bar 
+                                                            {% if analisis.porcentaje_correctas > 70 %}bg-success
+                                                            {% elif analisis.porcentaje_correctas > 40 %}bg-warning
+                                                            {% else %}bg-danger{% endif %}" 
+                                                            role="progressbar" 
+                                                            style="width: {{ analisis.porcentaje_correctas }}%">
+                                                            {{ analisis.porcentaje_correctas|floatformat:1 }}%
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge 
+                                                        {% if analisis.dificultad == 'Fácil' %}bg-success
+                                                        {% elif analisis.dificultad == 'Media' %}bg-warning
+                                                        {% else %}bg-danger{% endif %}">
+                                                        {{ analisis.dificultad }}
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button class="btn btn-outline-primary btn-sm" 
+                                                            onclick="verPregunta({{ analisis.pregunta.id }})"
+                                                            title="Ver pregunta completa">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            </div>
+                                
+                                <!-- Gráfico de rendimiento por pregunta -->
+                                <div class="mt-4">
+                                    <h6>Rendimiento por Pregunta</h6>
+                                    <canvas id="preguntasChart" height="100"></canvas>
+                                </div>
+                            {% else %}
+                                <div class="text-center py-4">
+                                    <i class="bi bi-graph-up display-4 text-muted"></i>
+                                    <h5 class="mt-3 text-muted">Sin datos disponibles</h5>
+                                    <p class="text-muted">No hay resultados completados para mostrar análisis</p>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -163,7 +404,7 @@
                 <!-- Panel Lateral -->
                 <div class="col-md-4">
                     <!-- Resumen de Resultados -->
-                    <div class="card shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4 stats-card">
                         <div class="card-header bg-warning text-dark">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-clipboard-data me-2"></i>
@@ -173,11 +414,11 @@
                         <div class="card-body">
                             <div class="row text-center">
                                 <div class="col-6 mb-3">
-                                    <h4 class="text-primary">0%</h4>
+                                    <h4 class="text-primary">{{ estadisticas_rendimiento.promedio_porcentaje|floatformat:1 }}%</h4>
                                     <small class="text-muted">Promedio</small>
                                 </div>
                                 <div class="col-6 mb-3">
-                                    <h4 class="text-success">0</h4>
+                                    <h4 class="text-success">{{ estadisticas_rendimiento.mejor_puntaje|floatformat:1 }}</h4>
                                     <small class="text-muted">Mejor Puntaje</small>
                                 </div>
                             </div>
@@ -186,19 +427,36 @@
                             
                             <div class="row text-center">
                                 <div class="col-6 mb-3">
-                                    <h4 class="text-danger">0</h4>
+                                    <h4 class="text-danger">{{ estadisticas_rendimiento.peor_puntaje|floatformat:1 }}</h4>
                                     <small class="text-muted">Peor Puntaje</small>
                                 </div>
                                 <div class="col-6 mb-3">
-                                    <h4 class="text-info">0</h4>
-                                    <small class="text-muted">Tiempo Promedio</small>
+                                    <h4 class="text-info">{{ estadisticas_rendimiento.tiempo_promedio }}</h4>
+                                    <small class="text-muted">Tiempo Promedio (min)</small>
                                 </div>
                             </div>
+                            
+                            {% if top_resultados %}
+                            <hr>
+                            <h6 class="text-muted mb-3">Top 5 Resultados</h6>
+                            <div class="list-group list-group-flush">
+                                {% for resultado in top_resultados %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                    <div>
+                                        <strong>{{ resultado.participante.NombresCompletos }}</strong>
+                                        <br>
+                                        <small class="text-muted">{{ resultado.get_tiempo_formateado }}</small>
+                                    </div>
+                                    <span class="badge bg-primary rounded-pill">{{ resultado.puntos_obtenidos|floatformat:2 }}/10</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
 
                     <!-- Distribución de Puntajes -->
-                    <div class="card shadow-sm mb-4">
+                    <div class="card shadow-sm mb-4 stats-card">
                         <div class="card-header bg-info text-white">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-bar-chart me-2"></i>
@@ -206,15 +464,24 @@
                             </h5>
                         </div>
                         <div class="card-body">
-                            <div class="text-center py-3">
-                                <i class="bi bi-bar-chart display-4 text-muted"></i>
-                                <p class="text-muted mt-2">Gráfico en desarrollo</p>
-                            </div>
+                            {% if distribucion_puntajes %}
+                                <canvas id="distribucionChart" height="150"></canvas>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        Distribución de puntajes de {{ participantes_completaron }} participantes que completaron la evaluación
+                                    </small>
+                                </div>
+                            {% else %}
+                                <div class="text-center py-3">
+                                    <i class="bi bi-bar-chart display-4 text-muted"></i>
+                                    <p class="text-muted mt-2">Sin datos para mostrar</p>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
 
                     <!-- Acciones -->
-                    <div class="card shadow-sm">
+                    <div class="card shadow-sm stats-card">
                         <div class="card-header bg-light">
                             <h5 class="card-title mb-0">
                                 <i class="bi bi-gear me-2"></i>
@@ -241,23 +508,468 @@
     </div>
 </div>
 
+<!-- Modal para ver pregunta completa -->
+<div class="modal fade" id="preguntaModal" tabindex="-1" aria-labelledby="preguntaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="preguntaModalLabel">
+                    <i class="bi bi-question-circle me-2"></i>
+                    Detalle de la Pregunta
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="preguntaModalBody">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Cargando pregunta...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para retroalimentación por grupo -->
+<div class="modal fade" id="retroalimentacionModal" tabindex="-1" aria-labelledby="retroalimentacionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="retroalimentacionModalLabel">
+                    <i class="bi bi-chat-dots me-2"></i>
+                    Retroalimentación para {{ grupo_seleccionado.name|default:"el Grupo" }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="retroalimentacionModalBody">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Generando retroalimentación...</span>
+                    </div>
+                    <p class="mt-2">Generando retroalimentación personalizada...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="descargarRetroalimentacion()" id="btnDescargarRetro" style="display: none;">
+                    <i class="bi bi-download me-1"></i> Descargar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js para gráficos -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Script de datos JSON para JavaScript -->
+{% if analisis_preguntas_json %}
+{{ analisis_preguntas_json|json_script:"analisis-data" }}
+{% else %}
+<script id="analisis-data" type="application/json">[]</script>
+{% endif %}
+
 <script>
-function exportarResultados() {
+// Funciones para gráficos
+function initCharts() {
+    {% if distribucion_puntajes %}
+    // Gráfico de distribución de puntajes
+    const ctxDistribucion = document.getElementById('distribucionChart');
+    if (ctxDistribucion) {
+        const distribucionChart = new Chart(ctxDistribucion.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: [
+                    {% for item in distribucion_puntajes %}
+                        '{{ item.rango|escapejs }} puntos'{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                datasets: [{
+                    label: 'Número de Estudiantes',
+                    data: [
+                        {% for item in distribucion_puntajes %}
+                            {{ item.count }}{% if not forloop.last %},{% endif %}
+                        {% endfor %}
+                    ],
+                    backgroundColor: [
+                        'rgba(220, 53, 69, 0.8)',   // 0-2: Rojo
+                        'rgba(255, 193, 7, 0.8)',   // 2-4: Amarillo
+                        'rgba(255, 193, 7, 0.8)',   // 4-6: Amarillo
+                        'rgba(40, 167, 69, 0.8)',   // 6-8: Verde
+                        'rgba(40, 167, 69, 0.8)'    // 8-10: Verde
+                    ],
+                    borderColor: [
+                        'rgba(220, 53, 69, 1)',
+                        'rgba(255, 193, 7, 1)',
+                        'rgba(255, 193, 7, 1)',
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(40, 167, 69, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Distribución de Puntajes'
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    {% if analisis_preguntas %}
+    // Gráfico de rendimiento por pregunta
+    const ctxPreguntas = document.getElementById('preguntasChart');
+    if (ctxPreguntas) {
+        const preguntasChart = new Chart(ctxPreguntas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [
+                    {% for analisis in analisis_preguntas %}
+                        'P{{ forloop.counter }}'{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                datasets: [{
+                    label: '% de Acierto',
+                    data: [
+                        {% for analisis in analisis_preguntas %}
+                            {{ analisis.porcentaje_correctas|floatformat:1 }}{% if not forloop.last %},{% endif %}
+                        {% endfor %}
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Porcentaje de Acierto por Pregunta'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                elements: {
+                    point: {
+                        radius: 5,
+                        hoverRadius: 8
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+}
+
+// Inicializar gráficos cuando el documento esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    initCharts();
+});
+
+// Funciones para filtros
+function aplicarFiltroGrupo() {
+    const select = document.getElementById('grupoSelect');
+    const grupoId = select.value;
+    const currentUrl = new URL(window.location);
+    
+    if (grupoId === 'todos') {
+        currentUrl.searchParams.delete('grupo');
+    } else {
+        currentUrl.searchParams.set('grupo', grupoId);
+    }
+    
+    window.location.href = currentUrl.toString();
+}
+
+function limpiarFiltros() {
+    const currentUrl = new URL(window.location);
+    currentUrl.searchParams.delete('grupo');
+    window.location.href = currentUrl.toString();
+}
+
+// Función para ver pregunta en modal
+function verPregunta(preguntaId) {
+    const modal = new bootstrap.Modal(document.getElementById('preguntaModal'));
+    const modalBody = document.getElementById('preguntaModalBody');
+    
+    // Mostrar loading
+    modalBody.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando pregunta...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Cargar datos de la pregunta
+    fetch(`{% url 'quizzes:get_question_data' pk=0 %}`.replace('0', preguntaId))
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                modalBody.innerHTML = `
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">Pregunta ${data.pregunta.id}</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <strong>Enunciado:</strong>
+                                <div class="mt-2 p-3 bg-light rounded">
+                                    ${data.pregunta.text}
+                                </div>
+                            </div>
+                            
+                            <strong>Opciones de respuesta:</strong>
+                            <div class="mt-2">
+                                ${data.opciones.map((opcion, index) => `
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="radio" disabled 
+                                               ${opcion.is_correct ? 'checked' : ''}>
+                                        <label class="form-check-label ${opcion.is_correct ? 'text-success fw-bold' : ''}">
+                                            ${String.fromCharCode(65 + index)}. ${opcion.text}
+                                            ${opcion.is_correct ? '<i class="bi bi-check-circle-fill text-success ms-2"></i>' : ''}
+                                        </label>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            
+                            <div class="mt-3 p-2 bg-info bg-opacity-10 rounded">
+                                <small class="text-info">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    <strong>Puntos:</strong> ${data.pregunta.puntos} punto(s)
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Renderizar LaTeX si es necesario
+                if (window.MathJax) {
+                    MathJax.typesetPromise([modalBody]);
+                }
+            } else {
+                modalBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Error al cargar la pregunta: ${data.error || 'Error desconocido'}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            modalBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Error de conexión al cargar la pregunta.
+                </div>
+            `;
+        });
+}
+
+// Función para generar retroalimentación
+function generarRetroalimentacion() {
+    {% if grupo_seleccionado %}
+    const modal = new bootstrap.Modal(document.getElementById('retroalimentacionModal'));
+    const modalBody = document.getElementById('retroalimentacionModalBody');
+    const btnDescargar = document.getElementById('btnDescargarRetro');
+    
+    // Mostrar loading
+    modalBody.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Generando...</span>
+            </div>
+            <p class="mt-2">Generando retroalimentación personalizada para {{ grupo_seleccionado.name|escapejs }}...</p>
+        </div>
+    `;
+    
+    btnDescargar.style.display = 'none';
+    modal.show();
+    
+    // Simular generación de retroalimentación (aquí podrías hacer una llamada AJAX real)
+    setTimeout(() => {
+        try {
+            const analisisDataElement = document.getElementById('analisis-data');
+            const analisis = analisisDataElement ? JSON.parse(analisisDataElement.textContent) : [];
+            let preguntasDificiles = analisis.filter(p => p.porcentaje_correctas < 50);
+            let preguntasMedias = analisis.filter(p => p.porcentaje_correctas >= 50 && p.porcentaje_correctas < 80);
+        
+        modalBody.innerHTML = `
+            <div class="row">
+                <div class="col-12">
+                    <h5 class="mb-3">Retroalimentación para {{ grupo_seleccionado.name|escapejs }}</h5>
+                    
+                    <div class="alert alert-info">
+                        <h6><i class="bi bi-info-circle me-2"></i>Resumen del Rendimiento</h6>
+                        <ul class="mb-0">
+                            <li>Promedio del grupo: {{ estadisticas_rendimiento.promedio_porcentaje|floatformat:1|escapejs }}%</li>
+                            <li>Participantes que completaron: {{ participantes_completaron|escapejs }}</li>
+                            <li>Tiempo promedio: {{ estadisticas_rendimiento.tiempo_promedio|escapejs }} minutos</li>
+                        </ul>
+                    </div>
+                    
+                    ${preguntasDificiles.length > 0 ? `
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>Áreas de Mejora</h6>
+                            <p>Las siguientes preguntas presentaron mayor dificultad (menos del 50% de acierto):</p>
+                            <ul>
+                                ${preguntasDificiles.map((p, i) => `
+                                    <li>Pregunta ${i + 1}: ${p.porcentaje_correctas.toFixed(1)}% de acierto - Tema a reforzar</li>
+                                `).join('')}
+                            </ul>
+                            <p class="mb-0"><strong>Recomendación:</strong> Revisar estos conceptos en clase y proporcionar ejercicios adicionales.</p>
+                        </div>
+                    ` : ''}
+                    
+                    ${preguntasMedias.length > 0 ? `
+                        <div class="alert alert-success">
+                            <h6><i class="bi bi-check-circle me-2"></i>Fortalezas</h6>
+                            <p>El grupo mostró buen desempeño en ${preguntasMedias.length} pregunta(s) con rendimiento entre 50-80%.</p>
+                            <p class="mb-0"><strong>Recomendación:</strong> Continuar reforzando estos conceptos para alcanzar la excelencia.</p>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="alert alert-light">
+                        <h6><i class="bi bi-lightbulb me-2"></i>Sugerencias Pedagógicas</h6>
+                        <ul class="mb-0">
+                            <li>Implementar sesiones de repaso para los temas con menor rendimiento</li>
+                            <li>Utilizar ejercicios similares a los de la evaluación</li>
+                            <li>Considerar trabajo en grupos pequeños para temas difíciles</li>
+                            <li>Proporcionar retroalimentación individual a estudiantes con dificultades</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        btnDescargar.style.display = 'inline-block';
+        } catch (error) {
+            console.error('Error al procesar datos de análisis:', error);
+            modalBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6><i class="bi bi-exclamation-triangle me-2"></i>Error al generar retroalimentación</h6>
+                    <p>No se pudieron procesar los datos de análisis. Inténtalo de nuevo.</p>
+                </div>
+            `;
+        }
+    }, 2000);
+    {% else %}
+    Swal.fire({
+        icon: 'warning',
+        title: 'Selecciona un Grupo',
+        text: 'Debes seleccionar un grupo específico para generar retroalimentación.',
+        confirmButtonText: 'Entendido'
+    });
+    {% endif %}
+}
+
+function descargarRetroalimentacion() {
+    // Implementar descarga de PDF de retroalimentación
     Swal.fire({
         icon: 'info',
-        title: 'Exportar Resultados',
-        text: 'Esta funcionalidad estará disponible próximamente.',
+        title: 'Funcionalidad en Desarrollo',
+        text: 'La descarga de retroalimentación en PDF estará disponible próximamente.',
         confirmButtonText: 'Entendido'
     });
 }
 
-function imprimirReporte() {
-    Swal.fire({
-        icon: 'info',
-        title: 'Imprimir Reporte',
-        text: 'Esta funcionalidad estará disponible próximamente.',
-        confirmButtonText: 'Entendido'
+function exportarResultados() {
+    // Obtener filtro actual
+    const grupoSelect = document.getElementById('grupoSelect');
+    const grupoActual = grupoSelect ? grupoSelect.value : 'todos';
+    
+    // Construir URL con filtros
+    let exportUrl = `{% url 'quizzes:exportar_resultados' pk=evaluacion.id %}`;
+    if (grupoActual !== 'todos') {
+        exportUrl += `?grupo=${grupoActual}`;
+    }
+    
+    // Implementar funcionalidad de exportación
+    fetch(exportUrl, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.blob();
+        }
+        throw new Error('Error al exportar resultados');
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        
+        // Nombre del archivo con filtro si aplica
+        let fileName = `resultados_{{ evaluacion.title|slugify|escapejs }}`;
+        if (grupoActual !== 'todos') {
+            const grupoNombre = grupoSelect.options[grupoSelect.selectedIndex].text;
+            fileName += `_${grupoNombre.replace(/\s+/g, '_')}`;
+        }
+        fileName += '.xlsx';
+        
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        Swal.fire({
+            icon: 'success',
+            title: 'Exportación Exitosa',
+            text: 'Los resultados han sido descargados exitosamente.',
+            confirmButtonText: 'Entendido'
+        });
+    })
+    .catch(error => {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error al Exportar',
+            text: 'Hubo un problema al exportar los resultados. Inténtalo de nuevo.',
+            confirmButtonText: 'Entendido'
+        });
     });
+}
+
+function imprimirReporte() {
+    window.print();
 }
 </script>
 {% endblock %} 
