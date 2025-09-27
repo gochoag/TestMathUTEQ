@@ -11,11 +11,17 @@
 >
   <div class="w-100" style="max-width: 420px">
     <!-- Logo grande -->
-    <div class="text-center mb-3">
+    <div class="text-center d-flex justify-content-center align-items-center">
       <img
         src="{% static 'img/logo-uteq.png' %}"
         alt="Logo UTEQ"
-        class="login-logo-uteq mb-2"
+        class="login-logo-uteq mb-2 me-3"
+      />
+      <img
+        src="{% static 'img/logoMecanica.png' %}"
+        alt="Logo FCI"
+        class="login-logo-fci-big mb-2 ms-3"
+        style="max-width: 160px; width: 100%; height: auto;"
       />
     </div>
    
@@ -23,14 +29,9 @@
       class="login-card p-4 p-md-4 bg-white rounded-4 shadow position-relative w-100"
       style="border-top: 4px solid #00923f"
     >
-      <!-- Logo pequeño dentro del card -->
-      <div class="text-center mb-2" style="margin-top: -40px; ">
-        <img
-          src="{% static 'img/logoMecanica.png' %}"
-          alt="Logo FCI"
-          class="login-logo-fci-big" 
-          style="max-width: 160px; width: 100%; height: auto; margin-bottom: -20px;"
-        />
+      <!-- Título -->
+      <div class="text-center mb-3">
+        <h4 class="fw-bold">Iniciar Sesión</h4>
       </div>
       
 
@@ -76,9 +77,12 @@
             </span>
           </div>
         </div>
-        <div class="mb-3">
+        <div class="mb-3 d-flex justify-content-between">
           <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalClaveTemporal"
             >Solicitar Clave Temporal</a
+          >
+          <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalCreditos"
+            >Créditos</a
           >
         </div>
         <button
@@ -88,12 +92,21 @@
           INICIAR SESIÓN
         </button>
       </form>
+      <div class="text-center mt-3">
+        <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalRegistro">Registrarme</a>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- Incluir el modal de solicitud de clave temporal -->
 {% include 'quizzes/_modalClaveTemporal.html' %}
+
+<!-- Incluir el modal de créditos -->
+{% include 'quizzes/_modalCreditos.html' %}
+
+<!-- Incluir el modal de registro -->
+{% include 'quizzes/_modalRegistro.html' %}
 
 {% endblock %}
 

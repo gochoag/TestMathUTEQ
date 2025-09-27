@@ -1,0 +1,70 @@
+<!-- Modal Registro -->
+<div class="modal fade modal-registro" id="modalRegistro" tabindex="-1" aria-labelledby="modalRegistroLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="modalRegistroLabel">
+                    <i class="bi bi-person-plus me-2"></i>
+                    Registrarme
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Información:</strong> Complete el formulario para registrarse en el sistema.
+                </div>
+
+                <form id="formRegistro">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">
+                            <i class="bi bi-person me-1"></i>
+                            Nombre completo:
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="nombre"
+                               name="nombre"
+                               placeholder="Ingrese su nombre completo"
+                               required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">
+                            <i class="bi bi-envelope me-1"></i>
+                            Correo electrónico:
+                        </label>
+                        <input type="email"
+                               class="form-control"
+                               id="email"
+                               name="email"
+                               placeholder="Ingrese su correo electrónico"
+                               required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cedula" class="form-label">
+                            <i class="bi bi-card-text me-1"></i>
+                            Cédula:
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="cedula"
+                               name="cedula"
+                               placeholder="Ingrese su número de cédula"
+                               required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-success" id="btnRegistrar">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Registrarme
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
