@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
-
+<!-- Actualizado: URLs de categorías corregidas -->
 {% block content %}
 <div class="container-fluid py-3">
   <div class="row mb-3">
@@ -75,9 +75,147 @@
     </div>
   </div>
 
+  <!-- Gestión de Categorías -->
+  <div class="row g-3 mt-2">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-tags me-2"></i>
+            <h5 class="card-title mb-0">Gestión de Categorías de Preguntas</h5>
+          </div>
+          <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#modalCategoria">
+            <i class="bi bi-plus-circle me-1"></i>
+            Agregar Categoría
+          </button>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Administra las categorías temáticas para clasificar las preguntas de las evaluaciones. Usa el estado activo/inactivo para controlar la disponibilidad sin perder el historial.</p>
+          
+          {% if categorias %}
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Preguntas</th>
+                    <th>Estado</th>
+                    <th>Fecha de Creación</th>
+                    <th width="150">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for categoria in categorias %}
+                    <tr>
+                      <td>
+                        <strong class="text-primary">{{ categoria.nombre }}</strong>
+                      </td>
+                      <td>
+                        {% if categoria.descripcion %}
+                          {{ categoria.descripcion|truncatechars:60 }}
+                        {% else %}
+                          <span class="text-muted">Sin descripción</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        <span class="badge bg-info">{{ categoria.preguntas.count }} pregunta{{ categoria.preguntas.count|pluralize }}</span>
+                      </td>
+                      <td>
+                        {% if categoria.activa %}
+                          <span class="badge bg-success">Activa</span>
+                        {% else %}
+                          <span class="badge bg-danger">Inactiva</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        <small class="text-muted">{{ categoria.fecha_creacion|date:"d/m/Y" }}</small>
+                      </td>
+                      <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                          <button type="button" class="btn btn-outline-primary" onclick="editarCategoria({{ categoria.id }})" title="Editar">
+                            <i class="bi bi-pencil"></i>
+                          </button>
+                          <button type="button" class="btn btn-outline-warning" onclick="toggleCategoria({{ categoria.id }}, {{ categoria.activa|yesno:'false,true' }})" title="{% if categoria.activa %}Desactivar{% else %}Activar{% endif %}">
+                            <i class="bi {% if categoria.activa %}bi-eye-slash{% else %}bi-eye{% endif %}"></i>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-center py-4">
+              <i class="bi bi-tags display-4 text-muted"></i>
+              <h5 class="mt-3 text-muted">No hay categorías registradas</h5>
+              <p class="text-muted">Haz clic en <strong>Agregar Categoría</strong> para crear la primera.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="alert alert-info mt-3 mb-0" role="alert">
     <i class="bi bi-info-circle me-2"></i>
     La configuración se guarda en el sistema. No se permiten años futuros.
+  </div>
+</div>
+
+<!-- Modal para Agregar/Editar Categoría -->
+<div class="modal fade" id="modalCategoria" tabindex="-1" aria-labelledby="modalCategoriaLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalCategoriaLabel">
+          <i class="bi bi-plus-circle me-2"></i>
+          Agregar Categoría
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="formCategoria">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="nombreCategoria" class="form-label">
+              <i class="bi bi-tag me-1"></i>
+              Nombre de la Categoría <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="nombreCategoria" name="nombre" required maxlength="100"
+                   placeholder="Ej: Álgebra, Geometría Analítica, Cálculo">
+            <div class="form-text">Nombre único para identificar la categoría</div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="descripcionCategoria" class="form-label">
+              <i class="bi bi-text-paragraph me-1"></i>
+              Descripción (opcional)
+            </label>
+            <textarea class="form-control" id="descripcionCategoria" name="descripcion" rows="3"
+                      placeholder="Descripción breve de los temas que abarca esta categoría"></textarea>
+            <div class="form-text">Descripción opcional para proporcionar más contexto</div>
+          </div>
+          
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="activaCategoria" name="activa" checked>
+            <label class="form-check-label" for="activaCategoria">
+              <i class="bi bi-eye me-1"></i>
+              Categoría activa
+            </label>
+            <div class="form-text">Las categorías inactivas no aparecen en los formularios de preguntas</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success" id="btnGuardarCategoria">
+            <i class="bi bi-check2-circle me-1"></i>
+            Guardar Categoría
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -85,9 +223,13 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+// Variables globales para categorías
+let categoriaEnEdicion = null;
+
 document.addEventListener('DOMContentLoaded', function() {
   const formAnio = document.getElementById('form_anio');
   const formEtapas = document.getElementById('form_etapas');
+  const formCategoria = document.getElementById('formCategoria');
   const maxYear = parseInt('{{ now|date:"Y" }}');
 
   if (formAnio) {
@@ -131,7 +273,154 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
+
+  // Manejo del formulario de categorías
+  if (formCategoria) {
+    formCategoria.addEventListener('submit', function(e) {
+      e.preventDefault();
+      guardarCategoria();
+    });
+  }
+
+  // Limpiar modal cuando se cierre
+  const modalCategoria = document.getElementById('modalCategoria');
+  if (modalCategoria) {
+    modalCategoria.addEventListener('hidden.bs.modal', function() {
+      limpiarFormularioCategoria();
+    });
+  }
 });
+
+function guardarCategoria() {
+  const formData = new FormData(document.getElementById('formCategoria'));
+  const data = {
+    nombre: formData.get('nombre').trim(),
+    descripcion: formData.get('descripcion').trim(),
+    activa: formData.get('activa') ? true : false
+  };
+
+  if (!data.nombre) {
+    Swal.fire('Error', 'El nombre de la categoría es obligatorio', 'error');
+    return;
+  }
+
+  const url = categoriaEnEdicion ? 
+    `/categoria/${categoriaEnEdicion}/editar/` : 
+    '/categoria/crear/';
+    
+  const method = categoriaEnEdicion ? 'PUT' : 'POST';
+
+  fetch(url, {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+    },
+    body: JSON.stringify(data)
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      Swal.fire({
+        icon: 'success',
+        title: '¡Éxito!',
+        text: data.message,
+        timer: 1500,
+        showConfirmButton: false
+      }).then(() => {
+        location.reload();
+      });
+    } else {
+      Swal.fire('Error', data.error || 'Error al guardar la categoría', 'error');
+    }
+  })
+  .catch(error => {
+    Swal.fire('Error', 'Error de conexión al guardar la categoría', 'error');
+  });
+}
+
+function editarCategoria(categoriaId) {
+  fetch(`/categoria/${categoriaId}/datos/`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        categoriaEnEdicion = categoriaId;
+        
+        // Llenar el formulario
+        document.getElementById('nombreCategoria').value = data.categoria.nombre;
+        document.getElementById('descripcionCategoria').value = data.categoria.descripcion || '';
+        document.getElementById('activaCategoria').checked = data.categoria.activa;
+        
+        // Cambiar el título del modal
+        document.getElementById('modalCategoriaLabel').innerHTML = '<i class="bi bi-pencil me-2"></i>Editar Categoría';
+        document.getElementById('btnGuardarCategoria').innerHTML = '<i class="bi bi-check2-circle me-1"></i>Actualizar Categoría';
+        
+        // Mostrar el modal
+        const modal = new bootstrap.Modal(document.getElementById('modalCategoria'));
+        modal.show();
+      } else {
+        Swal.fire('Error', data.error || 'Error al cargar los datos de la categoría', 'error');
+      }
+    })
+    .catch(error => {
+      Swal.fire('Error', 'Error de conexión al cargar la categoría', 'error');
+    });
+}
+
+function toggleCategoria(categoriaId, activar) {
+  const accion = activar ? 'activar' : 'desactivar';
+  
+  Swal.fire({
+    title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} categoría?`,
+    text: `Esta acción ${accion}á la categoría.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: `Sí, ${accion}`,
+    cancelButtonText: 'Cancelar'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      fetch(`/categoria/${categoriaId}/toggle/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({ activa: activar })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          Swal.fire({
+            icon: 'success',
+            title: '¡Éxito!',
+            text: data.message,
+            timer: 1500,
+            showConfirmButton: false
+          }).then(() => {
+            location.reload();
+          });
+        } else {
+          Swal.fire('Error', data.error || 'Error al cambiar el estado de la categoría', 'error');
+        }
+      })
+      .catch(error => {
+        Swal.fire('Error', 'Error de conexión', 'error');
+      });
+    }
+  });
+}
+
+
+
+function limpiarFormularioCategoria() {
+  categoriaEnEdicion = null;
+  document.getElementById('formCategoria').reset();
+  document.getElementById('activaCategoria').checked = true;
+  
+  // Restaurar título del modal
+  document.getElementById('modalCategoriaLabel').innerHTML = '<i class="bi bi-plus-circle me-2"></i>Agregar Categoría';
+  document.getElementById('btnGuardarCategoria').innerHTML = '<i class="bi bi-check2-circle me-1"></i>Guardar Categoría';
+}
 </script>
 {% endblock %}
 

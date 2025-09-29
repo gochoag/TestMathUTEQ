@@ -70,6 +70,7 @@ DATABASES = {
     }
 }
 
+
 AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = 'es-ec'

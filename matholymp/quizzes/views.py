@@ -25,7 +25,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 import os
 from django.conf import settings
-from .models import Pregunta, Opcion
+from .models import Pregunta, Opcion, Categoria
 from .models import ResultadoEvaluacion
 from django.db.models import Avg
 from reportlab.lib.pagesizes import letter, A4
@@ -2053,12 +2053,17 @@ def manage_questions(request, eval_id):
     # Verificar si se pueden modificar las preguntas
     can_modify, restriction_message = check_question_modification_allowed(evaluacion)
     
-    # Optimizar consulta para incluir opciones y evitar N+1
-    preguntas = evaluacion.preguntas.prefetch_related('opciones').order_by('id')
+    # Optimizar consulta para incluir opciones y categorías, evitar N+1
+    preguntas = evaluacion.preguntas.prefetch_related('opciones').select_related('categoria').order_by('id')
+    
+    # Obtener todas las categorías activas para el select
+    from .models import Categoria
+    categorias = Categoria.objects.filter(activa=True).order_by('nombre')
     
     context = {
         'evaluacion': evaluacion,
         'preguntas': preguntas,
+        'categorias': categorias,
         'can_modify_questions': can_modify,
         'restriction_message': restriction_message,
     }
@@ -2221,12 +2226,19 @@ def save_question(request, eval_id):
             opciones = data.get('opciones', [])
             opcion_correcta = data.get('opcion_correcta')
             puntos = data.get('puntos', 1)
+            categoria_id = data.get('categoria')
             
             # Validaciones
             if not pregunta_texto:
                 return JsonResponse({
                     'success': False, 
                     'error': 'El enunciado de la pregunta es obligatorio'
+                }, status=400)
+            
+            if not categoria_id:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La categoría es obligatoria'
                 }, status=400)
             
             if len(opciones) != 4:
@@ -2255,9 +2267,20 @@ def save_question(request, eval_id):
                     'error': 'Los puntos deben ser un número válido'
                 }, status=400)
             
+            # Validar categoría
+            from .models import Categoria
+            try:
+                categoria = Categoria.objects.get(id=categoria_id, activa=True)
+            except Categoria.DoesNotExist:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La categoría seleccionada no es válida'
+                }, status=400)
+            
             # Crear la pregunta
             pregunta = Pregunta.objects.create(
                 evaluacion=evaluacion,
+                categoria=categoria,
                 text=pregunta_texto,
                 puntos=puntos
             )
@@ -2367,7 +2390,8 @@ def get_question_data(request, pk):
                     'pregunta': pregunta.text,
                     'opciones': [opcion.text for opcion in opciones],
                     'opcion_correcta': opcion_correcta,
-                    'puntos': pregunta.puntos
+                    'puntos': pregunta.puntos,
+                    'categoria': pregunta.categoria.id if pregunta.categoria else None
                 }
             })
             
@@ -2408,11 +2432,18 @@ def update_question(request, pk):
             opciones = data.get('opciones', [])
             opcion_correcta = data.get('opcion_correcta')
             puntos = data.get('puntos', 1)
+            categoria_id = data.get('categoria')
             
             if not pregunta_texto:
                 return JsonResponse({
                     'success': False, 
                     'error': 'El enunciado de la pregunta es obligatorio'
+                }, status=400)
+            
+            if not categoria_id:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La categoría es obligatoria'
                 }, status=400)
             
             if not opcion_correcta:
@@ -2443,9 +2474,20 @@ def update_question(request, pk):
                         'error': f'La opción {chr(65 + i)} ({"ABCD"[i]}) es obligatoria'
                     }, status=400)
             
+            # Validar categoría
+            from .models import Categoria
+            try:
+                categoria = Categoria.objects.get(id=categoria_id, activa=True)
+            except Categoria.DoesNotExist:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La categoría seleccionada no es válida'
+                }, status=400)
+            
             # Actualizar la pregunta
             pregunta.text = pregunta_texto
             pregunta.puntos = puntos
+            pregunta.categoria = categoria
             pregunta.save()
             
             # Eliminar opciones existentes y crear nuevas
@@ -2694,16 +2736,32 @@ def evaluacion_results(request, pk):
             'tiempo_promedio': 0,
         }
     
-    # Análisis por pregunta (preparar datos para gráficos)
+    # Análisis por pregunta (preparar datos para gráficos) - Optimizado
     analisis_preguntas = []
+    
+    # Obtener todos los resultados con respuestas guardadas una sola vez
+    resultados_con_respuestas = todos_resultados.exclude(
+        respuestas_guardadas__isnull=True
+    ).exclude(
+        respuestas_guardadas={}
+    ).select_related('participante').prefetch_related('evaluacion__preguntas__opciones')
+    
+    # Crear cache de opciones correctas por pregunta para evitar consultas repetidas
+    preguntas_opciones_correctas = {}
+    for pregunta in evaluacion.preguntas.prefetch_related('opciones'):
+        opciones_correctas = {}
+        for opcion in pregunta.opciones.all():
+            opciones_correctas[opcion.id] = opcion.is_correct
+        preguntas_opciones_correctas[pregunta.id] = opciones_correctas
+    
+    # Procesar cada pregunta
     for pregunta in evaluacion.preguntas.all():
-        # Contar respuestas correctas e incorrectas en base a respuestas_guardadas
-        # Usar todos los resultados que tengan respuestas guardadas, no solo completados
-        resultados_con_respuestas = todos_resultados.exclude(respuestas_guardadas__isnull=True).exclude(respuestas_guardadas={})
-        
         correctas = 0
         incorrectas = 0
         sin_responder = 0
+        
+        # Obtener las opciones correctas para esta pregunta desde el cache
+        opciones_correctas_pregunta = preguntas_opciones_correctas.get(pregunta.id, {})
         
         for resultado in resultados_con_respuestas:
             respuestas = resultado.respuestas_guardadas
@@ -2712,36 +2770,35 @@ def evaluacion_results(request, pk):
             if not respuestas or not isinstance(respuestas, dict):
                 sin_responder += 1
                 continue
-                
-            # Probar diferentes formatos de clave: str(pregunta.id) o pregunta.id
-            pregunta_id_str = str(pregunta.id)
-            pregunta_id_int = pregunta.id
             
+            # Buscar la respuesta para esta pregunta con el formato correcto
+            # Las claves se guardan como "pregunta_407", "pregunta_410", etc.
             opcion_id = None
-            if pregunta_id_str in respuestas:
-                opcion_id = respuestas[pregunta_id_str]
-            elif pregunta_id_int in respuestas:
-                opcion_id = respuestas[pregunta_id_int]
-            elif str(pregunta_id_int) in respuestas:
-                opcion_id = respuestas[str(pregunta_id_int)]
+            pregunta_key = f"pregunta_{pregunta.id}"
+            
+            if pregunta_key in respuestas:
+                opcion_id = respuestas[pregunta_key]
             
             if opcion_id is not None:
-                # Verificar si la respuesta es correcta
                 try:
-                    # Convertir a entero si es string
+                    # Normalizar opcion_id a entero
                     if isinstance(opcion_id, str) and opcion_id.isdigit():
                         opcion_id = int(opcion_id)
                     elif not isinstance(opcion_id, int):
                         sin_responder += 1
                         continue
                     
-                    opcion = pregunta.opciones.get(id=opcion_id)
-                    if opcion.is_correct:
-                        correctas += 1
+                    # Verificar si la respuesta es correcta usando el cache
+                    if opcion_id in opciones_correctas_pregunta:
+                        if opciones_correctas_pregunta[opcion_id]:
+                            correctas += 1
+                        else:
+                            incorrectas += 1
                     else:
-                        incorrectas += 1
-                except (ValueError, TypeError, Opcion.DoesNotExist):
-                    # Si hay error al convertir o la opción no existe, contar como sin responder
+                        # La opción no existe, contar como sin responder
+                        sin_responder += 1
+                        
+                except (ValueError, TypeError):
                     sin_responder += 1
             else:
                 sin_responder += 1
@@ -5302,12 +5359,140 @@ def settings_view(request):
             messages.error(request, f'No se pudo guardar la configuración: {str(e)}')
             return redirect('quizzes:settings')
     # GET
+    categorias = Categoria.objects.all().order_by('-fecha_creacion')
     context = {
         'num_etapas': SystemConfig.get_num_etapas(),
         'active_year': SystemConfig.get_active_year(),
         'now': timezone.now(),
+        'categorias': categorias,
     }
     return render(request, 'quizzes/settings.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def crear_categoria(request):
+    """Crear una nueva categoría."""
+    if not (request.user.is_superuser or has_full_access(request.user)):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'})
+    
+    try:
+        data = json.loads(request.body)
+        nombre = data.get('nombre', '').strip()
+        descripcion = data.get('descripcion', '').strip()
+        activa = data.get('activa', True)
+        
+        if not nombre:
+            return JsonResponse({'success': False, 'error': 'El nombre es obligatorio'})
+        
+        # Verificar que no exista otra categoría con el mismo nombre
+        if Categoria.objects.filter(nombre=nombre).exists():
+            return JsonResponse({'success': False, 'error': 'Ya existe una categoría con este nombre'})
+        
+        categoria = Categoria.objects.create(
+            nombre=nombre,
+            descripcion=descripcion,
+            activa=activa
+        )
+        
+        return JsonResponse({
+            'success': True, 
+            'message': 'Categoría creada exitosamente',
+            'categoria_id': categoria.id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["GET"])
+def obtener_categoria(request, categoria_id):
+    """Obtener datos de una categoría para edición."""
+    if not (request.user.is_superuser or has_full_access(request.user)):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'})
+    
+    try:
+        categoria = get_object_or_404(Categoria, id=categoria_id)
+        return JsonResponse({
+            'success': True,
+            'categoria': {
+                'id': categoria.id,
+                'nombre': categoria.nombre,
+                'descripcion': categoria.descripcion,
+                'activa': categoria.activa,
+                'fecha_creacion': categoria.fecha_creacion.isoformat()
+            }
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["PUT"])
+def editar_categoria(request, categoria_id):
+    """Editar una categoría existente."""
+    if not (request.user.is_superuser or has_full_access(request.user)):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'})
+    
+    try:
+        data = json.loads(request.body)
+        categoria = get_object_or_404(Categoria, id=categoria_id)
+        
+        nombre = data.get('nombre', '').strip()
+        descripcion = data.get('descripcion', '').strip()
+        activa = data.get('activa', True)
+        
+        if not nombre:
+            return JsonResponse({'success': False, 'error': 'El nombre es obligatorio'})
+        
+        # Verificar que no exista otra categoría con el mismo nombre (excluyendo la actual)
+        if Categoria.objects.filter(nombre=nombre).exclude(id=categoria_id).exists():
+            return JsonResponse({'success': False, 'error': 'Ya existe una categoría con este nombre'})
+        
+        categoria.nombre = nombre
+        categoria.descripcion = descripcion
+        categoria.activa = activa
+        categoria.save()
+        
+        return JsonResponse({
+            'success': True, 
+            'message': 'Categoría actualizada exitosamente'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_categoria(request, categoria_id):
+    """Activar o desactivar una categoría."""
+    if not (request.user.is_superuser or has_full_access(request.user)):
+        return JsonResponse({'success': False, 'error': 'Sin permisos'})
+    
+    try:
+        data = json.loads(request.body)
+        categoria = get_object_or_404(Categoria, id=categoria_id)
+        activa = data.get('activa', not categoria.activa)
+        
+        categoria.activa = activa
+        categoria.save()
+        
+        accion = "activada" if activa else "desactivada"
+        return JsonResponse({
+            'success': True, 
+            'message': f'Categoría {accion} exitosamente'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 def custom_404_view(request, exception=None, path=None):

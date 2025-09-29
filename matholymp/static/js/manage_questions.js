@@ -195,6 +195,10 @@ async function saveQuestion() {
     // Obtener los puntos
     const puntos = document.getElementById('puntosPregunta').value;
     
+    // Obtener la categoría
+    const categoriaElement = document.getElementById('categoriaPregunta');
+    const categoria = categoriaElement ? categoriaElement.value : null;
+    
     // Validaciones
     if (!pregunta.trim()) {
         Swal.fire({
@@ -213,6 +217,19 @@ async function saveQuestion() {
             icon: 'error',
             title: 'Error',
             text: 'Debe seleccionar una opción correcta',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
+    // Validar categoría
+    if (!categoria || categoria === '' || categoria === '0') {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Debe seleccionar una categoría',
             customClass: {
                 container: 'swal-over-modal'
             }
@@ -249,13 +266,46 @@ async function saveQuestion() {
     }
     
     // Preparar datos para enviar
+    const categoriaInt = parseInt(categoria);
+    if (isNaN(categoriaInt)) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'La categoría seleccionada no es válida',
+            customClass: {
+                container: 'swal-over-modal'
+            }
+        });
+        return;
+    }
+    
     const data = {
         pregunta: pregunta,
         opciones: opciones,
         opcion_correcta: opcionCorrecta.value,
-        puntos: parseInt(puntos)
+        puntos: parseInt(puntos),
+        categoria: categoriaInt
     };
     
+    // Mostrar indicador de carga
+    const actionText = isEditing ? 'Actualizando' : 'Guardando';
+    Swal.fire({
+        title: `${actionText} pregunta...`,
+        html: 'Por favor espera mientras se procesa la pregunta.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    // Deshabilitar el botón de guardar
+    const btnGuardar = document.getElementById('btnGuardarPregunta');
+    if (btnGuardar) {
+        btnGuardar.disabled = true;
+    }
+
     // Determinar URL según si es edición o creación
     const url = isEditing ? 
         updateQuestionUrl.replace('0', currentPreguntaId) : 
@@ -272,7 +322,16 @@ async function saveQuestion() {
     })
     .then(response => response.json())
     .then(data => {
+        // Rehabilitar el botón de guardar
+        const btnGuardar = document.getElementById('btnGuardarPregunta');
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+        }
+        
         if (data.success) {
+            // Cerrar el loading
+            Swal.close();
+            
             // Cerrar el modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('modalPregunta'));
             modal.hide();
@@ -296,6 +355,9 @@ async function saveQuestion() {
                 setTimeout(corregirAlineacionImagenesMejorada, 100);
             }, 2000);
         } else {
+            // Cerrar el loading
+            Swal.close();
+            
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
@@ -307,6 +369,15 @@ async function saveQuestion() {
         }
     })
     .catch(error => {
+        // Rehabilitar el botón de guardar
+        const btnGuardar = document.getElementById('btnGuardarPregunta');
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+        }
+        
+        // Cerrar el loading
+        Swal.close();
+        
         console.error('Error:', error);
         Swal.fire({
             icon: 'error',
@@ -467,6 +538,12 @@ async function editPregunta(preguntaId) {
                 puntosInput.value = data.data.puntos;
             }
             
+            // Establecer la categoría
+            const categoriaSelect = document.getElementById('categoriaPregunta');
+            if (categoriaSelect && data.data.categoria) {
+                categoriaSelect.value = data.data.categoria;
+            }
+            
             // Cambiar título del modal
             const modalTitle = document.querySelector('#modalPregunta .modal-title');
             if (modalTitle) {
@@ -560,6 +637,12 @@ function clearForm() {
         puntosInput.value = '1';
     }
     
+    // Resetear categoría
+    const categoriaSelect = document.getElementById('categoriaPregunta');
+    if (categoriaSelect) {
+        categoriaSelect.value = '';
+    }
+    
     // Resetear variables
     currentPreguntaId = null;
     isEditing = false;
@@ -570,10 +653,11 @@ function clearForm() {
         modalTitle.innerHTML = '<i class="bi bi-plus-circle me-2"></i>Agregar Pregunta';
     }
     
-    // Cambiar texto del botón
+    // Cambiar texto del botón y asegurar que esté habilitado
     const btnGuardar = document.getElementById('btnGuardarPregunta');
     if (btnGuardar) {
         btnGuardar.textContent = 'Guardar Pregunta';
+        btnGuardar.disabled = false; // Asegurar que esté habilitado
     }
 }
 
@@ -791,4 +875,17 @@ document.addEventListener('DOMContentLoaded', function() {
 // Función para corregir imágenes después de recargar contenido dinámicamente
 function corregirImagenesDespuesDeCarga() {
     setTimeout(corregirAlineacionImagenesMejorada, 50);
-} 
+}
+
+// Event listener para limpiar el formulario cuando se abre el modal para agregar pregunta
+document.addEventListener('DOMContentLoaded', function() {
+    const modalPregunta = document.getElementById('modalPregunta');
+    if (modalPregunta) {
+        modalPregunta.addEventListener('show.bs.modal', function (event) {
+            // Si no es una edición (no hay currentPreguntaId), limpiar el formulario
+            if (!currentPreguntaId) {
+                clearForm();
+            }
+        });
+    }
+}); 

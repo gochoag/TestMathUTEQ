@@ -62,6 +62,12 @@ urlpatterns = [
     path('monitoreo/<int:monitoreo_id>/detalle/', views.detalle_monitoreo, name='detalle_monitoreo'),
     path('monitoreo/<int:monitoreo_id>/alerta/', views.agregar_alerta_manual, name='agregar_alerta_manual'),
     
+    # URLs para gestión de categorías (DEBE IR ANTES DEL CATCH-ALL)
+    path('categoria/crear/', views.crear_categoria, name='crear_categoria'),
+    path('categoria/<int:categoria_id>/datos/', views.obtener_categoria, name='obtener_categoria'),
+    path('categoria/<int:categoria_id>/editar/', views.editar_categoria, name='editar_categoria'),
+    path('categoria/<int:categoria_id>/toggle/', views.toggle_categoria, name='toggle_categoria'),
+    
     # URL para solicitud de clave temporal
     path('solicitar-clave-temporal/', views.solicitar_clave_temporal, name='solicitar_clave_temporal'),
     

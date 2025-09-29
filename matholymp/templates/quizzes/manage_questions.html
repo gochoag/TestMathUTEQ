@@ -56,12 +56,22 @@
                                         <div class="pregunta-number">
                                             <span class="number-badge">{{ forloop.counter }}</span>
                                         </div>
-                                        <div class="pregunta-puntos">
-                                            <label class="form-label small mb-1">Puntos:</label>
-                                            <input type="number" class="form-control form-control-sm puntos-input" 
-                                                   value="{{ pregunta.puntos }}" min="1" max="10" 
-                                                   onchange="actualizarPuntos({{ pregunta.id }}, this.value)"
-                                                   style="width: 80px;" {% if not can_modify_questions %}disabled{% endif %}>
+                                        <div class="pregunta-info">
+                                            <div class="pregunta-categoria mb-2">
+                                                <label class="form-label small mb-1">Categoría:</label>
+                                                {% if pregunta.categoria %}
+                                                    <span class="badge bg-info">{{ pregunta.categoria.nombre }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Sin categoría</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="pregunta-puntos">
+                                                <label class="form-label small mb-1">Puntos:</label>
+                                                <input type="number" class="form-control form-control-sm puntos-input" 
+                                                       value="{{ pregunta.puntos }}" min="1" max="10" 
+                                                       onchange="actualizarPuntos({{ pregunta.id }}, this.value)"
+                                                       style="width: 80px;" {% if not can_modify_questions %}disabled{% endif %}>
+                                            </div>
                                         </div>
                                         <div class="pregunta-actions">
                                             <button class="btn btn-sm btn-outline-primary me-2" onclick="editPregunta({{ pregunta.id }})" title="{% if can_modify_questions %}Editar{% else %}No se puede editar{% endif %}" {% if not can_modify_questions %}disabled{% endif %}>
@@ -141,7 +151,27 @@
                                 <div class="accordion-body">
                                     <textarea id="editorPregunta" name="pregunta" class="form-control"></textarea>
                                     <div class="row mt-3">
-                                        <div class="col-md-4">
+                                        <div class="col-md-6">
+                                            <label for="categoriaPregunta" class="form-label">
+                                                <i class="bi bi-tag me-1"></i>
+                                                Categoría <span class="text-danger">*</span>
+                                            </label>
+                                            <select class="form-select" id="categoriaPregunta" name="categoria" required>
+                                                <option value="">Seleccionar categoría...</option>
+                                                {% for categoria in categorias %}
+                                                    <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+                                                {% empty %}
+                                                    <option value="" disabled>No hay categorías disponibles</option>
+                                                {% endfor %}
+                                            </select>
+                                            {% if not categorias %}
+                                                <div class="alert alert-warning mt-2">
+                                                    <small>⚠️ No hay categorías activas. Ve a Configuración → Gestión de Categorías para crear algunas.</small>
+                                                </div>
+                                            {% endif %}
+                                            <div class="form-text">Categoría temática de la pregunta</div>
+                                        </div>
+                                        <div class="col-md-6">
                                             <label for="puntosPregunta" class="form-label">
                                                 <i class="bi bi-star me-1"></i>
                                                 Puntos <span class="text-danger">*</span>
@@ -208,6 +238,8 @@ const saveQuestionUrl = window.saveQuestionUrl;
 const deleteQuestionUrl = window.deleteQuestionUrl;
 const getQuestionDataUrl = window.getQuestionDataUrl;
 const updateQuestionUrl = window.updateQuestionUrl;
+
+
 </script>
 <script src="{% static 'js/ckeditor_config.js' %}"></script>
 <script src="{% static 'js/manage_questions.js' %}"></script>

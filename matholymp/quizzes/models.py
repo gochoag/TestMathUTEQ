@@ -799,9 +799,25 @@ class Evaluacion(models.Model):
         verbose_name = 'Evaluación'
         verbose_name_plural = 'Evaluaciones'
 
+# Modelo para categorías de preguntas
+class Categoria(models.Model):
+    nombre = models.CharField(max_length=100, unique=True, help_text='Nombre de la categoría (ej: Álgebra, Geometría Analítica)')
+    descripcion = models.TextField(blank=True, help_text='Descripción opcional de la categoría')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    activa = models.BooleanField(default=True, help_text='Si la categoría está activa para su uso')
+
+    class Meta:
+        verbose_name = 'Categoría'
+        verbose_name_plural = 'Categorías'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
 # Modelo para las preguntas
 class Pregunta(models.Model):
     evaluacion = models.ForeignKey(Evaluacion, related_name='preguntas', on_delete=models.CASCADE)
+    categoria = models.ForeignKey(Categoria, related_name='preguntas', on_delete=models.SET_NULL, null=True, blank=True, help_text='Categoría temática de la pregunta')
     text = models.TextField(help_text='Use LaTeX para fórmulas')
     puntos = models.PositiveIntegerField(default=1, help_text='Puntos que vale esta pregunta')
 
