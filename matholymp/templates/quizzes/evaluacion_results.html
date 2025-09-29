@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load l10n %}
 
 {% block title %}Resultados - {{ evaluacion.title }}{% endblock %}
 
@@ -123,6 +124,70 @@
     padding-left: 1rem;
     margin: 1rem 0;
 }
+
+/* Estilos para encabezado de página */
+.page-header {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border: 1px solid #e9ecef;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.title-section {
+    flex-grow: 1;
+}
+
+.title-section h2 {
+    font-size: 1.75rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    margin: 0;
+}
+
+.title-section .text-primary {
+    display: inline;
+    word-break: break-word;
+}
+
+.actions-section {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 991px) {
+    .header-content {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .title-section h2 {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .page-header {
+        padding: 15px;
+    }
+    
+    .title-section h2 {
+        font-size: 1.25rem;
+    }
+    
+    .actions-section {
+        flex-direction: column;
+    }
+}
 </style>
 {% endblock %}
 
@@ -130,24 +195,26 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2 class="mb-0">
-                        <i class="bi bi-graph-up me-2"></i>
-                        Resultados de la Evaluación
-                        {% if grupo_seleccionado %}
-                            <small class="text-muted">- {{ grupo_seleccionado.name }}</small>
-                        {% endif %}
-                    </h2>
-                    <small class="text-muted">Análisis y estadísticas de rendimiento</small>
-                </div>
-                <div>
-                    <a href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}" class="btn btn-secondary me-2">
-                        <i class="bi bi-eye me-1"></i> Ver Detalles
-                    </a>
-                    <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-left me-1"></i> Volver
-                    </a>
+            <div class="page-header mb-4">
+                <div class="header-content">
+                    <div class="title-section">
+                        <h2 class="mb-0">
+                            <i class="bi bi-graph-up me-2"></i>
+                            Resultados: <span class="text-primary">{{ evaluacion.title }}</span>
+                            {% if grupo_seleccionado %}
+                                <small class="text-muted d-block mt-1">Grupo: {{ grupo_seleccionado.name }}</small>
+                            {% endif %}
+                        </h2>
+                        <small class="text-muted mt-2 d-block">Análisis y estadísticas de rendimiento</small>
+                    </div>
+                    <div class="actions-section">
+                        <a href="{% url 'quizzes:view_evaluacion' pk=evaluacion.id %}" class="btn btn-secondary me-2">
+                            <i class="bi bi-eye me-1"></i> Ver Detalles
+                        </a>
+                        <a href="{% url 'quizzes:quiz' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i> Volver
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -161,9 +228,9 @@
                 </div>
                 <div class="card-body">
                     <div class="row align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label for="grupoSelect" class="form-label">Filtrar por Grupo/Colegio:</label>
-                            <select id="grupoSelect" class="form-select" onchange="aplicarFiltroGrupo()">
+                            <select id="grupoSelect" class="form-select" onchange="aplicarFiltros()">
                                 <option value="todos" {% if grupo_filtro == 'todos' %}selected{% endif %}>
                                     Todos los Participantes
                                 </option>
@@ -174,7 +241,20 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label for="categoriaSelect" class="form-label">Filtrar por Categoría:</label>
+                            <select id="categoriaSelect" class="form-select" onchange="aplicarFiltros()">
+                                <option value="todas" {% if categoria_filtro == 'todas' %}selected{% endif %}>
+                                    Todas las Categorías
+                                </option>
+                                {% for categoria in categorias_disponibles %}
+                                    <option value="{{ categoria.id }}" {% if categoria_filtro == categoria.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ categoria.nombre }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <div class="d-flex gap-2">
                                 <button class="btn btn-outline-primary" onclick="limpiarFiltros()">
                                     <i class="bi bi-arrow-clockwise me-1"></i> Limpiar
@@ -186,12 +266,14 @@
                                 {% endif %}
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            {% if grupo_seleccionado %}
+                        <div class="col-md-3">
+                            {% if grupo_seleccionado or categoria_seleccionada %}
                                 <div class="alert alert-info mb-0 py-2">
                                     <small>
                                         <i class="bi bi-info-circle me-1"></i>
-                                        Mostrando resultados del grupo: <strong>{{ grupo_seleccionado.name }}</strong>
+                                        Filtros activos:
+                                        {% if grupo_seleccionado %}<strong>Grupo: {{ grupo_seleccionado.name }}</strong>{% endif %}
+                                        {% if categoria_seleccionada %}<strong>Categoría: {{ categoria_seleccionada.nombre }}</strong>{% endif %}
                                     </small>
                                 </div>
                             {% endif %}
@@ -312,7 +394,145 @@
                         </div>
                     </div>
 
-                    <!-- Resultados por Pregunta -->
+                    <!-- Análisis por Categorías -->
+                    {% if analisis_categorias %}
+                    <div class="card shadow-sm mb-4 stats-card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-tags me-2"></i>
+                                Rendimiento por Categoría Temática
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for categoria in analisis_categorias %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="categoria-card p-3 border rounded">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6 class="mb-0 fw-bold">{{ categoria.categoria_nombre }}</h6>
+                                            <span class="badge 
+                                                {% if categoria.dificultad == 'Fácil' %}bg-success
+                                                {% elif categoria.dificultad == 'Media' %}bg-warning
+                                                {% else %}bg-danger{% endif %}">
+                                                {{ categoria.dificultad }}
+                                            </span>
+                                        </div>
+                                        
+                                        <div class="row text-center mb-2">
+                                            <div class="col-4">
+                                                <small class="text-muted d-block">Preguntas</small>
+                                                <strong class="text-primary">{{ categoria.total_preguntas }}</strong>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted d-block">Correctas</small>
+                                                <strong class="text-success">{{ categoria.correctas }}</strong>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted d-block">Incorrectas</small>
+                                                <strong class="text-danger">{{ categoria.incorrectas }}</strong>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="progress mb-2" style="height: 8px;">
+                                            <div class="progress-bar 
+                                                {% if categoria.porcentaje_acierto > 70 %}bg-success
+                                                {% elif categoria.porcentaje_acierto > 40 %}bg-warning
+                                                {% else %}bg-danger{% endif %}" 
+                                                role="progressbar" 
+                                                style="width: {{ categoria.porcentaje_acierto }}%">
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="text-center">
+                                            <small class="text-muted">Porcentaje de Acierto: </small>
+                                            <strong>{{ categoria.porcentaje_acierto|floatformat:1 }}%</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% if forloop.counter|divisibleby:2 %}</div><div class="row">{% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+
+                <!-- Panel Lateral -->
+                <div class="col-md-4">
+                    <!-- Distribución de Puntajes -->
+                    <div class="card shadow-sm mb-4 stats-card">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-bar-chart me-2"></i>
+                                Distribución de Puntajes
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {% if distribucion_puntajes %}
+                                <canvas id="distribucionChart" height="150"></canvas>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        Distribución de puntajes de {{ participantes_completaron }} participantes que completaron la evaluación
+                                    </small>
+                                </div>
+                            {% else %}
+                                <div class="text-center py-3">
+                                    <i class="bi bi-bar-chart display-4 text-muted"></i>
+                                    <p class="text-muted mt-2">Sin datos para mostrar</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Rendimiento por Categoría -->
+                    {% if analisis_categorias %}
+                    <div class="card shadow-sm mb-4 stats-card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-pie-chart me-2"></i>
+                                Rendimiento por Categoría
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="categoriaChart" height="180"></canvas>
+                            <div class="mt-3">
+                                <small class="text-muted">
+                                    Porcentaje de acierto promedio por categoría temática
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Acciones -->
+                    <div class="card shadow-sm stats-card">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-gear me-2"></i>
+                                Acciones
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary" onclick="exportarResultados()">
+                                    <i class="bi bi-download me-2"></i> Exportar Resultados
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="imprimirReporte()">
+                                    <i class="bi bi-printer me-2"></i> Imprimir Reporte
+                                </button>
+                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-outline-success">
+                                    <i class="bi bi-question-square me-2"></i> Gestionar Preguntas
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Análisis por Pregunta - Fila completa -->
+            <div class="row mt-4">
+                <div class="col-12">
                     <div class="card shadow-sm stats-card">
                         <div class="card-header bg-info text-white">
                             <h5 class="card-title mb-0">
@@ -327,6 +547,7 @@
                                         <thead>
                                             <tr>
                                                 <th>Pregunta</th>
+                                                <th class="text-center">Categoría</th>
                                                 <th class="text-center">Correctas</th>
                                                 <th class="text-center">Incorrectas</th>
                                                 <th class="text-center">Sin Responder</th>
@@ -339,9 +560,16 @@
                                             {% for analisis in analisis_preguntas %}
                                             <tr>
                                                 <td>
-                                                    <div class="pregunta-text" style="max-width: 300px;">
-                                                        {{ analisis.pregunta.text|truncatewords:10 }}
+                                                    <div class="pregunta-text" style="max-width: 500px;">
+                                                        {{ analisis.pregunta.text|striptags|truncatewords:25|safe }}
                                                     </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    {% if analisis.pregunta.categoria %}
+                                                        <span class="badge bg-info">{{ analisis.pregunta.categoria.nombre }}</span>
+                                                    {% else %}
+                                                        <span class="badge bg-secondary">General</span>
+                                                    {% endif %}
                                                 </td>
                                                 <td class="text-center">
                                                     <span class="badge bg-success">{{ analisis.correctas }}</span>
@@ -397,109 +625,6 @@
                                     <p class="text-muted">No hay resultados completados para mostrar análisis</p>
                                 </div>
                             {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Panel Lateral -->
-                <div class="col-md-4">
-                    <!-- Resumen de Resultados -->
-                    <div class="card shadow-sm mb-4 stats-card">
-                        <div class="card-header bg-warning text-dark">
-                            <h5 class="card-title mb-0">
-                                <i class="bi bi-clipboard-data me-2"></i>
-                                Resumen de Resultados
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row text-center">
-                                <div class="col-6 mb-3">
-                                    <h4 class="text-primary">{{ estadisticas_rendimiento.promedio_porcentaje|floatformat:1 }}%</h4>
-                                    <small class="text-muted">Promedio</small>
-                                </div>
-                                <div class="col-6 mb-3">
-                                    <h4 class="text-success">{{ estadisticas_rendimiento.mejor_puntaje|floatformat:1 }}</h4>
-                                    <small class="text-muted">Mejor Puntaje</small>
-                                </div>
-                            </div>
-                            
-                            <hr>
-                            
-                            <div class="row text-center">
-                                <div class="col-6 mb-3">
-                                    <h4 class="text-danger">{{ estadisticas_rendimiento.peor_puntaje|floatformat:1 }}</h4>
-                                    <small class="text-muted">Peor Puntaje</small>
-                                </div>
-                                <div class="col-6 mb-3">
-                                    <h4 class="text-info">{{ estadisticas_rendimiento.tiempo_promedio }}</h4>
-                                    <small class="text-muted">Tiempo Promedio (min)</small>
-                                </div>
-                            </div>
-                            
-                            {% if top_resultados %}
-                            <hr>
-                            <h6 class="text-muted mb-3">Top 5 Resultados</h6>
-                            <div class="list-group list-group-flush">
-                                {% for resultado in top_resultados %}
-                                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-                                    <div>
-                                        <strong>{{ resultado.participante.NombresCompletos }}</strong>
-                                        <br>
-                                        <small class="text-muted">{{ resultado.get_tiempo_formateado }}</small>
-                                    </div>
-                                    <span class="badge bg-primary rounded-pill">{{ resultado.puntos_obtenidos|floatformat:2 }}/10</span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <!-- Distribución de Puntajes -->
-                    <div class="card shadow-sm mb-4 stats-card">
-                        <div class="card-header bg-info text-white">
-                            <h5 class="card-title mb-0">
-                                <i class="bi bi-bar-chart me-2"></i>
-                                Distribución de Puntajes
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            {% if distribucion_puntajes %}
-                                <canvas id="distribucionChart" height="150"></canvas>
-                                <div class="mt-3">
-                                    <small class="text-muted">
-                                        Distribución de puntajes de {{ participantes_completaron }} participantes que completaron la evaluación
-                                    </small>
-                                </div>
-                            {% else %}
-                                <div class="text-center py-3">
-                                    <i class="bi bi-bar-chart display-4 text-muted"></i>
-                                    <p class="text-muted mt-2">Sin datos para mostrar</p>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div class="card shadow-sm stats-card">
-                        <div class="card-header bg-light">
-                            <h5 class="card-title mb-0">
-                                <i class="bi bi-gear me-2"></i>
-                                Acciones
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-outline-primary" onclick="exportarResultados()">
-                                    <i class="bi bi-download me-2"></i> Exportar Resultados
-                                </button>
-                                <button class="btn btn-outline-secondary" onclick="imprimirReporte()">
-                                    <i class="bi bi-printer me-2"></i> Imprimir Reporte
-                                </button>
-                                <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-outline-success">
-                                    <i class="bi bi-question-square me-2"></i> Gestionar Preguntas
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -586,6 +711,7 @@ function initCharts() {
                 labels: [
                     {% for item in distribucion_puntajes %}
                         '{{ item.rango|escapejs }} puntos'{% if not forloop.last %},{% endif %}
+                    {% empty %}
                     {% endfor %}
                 ],
                 datasets: [{
@@ -593,6 +719,7 @@ function initCharts() {
                     data: [
                         {% for item in distribucion_puntajes %}
                             {{ item.count }}{% if not forloop.last %},{% endif %}
+                        {% empty %}
                         {% endfor %}
                     ],
                     backgroundColor: [
@@ -646,6 +773,7 @@ function initCharts() {
                 labels: [
                     {% for analisis in analisis_preguntas %}
                         'P{{ forloop.counter }}'{% if not forloop.last %},{% endif %}
+                    {% empty %}
                     {% endfor %}
                 ],
                 datasets: [{
@@ -653,6 +781,7 @@ function initCharts() {
                     data: [
                         {% for analisis in analisis_preguntas %}
                             {{ analisis.porcentaje_correctas|floatformat:1 }}{% if not forloop.last %},{% endif %}
+                        {% empty %}
                         {% endfor %}
                     ],
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
@@ -691,6 +820,78 @@ function initCharts() {
         });
     }
     {% endif %}
+
+    {% if analisis_categorias %}
+    // Gráfico de rendimiento por categorías
+    const ctxCategorias = document.getElementById('categoriaChart');
+    if (ctxCategorias) {
+        const categoriaChart = new Chart(ctxCategorias.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: [
+                    {% for categoria in analisis_categorias %}
+                        '{{ categoria.categoria_nombre|escapejs }}'{% if not forloop.last %},{% endif %}
+                    {% empty %}
+                    {% endfor %}
+                ],
+                datasets: [{
+                    data: [
+                        {% for categoria in analisis_categorias %}
+                            {{ categoria.porcentaje_acierto|floatformat:1 }}{% if not forloop.last %},{% endif %}
+                        {% empty %}
+                        {% endfor %}
+                    ],
+                    backgroundColor: [
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(255, 205, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)',
+                        'rgba(153, 102, 255, 0.8)',
+                        'rgba(255, 159, 64, 0.8)',
+                        'rgba(199, 199, 199, 0.8)',
+                        'rgba(83, 102, 255, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(255, 205, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(199, 199, 199, 1)',
+                        'rgba(83, 102, 255, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Distribución de Rendimiento por Categoría'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.parsed.toFixed(1) + '%';
+                            }
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
 }
 
 // Inicializar gráficos cuando el documento esté listo
@@ -699,15 +900,25 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Funciones para filtros
-function aplicarFiltroGrupo() {
-    const select = document.getElementById('grupoSelect');
-    const grupoId = select.value;
+function aplicarFiltros() {
+    const grupoSelect = document.getElementById('grupoSelect');
+    const categoriaSelect = document.getElementById('categoriaSelect');
     const currentUrl = new URL(window.location);
     
+    // Filtro de grupo
+    const grupoId = grupoSelect ? grupoSelect.value : 'todos';
     if (grupoId === 'todos') {
         currentUrl.searchParams.delete('grupo');
     } else {
         currentUrl.searchParams.set('grupo', grupoId);
+    }
+    
+    // Filtro de categoría
+    const categoriaId = categoriaSelect ? categoriaSelect.value : 'todas';
+    if (categoriaId === 'todas') {
+        currentUrl.searchParams.delete('categoria');
+    } else {
+        currentUrl.searchParams.set('categoria', categoriaId);
     }
     
     window.location.href = currentUrl.toString();
@@ -716,6 +927,7 @@ function aplicarFiltroGrupo() {
 function limpiarFiltros() {
     const currentUrl = new URL(window.location);
     currentUrl.searchParams.delete('grupo');
+    currentUrl.searchParams.delete('categoria');
     window.location.href = currentUrl.toString();
 }
 
@@ -830,11 +1042,27 @@ function generarRetroalimentacion() {
     // Simular generación de retroalimentación (aquí podrías hacer una llamada AJAX real)
     setTimeout(() => {
         try {
-            const analisisDataElement = document.getElementById('analisis-data');
-            const analisis = analisisDataElement ? JSON.parse(analisisDataElement.textContent) : [];
-            let preguntasDificiles = analisis.filter(p => p.porcentaje_correctas < 50);
-            let preguntasMedias = analisis.filter(p => p.porcentaje_correctas >= 50 && p.porcentaje_correctas < 80);
-        
+            // Obtener datos de categorías
+            {% if analisis_categorias %}
+            const categoriasData = [
+                {% for categoria in analisis_categorias %}
+                {
+                    nombre: '{{ categoria.categoria_nombre|escapejs }}',
+                    porcentaje: {{ categoria.porcentaje_acierto|floatformat:1|unlocalize }},
+                    preguntas: {{ categoria.total_preguntas }},
+                    dificultad: '{{ categoria.dificultad|escapejs }}'
+                }{% if not forloop.last %},{% endif %}
+                {% endfor %}
+            ];
+            {% else %}
+            const categoriasData = [];
+            {% endif %}
+
+            // Categorizar por rendimiento
+            const categoriasDificiles = categoriasData.filter(c => c.porcentaje < 50);
+            const categoriasMedias = categoriasData.filter(c => c.porcentaje >= 50 && c.porcentaje < 80);
+            const categoriasExcelentes = categoriasData.filter(c => c.porcentaje >= 80);
+
         modalBody.innerHTML = `
             <div class="row">
                 <div class="col-12">
@@ -846,37 +1074,57 @@ function generarRetroalimentacion() {
                             <li>Promedio del grupo: {{ estadisticas_rendimiento.promedio_porcentaje|floatformat:1|escapejs }}%</li>
                             <li>Participantes que completaron: {{ participantes_completaron|escapejs }}</li>
                             <li>Tiempo promedio: {{ estadisticas_rendimiento.tiempo_promedio|escapejs }} minutos</li>
+                            <li>Categorías evaluadas: ${categoriasData.length}</li>
                         </ul>
                     </div>
                     
-                    ${preguntasDificiles.length > 0 ? `
-                        <div class="alert alert-warning">
-                            <h6><i class="bi bi-exclamation-triangle me-2"></i>Áreas de Mejora</h6>
-                            <p>Las siguientes preguntas presentaron mayor dificultad (menos del 50% de acierto):</p>
+                    ${categoriasDificiles.length > 0 ? `
+                        <div class="alert alert-danger">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>Categorías Críticas (< 50% acierto)</h6>
+                            <p>Las siguientes categorías requieren atención inmediata:</p>
                             <ul>
-                                ${preguntasDificiles.map((p, i) => `
-                                    <li>Pregunta ${i + 1}: ${p.porcentaje_correctas.toFixed(1)}% de acierto - Tema a reforzar</li>
+                                ${categoriasDificiles.map(c => `
+                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
                                 `).join('')}
                             </ul>
-                            <p class="mb-0"><strong>Recomendación:</strong> Revisar estos conceptos en clase y proporcionar ejercicios adicionales.</p>
+                            <p class="mb-0"><strong>Recomendación:</strong> Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos.</p>
                         </div>
                     ` : ''}
                     
-                    ${preguntasMedias.length > 0 ? `
+                    ${categoriasMedias.length > 0 ? `
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-gear me-2"></i>Categorías en Desarrollo (50-80% acierto)</h6>
+                            <p>Estas categorías muestran progreso pero necesitan refuerzo:</p>
+                            <ul>
+                                ${categoriasMedias.map(c => `
+                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
+                                `).join('')}
+                            </ul>
+                            <p class="mb-0"><strong>Recomendación:</strong> Continuar práctica con ejercicios intermedios y ejemplos aplicados.</p>
+                        </div>
+                    ` : ''}
+                    
+                    ${categoriasExcelentes.length > 0 ? `
                         <div class="alert alert-success">
-                            <h6><i class="bi bi-check-circle me-2"></i>Fortalezas</h6>
-                            <p>El grupo mostró buen desempeño en ${preguntasMedias.length} pregunta(s) con rendimiento entre 50-80%.</p>
-                            <p class="mb-0"><strong>Recomendación:</strong> Continuar reforzando estos conceptos para alcanzar la excelencia.</p>
+                            <h6><i class="bi bi-check-circle me-2"></i>Categorías Dominadas (≥ 80% acierto)</h6>
+                            <p>¡Excelente dominio en estas áreas temáticas!</p>
+                            <ul>
+                                ${categoriasExcelentes.map(c => `
+                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
+                                `).join('')}
+                            </ul>
+                            <p class="mb-0"><strong>Recomendación:</strong> Utilizar estos conocimientos como base para temas más avanzados.</p>
                         </div>
                     ` : ''}
                     
                     <div class="alert alert-light">
-                        <h6><i class="bi bi-lightbulb me-2"></i>Sugerencias Pedagógicas</h6>
+                        <h6><i class="bi bi-lightbulb me-2"></i>Sugerencias Pedagógicas Específicas</h6>
                         <ul class="mb-0">
-                            <li>Implementar sesiones de repaso para los temas con menor rendimiento</li>
-                            <li>Utilizar ejercicios similares a los de la evaluación</li>
-                            <li>Considerar trabajo en grupos pequeños para temas difíciles</li>
-                            <li>Proporcionar retroalimentación individual a estudiantes con dificultades</li>
+                            <li>Priorizar refuerzo en categorías con menos del 50% de acierto</li>
+                            <li>Implementar ejercicios de conexión entre categorías bien dominadas y las deficientes</li>
+                            <li>Considerar evaluaciones diagnósticas específicas por categoría</li>
+                            <li>Utilizar metodología de aprendizaje adaptativo según el rendimiento por tema</li>
+                            <li>Proporcionar recursos adicionales diferenciados por categoría</li>
                         </ul>
                     </div>
                 </div>

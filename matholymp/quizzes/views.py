@@ -2659,15 +2659,22 @@ def evaluacion_results(request, pk):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Obtener filtro de grupo desde los parámetros GET
+    # Obtener filtros desde los parámetros GET
     grupo_filtro = request.GET.get('grupo', 'todos')
+    categoria_filtro = request.GET.get('categoria', 'todas')
     
     # Obtener todos los grupos disponibles para esta evaluación
     grupos_disponibles = GrupoParticipantes.objects.filter(
         participantes__resultados__evaluacion=evaluacion
     ).distinct().order_by('name')
     
-    # Filtrar resultados según el grupo seleccionado
+    # Obtener todas las categorías disponibles para esta evaluación
+    from .models import Categoria
+    categorias_disponibles = Categoria.objects.filter(
+        preguntas__in=evaluacion.preguntas.all()
+    ).distinct().order_by('nombre')
+    
+    # Filtrar resultados según el grupo y categoría seleccionados
     if grupo_filtro != 'todos' and grupo_filtro.isdigit():
         grupo_seleccionado = get_object_or_404(GrupoParticipantes, id=int(grupo_filtro))
         participantes_filtrados = grupo_seleccionado.participantes.all()
@@ -2690,6 +2697,23 @@ def evaluacion_results(request, pk):
             completada=True
         )
         todos_resultados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion)
+    
+    # Manejar filtro por categoría
+    if categoria_filtro != 'todas':
+        if categoria_filtro == 'sin_categoria':
+            categoria_seleccionada = None
+            # Filtrar preguntas sin categoría
+            preguntas_filtradas = evaluacion.preguntas.filter(categoria__isnull=True)
+        elif categoria_filtro.isdigit():
+            categoria_seleccionada = get_object_or_404(Categoria, id=int(categoria_filtro))
+            # Filtrar preguntas de la categoría seleccionada
+            preguntas_filtradas = evaluacion.preguntas.filter(categoria=categoria_seleccionada)
+        else:
+            categoria_seleccionada = None
+            preguntas_filtradas = evaluacion.preguntas.all()
+    else:
+        categoria_seleccionada = None
+        preguntas_filtradas = evaluacion.preguntas.all()
     
     # Estadísticas de participación
     participantes_con_resultados = todos_resultados.values_list('participante', flat=True).distinct().count()
@@ -2754,8 +2778,8 @@ def evaluacion_results(request, pk):
             opciones_correctas[opcion.id] = opcion.is_correct
         preguntas_opciones_correctas[pregunta.id] = opciones_correctas
     
-    # Procesar cada pregunta
-    for pregunta in evaluacion.preguntas.all():
+    # Procesar cada pregunta filtrada
+    for pregunta in preguntas_filtradas:
         correctas = 0
         incorrectas = 0
         sin_responder = 0
@@ -2832,6 +2856,57 @@ def evaluacion_results(request, pk):
             'dificultad': analisis['dificultad']
         })
     
+    # Análisis por categorías
+    from collections import defaultdict
+    analisis_categorias = []
+    categorias_stats = defaultdict(lambda: {
+        'preguntas': [],
+        'correctas': 0,
+        'incorrectas': 0,
+        'sin_responder': 0,
+        'total_preguntas': 0
+    })
+    
+    # Agrupar análisis de preguntas por categoría
+    for analisis in analisis_preguntas:
+        pregunta = analisis['pregunta']
+        categoria = pregunta.categoria
+        
+        if categoria:
+            categoria_key = categoria.id
+            categoria_nombre = categoria.nombre
+        else:
+            categoria_key = 'sin_categoria'
+            categoria_nombre = 'Sin categoría'
+        
+        categorias_stats[categoria_key]['categoria_nombre'] = categoria_nombre
+        categorias_stats[categoria_key]['categoria_obj'] = categoria
+        categorias_stats[categoria_key]['preguntas'].append(analisis)
+        categorias_stats[categoria_key]['correctas'] += analisis['correctas']
+        categorias_stats[categoria_key]['incorrectas'] += analisis['incorrectas']
+        categorias_stats[categoria_key]['sin_responder'] += analisis['sin_responder']
+        categorias_stats[categoria_key]['total_preguntas'] += 1
+    
+    # Calcular estadísticas finales por categoría
+    for categoria_key, stats in categorias_stats.items():
+        total_respuestas = stats['correctas'] + stats['incorrectas']
+        porcentaje_acierto = (stats['correctas'] / total_respuestas * 100) if total_respuestas > 0 else 0
+        
+        analisis_categorias.append({
+            'categoria_nombre': stats['categoria_nombre'],
+            'categoria_obj': stats['categoria_obj'],
+            'total_preguntas': stats['total_preguntas'],
+            'correctas': stats['correctas'],
+            'incorrectas': stats['incorrectas'],
+            'sin_responder': stats['sin_responder'],
+            'porcentaje_acierto': porcentaje_acierto,
+            'dificultad': 'Fácil' if porcentaje_acierto > 70 else 'Media' if porcentaje_acierto > 40 else 'Difícil',
+            'preguntas_detalle': stats['preguntas']
+        })
+    
+    # Ordenar por porcentaje de acierto descendente
+    analisis_categorias.sort(key=lambda x: x['porcentaje_acierto'], reverse=True)
+
     # Distribución de puntajes (para gráficos)
     distribucion_puntajes = []
     if resultados_completados.exists():
@@ -2858,6 +2933,9 @@ def evaluacion_results(request, pk):
         'grupos_disponibles': grupos_disponibles,
         'grupo_seleccionado': grupo_seleccionado,
         'grupo_filtro': grupo_filtro,
+        'categorias_disponibles': categorias_disponibles,
+        'categoria_seleccionada': categoria_seleccionada,
+        'categoria_filtro': categoria_filtro,
         
         # Estadísticas de participación
         'participantes_con_resultados': participantes_con_resultados,
@@ -2872,6 +2950,7 @@ def evaluacion_results(request, pk):
         # Análisis detallado
         'analisis_preguntas': analisis_preguntas,
         'analisis_preguntas_json': analisis_preguntas_json,
+        'analisis_categorias': analisis_categorias,
         'distribucion_puntajes': distribucion_puntajes,
         
         # Top 5 resultados para mostrar
