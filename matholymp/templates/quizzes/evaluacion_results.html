@@ -671,17 +671,45 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="retroalimentacionModalBody">
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Generando retroalimentación...</span>
+                <!-- Sección para retroalimentación personalizada del admin -->
+                <div id="retroalimentacionPersonalizadaSection" class="mb-4" style="display: none;">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-pencil-square me-2"></i>
+                        Retroalimentación Personalizada (Opcional)
+                    </h6>
+                    <div class="alert alert-info">
+                        <small>
+                            <i class="bi bi-info-circle me-1"></i>
+                            Escribe un mensaje personalizado para el grupo. Este texto se incluirá al principio del correo.
+                        </small>
                     </div>
-                    <p class="mt-2">Generando retroalimentación personalizada...</p>
+                    <textarea id="editorRetroalimentacion" name="retroalimentacion_personalizada"></textarea>
+                </div>
+                
+                <!-- Sección de análisis automático -->
+                <div id="analisisAutomaticoSection" style="display: none;">
+                    <h6 class="fw-bold mb-3">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Análisis de Rendimiento
+                    </h6>
+                    <div id="analisisContent"></div>
+                </div>
+                
+                <!-- Loading inicial -->
+                <div id="loadingRetroalimentacion" class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Preparando retroalimentación...</p>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-primary" onclick="descargarRetroalimentacion()" id="btnDescargarRetro" style="display: none;">
+                <button type="button" class="btn btn-info" onclick="descargarRetroalimentacion()" id="btnDescargarRetro" style="display: none;">
                     <i class="bi bi-download me-1"></i> Descargar PDF
+                </button>
+                <button type="button" class="btn btn-primary" onclick="enviarCorreoRetroalimentacion()" id="btnEnviarCorreo" style="display: none;">
+                    <i class="bi bi-envelope me-1"></i> Enviar al Correo
                 </button>
             </div>
         </div>
@@ -691,6 +719,10 @@
 <!-- Chart.js para gráficos -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<!-- CKEditor para retroalimentación personalizada -->
+<script src="{% static 'ckeditor/ckeditor.js' %}"></script>
+<script src="{% static 'js/ckeditor_config.js' %}"></script>
+
 <!-- Script de datos JSON para JavaScript -->
 {% if analisis_preguntas_json %}
 {{ analisis_preguntas_json|json_script:"analisis-data" }}
@@ -698,532 +730,90 @@
 <script id="analisis-data" type="application/json">[]</script>
 {% endif %}
 
-<script>
-// Funciones para gráficos
-function initCharts() {
-    {% if distribucion_puntajes %}
-    // Gráfico de distribución de puntajes
-    const ctxDistribucion = document.getElementById('distribucionChart');
-    if (ctxDistribucion) {
-        const distribucionChart = new Chart(ctxDistribucion.getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: [
-                    {% for item in distribucion_puntajes %}
-                        '{{ item.rango|escapejs }} puntos'{% if not forloop.last %},{% endif %}
-                    {% empty %}
-                    {% endfor %}
-                ],
-                datasets: [{
-                    label: 'Número de Estudiantes',
-                    data: [
-                        {% for item in distribucion_puntajes %}
-                            {{ item.count }}{% if not forloop.last %},{% endif %}
-                        {% empty %}
-                        {% endfor %}
-                    ],
-                    backgroundColor: [
-                        'rgba(220, 53, 69, 0.8)',   // 0-2: Rojo
-                        'rgba(255, 193, 7, 0.8)',   // 2-4: Amarillo
-                        'rgba(255, 193, 7, 0.8)',   // 4-6: Amarillo
-                        'rgba(40, 167, 69, 0.8)',   // 6-8: Verde
-                        'rgba(40, 167, 69, 0.8)'    // 8-10: Verde
-                    ],
-                    borderColor: [
-                        'rgba(220, 53, 69, 1)',
-                        'rgba(255, 193, 7, 1)',
-                        'rgba(255, 193, 7, 1)',
-                        'rgba(40, 167, 69, 1)',
-                        'rgba(40, 167, 69, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Distribución de Puntajes'
-                    },
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-    {% endif %}
-
-    {% if analisis_preguntas %}
-    // Gráfico de rendimiento por pregunta
-    const ctxPreguntas = document.getElementById('preguntasChart');
-    if (ctxPreguntas) {
-        const preguntasChart = new Chart(ctxPreguntas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: [
-                    {% for analisis in analisis_preguntas %}
-                        'P{{ forloop.counter }}'{% if not forloop.last %},{% endif %}
-                    {% empty %}
-                    {% endfor %}
-                ],
-                datasets: [{
-                    label: '% de Acierto',
-                    data: [
-                        {% for analisis in analisis_preguntas %}
-                            {{ analisis.porcentaje_correctas|floatformat:1 }}{% if not forloop.last %},{% endif %}
-                        {% empty %}
-                        {% endfor %}
-                    ],
-                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Porcentaje de Acierto por Pregunta'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
-                            }
-                        }
-                    }
-                },
-                elements: {
-                    point: {
-                        radius: 5,
-                        hoverRadius: 8
-                    }
-                }
-            }
-        });
-    }
-    {% endif %}
-
-    {% if analisis_categorias %}
-    // Gráfico de rendimiento por categorías
-    const ctxCategorias = document.getElementById('categoriaChart');
-    if (ctxCategorias) {
-        const categoriaChart = new Chart(ctxCategorias.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: [
-                    {% for categoria in analisis_categorias %}
-                        '{{ categoria.categoria_nombre|escapejs }}'{% if not forloop.last %},{% endif %}
-                    {% empty %}
-                    {% endfor %}
-                ],
-                datasets: [{
-                    data: [
-                        {% for categoria in analisis_categorias %}
-                            {{ categoria.porcentaje_acierto|floatformat:1 }}{% if not forloop.last %},{% endif %}
-                        {% empty %}
-                        {% endfor %}
-                    ],
-                    backgroundColor: [
-                        'rgba(54, 162, 235, 0.8)',
-                        'rgba(255, 99, 132, 0.8)',
-                        'rgba(255, 205, 86, 0.8)',
-                        'rgba(75, 192, 192, 0.8)',
-                        'rgba(153, 102, 255, 0.8)',
-                        'rgba(255, 159, 64, 0.8)',
-                        'rgba(199, 199, 199, 0.8)',
-                        'rgba(83, 102, 255, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 99, 132, 1)',
-                        'rgba(255, 205, 86, 1)',
-                        'rgba(75, 192, 192, 1)',
-                        'rgba(153, 102, 255, 1)',
-                        'rgba(255, 159, 64, 1)',
-                        'rgba(199, 199, 199, 1)',
-                        'rgba(83, 102, 255, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Distribución de Rendimiento por Categoría'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return context.label + ': ' + context.parsed.toFixed(1) + '%';
-                            }
-                        }
-                    },
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            boxWidth: 12,
-                            font: {
-                                size: 11
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-    {% endif %}
-}
-
-// Inicializar gráficos cuando el documento esté listo
-document.addEventListener('DOMContentLoaded', function() {
-    initCharts();
-});
-
-// Funciones para filtros
-function aplicarFiltros() {
-    const grupoSelect = document.getElementById('grupoSelect');
-    const categoriaSelect = document.getElementById('categoriaSelect');
-    const currentUrl = new URL(window.location);
-    
-    // Filtro de grupo
-    const grupoId = grupoSelect ? grupoSelect.value : 'todos';
-    if (grupoId === 'todos') {
-        currentUrl.searchParams.delete('grupo');
-    } else {
-        currentUrl.searchParams.set('grupo', grupoId);
-    }
-    
-    // Filtro de categoría
-    const categoriaId = categoriaSelect ? categoriaSelect.value : 'todas';
-    if (categoriaId === 'todas') {
-        currentUrl.searchParams.delete('categoria');
-    } else {
-        currentUrl.searchParams.set('categoria', categoriaId);
-    }
-    
-    window.location.href = currentUrl.toString();
-}
-
-function limpiarFiltros() {
-    const currentUrl = new URL(window.location);
-    currentUrl.searchParams.delete('grupo');
-    currentUrl.searchParams.delete('categoria');
-    window.location.href = currentUrl.toString();
-}
-
-// Función para ver pregunta en modal
-function verPregunta(preguntaId) {
-    const modal = new bootstrap.Modal(document.getElementById('preguntaModal'));
-    const modalBody = document.getElementById('preguntaModalBody');
-    
-    // Mostrar loading
-    modalBody.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Cargando...</span>
-            </div>
-            <p class="mt-2">Cargando pregunta...</p>
-        </div>
-    `;
-    
-    modal.show();
-    
-    // Cargar datos de la pregunta
-    fetch(`{% url 'quizzes:get_question_data' pk=0 %}`.replace('0', preguntaId))
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                modalBody.innerHTML = `
-                    <div class="card">
-                        <div class="card-header bg-light">
-                            <h6 class="mb-0"><strong>Enunciado:</strong></h6>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <div class="question-text p-3 bg-light rounded">
-                                    ${data.data.pregunta}
-                                </div>
-                            </div>
-                            
-                            <h6 class="fw-bold mb-3">Opciones:</h6>
-                            <div class="options-section">
-                                ${data.data.opciones.map((opcionTexto, index) => {
-                                    const esCorrecta = (data.data.opcion_correcta === index + 1);
-                                    return `
-                                        <div class="option-item mb-2 p-3 rounded ${esCorrecta ? 'bg-success bg-opacity-10 border border-success' : 'bg-light border border-light'}">
-                                            <div class="d-flex align-items-start">
-                                                <div class="option-indicator me-3 mt-1">
-                                                    ${esCorrecta ? '<i class="bi bi-check-circle-fill text-success fs-5"></i>' : '<i class="bi bi-circle text-muted"></i>'}
-                                                </div>
-                                                <div class="option-content flex-grow-1">
-                                                    <div class="option-text mb-1 ${esCorrecta ? 'text-success fw-bold' : ''}">
-                                                        ${opcionTexto}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                            
-                            <div class="mt-3 p-2 bg-info bg-opacity-10 rounded">
-                                <small class="text-info">
-                                    <i class="bi bi-info-circle me-1"></i>
-                                    <strong>Puntos:</strong> ${data.data.puntos} punto(s)
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                // Renderizar LaTeX si es necesario
-                if (window.MathJax) {
-                    MathJax.typesetPromise([modalBody]);
-                }
-            } else {
-                modalBody.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        Error al cargar la pregunta: ${data.error || 'Error desconocido'}
-                    </div>
-                `;
-            }
-        })
-        .catch(error => {
-            modalBody.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    Error de conexión al cargar la pregunta.
-                </div>
-            `;
-        });
-}
-
-// Función para generar retroalimentación
-function generarRetroalimentacion() {
+<!-- Datos para JavaScript -->
+<div style="display: none;">
+    <div data-question-url="{% url 'quizzes:get_question_data' pk=0 %}"></div>
+    <div data-export-url="{% url 'quizzes:exportar_resultados' pk=evaluacion.id %}"></div>
+    <div data-enviar-retroalimentacion-url="{% url 'quizzes:enviar_retroalimentacion' pk=evaluacion.id %}"></div>
+    <div data-descargar-retroalimentacion-url="{% url 'quizzes:descargar_retroalimentacion_pdf' pk=evaluacion.id %}"></div>
     {% if grupo_seleccionado %}
-    const modal = new bootstrap.Modal(document.getElementById('retroalimentacionModal'));
-    const modalBody = document.getElementById('retroalimentacionModalBody');
-    const btnDescargar = document.getElementById('btnDescargarRetro');
-    
-    // Mostrar loading
-    modalBody.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Generando...</span>
-            </div>
-            <p class="mt-2">Generando retroalimentación personalizada para {{ grupo_seleccionado.name|escapejs }}...</p>
-        </div>
-    `;
-    
-    btnDescargar.style.display = 'none';
-    modal.show();
-    
-    // Simular generación de retroalimentación (aquí podrías hacer una llamada AJAX real)
-    setTimeout(() => {
-        try {
-            // Obtener datos de categorías
-            {% if analisis_categorias %}
-            const categoriasData = [
-                {% for categoria in analisis_categorias %}
-                {
-                    nombre: '{{ categoria.categoria_nombre|escapejs }}',
-                    porcentaje: {{ categoria.porcentaje_acierto|floatformat:1|unlocalize }},
-                    preguntas: {{ categoria.total_preguntas }},
-                    dificultad: '{{ categoria.dificultad|escapejs }}'
-                }{% if not forloop.last %},{% endif %}
-                {% endfor %}
-            ];
-            {% else %}
-            const categoriasData = [];
-            {% endif %}
-
-            // Categorizar por rendimiento
-            const categoriasDificiles = categoriasData.filter(c => c.porcentaje < 50);
-            const categoriasMedias = categoriasData.filter(c => c.porcentaje >= 50 && c.porcentaje < 80);
-            const categoriasExcelentes = categoriasData.filter(c => c.porcentaje >= 80);
-
-        modalBody.innerHTML = `
-            <div class="row">
-                <div class="col-12">
-                    <h5 class="mb-3">Retroalimentación para {{ grupo_seleccionado.name|escapejs }}</h5>
-                    
-                    <div class="alert alert-info">
-                        <h6><i class="bi bi-info-circle me-2"></i>Resumen del Rendimiento</h6>
-                        <ul class="mb-0">
-                            <li>Promedio del grupo: {{ estadisticas_rendimiento.promedio_porcentaje|floatformat:1|escapejs }}%</li>
-                            <li>Participantes que completaron: {{ participantes_completaron|escapejs }}</li>
-                            <li>Tiempo promedio: {{ estadisticas_rendimiento.tiempo_promedio|escapejs }} minutos</li>
-                            <li>Categorías evaluadas: ${categoriasData.length}</li>
-                        </ul>
-                    </div>
-                    
-                    ${categoriasDificiles.length > 0 ? `
-                        <div class="alert alert-danger">
-                            <h6><i class="bi bi-exclamation-triangle me-2"></i>Categorías Críticas (< 50% acierto)</h6>
-                            <p>Las siguientes categorías requieren atención inmediata:</p>
-                            <ul>
-                                ${categoriasDificiles.map(c => `
-                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                                `).join('')}
-                            </ul>
-                            <p class="mb-0"><strong>Recomendación:</strong> Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos.</p>
-                        </div>
-                    ` : ''}
-                    
-                    ${categoriasMedias.length > 0 ? `
-                        <div class="alert alert-warning">
-                            <h6><i class="bi bi-gear me-2"></i>Categorías en Desarrollo (50-80% acierto)</h6>
-                            <p>Estas categorías muestran progreso pero necesitan refuerzo:</p>
-                            <ul>
-                                ${categoriasMedias.map(c => `
-                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                                `).join('')}
-                            </ul>
-                            <p class="mb-0"><strong>Recomendación:</strong> Continuar práctica con ejercicios intermedios y ejemplos aplicados.</p>
-                        </div>
-                    ` : ''}
-                    
-                    ${categoriasExcelentes.length > 0 ? `
-                        <div class="alert alert-success">
-                            <h6><i class="bi bi-check-circle me-2"></i>Categorías Dominadas (≥ 80% acierto)</h6>
-                            <p>¡Excelente dominio en estas áreas temáticas!</p>
-                            <ul>
-                                ${categoriasExcelentes.map(c => `
-                                    <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                                `).join('')}
-                            </ul>
-                            <p class="mb-0"><strong>Recomendación:</strong> Utilizar estos conocimientos como base para temas más avanzados.</p>
-                        </div>
-                    ` : ''}
-                    
-                    <div class="alert alert-light">
-                        <h6><i class="bi bi-lightbulb me-2"></i>Sugerencias Pedagógicas Específicas</h6>
-                        <ul class="mb-0">
-                            <li>Priorizar refuerzo en categorías con menos del 50% de acierto</li>
-                            <li>Implementar ejercicios de conexión entre categorías bien dominadas y las deficientes</li>
-                            <li>Considerar evaluaciones diagnósticas específicas por categoría</li>
-                            <li>Utilizar metodología de aprendizaje adaptativo según el rendimiento por tema</li>
-                            <li>Proporcionar recursos adicionales diferenciados por categoría</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        btnDescargar.style.display = 'inline-block';
-        } catch (error) {
-            console.error('Error al procesar datos de análisis:', error);
-            modalBody.innerHTML = `
-                <div class="alert alert-danger">
-                    <h6><i class="bi bi-exclamation-triangle me-2"></i>Error al generar retroalimentación</h6>
-                    <p>No se pudieron procesar los datos de análisis. Inténtalo de nuevo.</p>
-                </div>
-            `;
-        }
-    }, 2000);
-    {% else %}
-    Swal.fire({
-        icon: 'warning',
-        title: 'Selecciona un Grupo',
-        text: 'Debes seleccionar un grupo específico para generar retroalimentación.',
-        confirmButtonText: 'Entendido'
-    });
+    <div data-grupo-seleccionado="{{ grupo_seleccionado.name|escapejs }}"></div>
+    <div data-grupo-id="{{ grupo_seleccionado.id }}"></div>
     {% endif %}
-}
+</div>
 
-function descargarRetroalimentacion() {
-    // Implementar descarga de PDF de retroalimentación
-    Swal.fire({
-        icon: 'info',
-        title: 'Funcionalidad en Desarrollo',
-        text: 'La descarga de retroalimentación en PDF estará disponible próximamente.',
-        confirmButtonText: 'Entendido'
-    });
-}
+<!-- Script para pasar datos a JavaScript -->
+<script>
+// Variable global para upload de imágenes requerida por CKEditor
+window.uploadImageUrl = "{% url 'quizzes:upload_image' %}";
 
-function exportarResultados() {
-    // Obtener filtro actual
-    const grupoSelect = document.getElementById('grupoSelect');
-    const grupoActual = grupoSelect ? grupoSelect.value : 'todos';
-    
-    // Construir URL con filtros
-    let exportUrl = `{% url 'quizzes:exportar_resultados' pk=evaluacion.id %}`;
-    if (grupoActual !== 'todos') {
-        exportUrl += `?grupo=${grupoActual}`;
+// Pasar datos de distribución de puntajes
+{% if distribucion_puntajes %}
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof setDistribucionData === 'function') {
+        setDistribucionData([
+            {% for item in distribucion_puntajes %}
+            {
+                rango: '{{ item.rango|escapejs }}',
+                count: {{ item.count }}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ]);
     }
-    
-    // Implementar funcionalidad de exportación
-    fetch(exportUrl, {
-        method: 'GET',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}'
-        }
-    })
-    .then(response => {
-        if (response.ok) {
-            return response.blob();
-        }
-        throw new Error('Error al exportar resultados');
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        
-        // Nombre del archivo con filtro si aplica
-        let fileName = `resultados_{{ evaluacion.title|slugify|escapejs }}`;
-        if (grupoActual !== 'todos') {
-            const grupoNombre = grupoSelect.options[grupoSelect.selectedIndex].text;
-            fileName += `_${grupoNombre.replace(/\s+/g, '_')}`;
-        }
-        fileName += '.xlsx';
-        
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        
-        Swal.fire({
-            icon: 'success',
-            title: 'Exportación Exitosa',
-            text: 'Los resultados han sido descargados exitosamente.',
-            confirmButtonText: 'Entendido'
-        });
-    })
-    .catch(error => {
-        Swal.fire({
-            icon: 'error',
-            title: 'Error al Exportar',
-            text: 'Hubo un problema al exportar los resultados. Inténtalo de nuevo.',
-            confirmButtonText: 'Entendido'
-        });
-    });
-}
+});
+{% endif %}
 
-function imprimirReporte() {
-    window.print();
-}
+// Pasar datos de categorías
+{% if analisis_categorias %}
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof setCategoriasData === 'function') {
+        // Función auxiliar para convertir comas a puntos
+        function parseDecimal(value) {
+            if (typeof value === 'string') {
+                return parseFloat(value.replace(',', '.'));
+            }
+            return value;
+        }
+        
+        setCategoriasData([
+            {% for categoria in analisis_categorias %}
+            {
+                nombre: '{{ categoria.categoria_nombre|escapejs }}',
+                porcentaje: parseDecimal('{{ categoria.porcentaje_acierto|default_if_none:0|floatformat:1 }}'),
+                preguntas: {{ categoria.total_preguntas }},
+                dificultad: '{{ categoria.dificultad|escapejs }}'
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ]);
+    }
+});
+{% endif %}
+
+// Pasar datos de preguntas
+{% if analisis_preguntas %}
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof setPreguntasData === 'function') {
+        // Función auxiliar para convertir comas a puntos
+        function parseDecimal(value) {
+            if (typeof value === 'string') {
+                return parseFloat(value.replace(',', '.'));
+            }
+            return value;
+        }
+        
+        setPreguntasData([
+            {% for analisis in analisis_preguntas %}
+            {
+                numero: {{ forloop.counter }},
+                porcentaje: parseDecimal('{{ analisis.porcentaje_correctas|default_if_none:0|floatformat:1 }}')
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ]);
+    }
+});
+{% endif %}
 </script>
-{% endblock %} 
+
+<!-- Incluir archivo JavaScript externo -->
+<script src="{% load static %}{% static 'js/evaluacion_results.js' %}"></script>
+{% endblock %}

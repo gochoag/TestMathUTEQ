@@ -4676,7 +4676,9 @@ def exportar_resultados(request, pk):
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         from openpyxl.utils import get_column_letter
         from django.http import HttpResponse
+        from django.utils.html import strip_tags
         from datetime import datetime
+        import html
         
         # Filtrar resultados según el grupo seleccionado
         if grupo_filtro != 'todos' and grupo_filtro.isdigit():
@@ -4872,8 +4874,14 @@ def exportar_resultados(request, pk):
             porcentaje = (correctas / total * 100) if total > 0 else 0
             dificultad = 'Fácil' if porcentaje > 70 else 'Media' if porcentaje > 40 else 'Difícil'
             
+            # Limpiar el texto HTML de la pregunta y decodificar entidades HTML
+            texto_sin_html = strip_tags(pregunta.text)
+            texto_limpio = html.unescape(texto_sin_html).strip()
+            # Limitar el largo del texto para que no desborde la celda
+            texto_pregunta = texto_limpio[:150] + "..." if len(texto_limpio) > 150 else texto_limpio
+            
             ws_preguntas.cell(row=row, column=1, value=f"P{row-1}")
-            ws_preguntas.cell(row=row, column=2, value=pregunta.text[:100] + "..." if len(pregunta.text) > 100 else pregunta.text)
+            ws_preguntas.cell(row=row, column=2, value=texto_pregunta)
             ws_preguntas.cell(row=row, column=3, value=correctas)
             ws_preguntas.cell(row=row, column=4, value=incorrectas)
             ws_preguntas.cell(row=row, column=5, value=sin_responder)
@@ -5776,3 +5784,954 @@ def reducir_cambios_pestana(request, pk):
         return JsonResponse({'success': False, 'error': 'La cantidad de reducción debe ser un número válido'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def enviar_retroalimentacion(request, pk):
+    """
+    Envía retroalimentación por correo al representante del grupo con:
+    - Retroalimentación personalizada del admin (opcional)
+    - Análisis de categorías a reforzar
+    - Excel con resultados detallados adjunto
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({'success': False, 'error': 'No tienes permisos para esta acción'}, status=403)
+    
+    try:
+        import json
+        from django.core.mail import EmailMessage
+        from django.template.loader import render_to_string
+        from django.utils.html import strip_tags
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from datetime import datetime
+        
+        # Obtener evaluación
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        
+        # Parsear datos del request
+        data = json.loads(request.body)
+        grupo_id = data.get('grupo_id')
+        retroalimentacion_personalizada = data.get('retroalimentacion_personalizada', '')
+        categorias_dificiles = data.get('categorias_dificiles', [])
+        categorias_medias = data.get('categorias_medias', [])
+        
+        if not grupo_id:
+            return JsonResponse({'success': False, 'error': 'No se especificó el grupo'}, status=400)
+        
+        # Obtener grupo y representante
+        grupo = get_object_or_404(GrupoParticipantes, pk=grupo_id)
+        
+        if not grupo.representante:
+            return JsonResponse({
+                'success': False, 
+                'error': 'El grupo no tiene un representante asignado'
+            }, status=400)
+        
+        representante = grupo.representante
+        correo_destino = representante.CorreoRepresentante
+        
+        if not correo_destino:
+            return JsonResponse({
+                'success': False,
+                'error': 'El representante no tiene un correo registrado'
+            }, status=400)
+        
+        # Generar Excel con resultados del grupo
+        excel_buffer = generar_excel_grupo(evaluacion, grupo)
+        
+        # Construir contenido del correo
+        current_year = datetime.now().year
+        
+        # Parte 1: Saludo y retroalimentación personalizada (si existe)
+        contenido_partes = []
+        
+        if retroalimentacion_personalizada and strip_tags(retroalimentacion_personalizada).strip():
+            contenido_partes.append(f"""
+                <div class="retroalimentacion-personalizada" style="background: #e8f5e8; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #025a27;">
+                    <h4 style="color: #025a27; margin-bottom: 15px; font-size: 18px; font-weight: 600;">
+                        <i style="margin-right: 8px;">📝</i> Mensaje del Organizador
+                    </h4>
+                    <div style="color: #424242; font-size: 14px; line-height: 1.6;">
+                        {retroalimentacion_personalizada}
+                    </div>
+                </div>
+            """)
+        
+        # Parte 2: Análisis de categorías
+        analisis_categorias_html = ""
+        
+        if categorias_dificiles or categorias_medias:
+            analisis_categorias_html = """
+                <div class="analisis-categorias" style="margin: 30px 0;">
+                    <h4 style="color: #025a27; margin-bottom: 20px; font-size: 20px; font-weight: 600;">
+                        📊 Análisis de Rendimiento por Categorías
+                    </h4>
+            """
+            
+            # Categorías críticas
+            if categorias_dificiles:
+                analisis_categorias_html += """
+                    <div style="background: #fff3cd; border-radius: 8px; padding: 20px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                        <h5 style="color: #856404; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
+                            ⚠️ Categorías que Requieren Mayor Atención (< 50% acierto)
+                        </h5>
+                        <p style="color: #856404; margin-bottom: 15px;">Las siguientes categorías necesitan ser reforzadas:</p>
+                        <ul style="color: #856404; padding-left: 20px;">
+                """
+                for cat in categorias_dificiles:
+                    analisis_categorias_html += f"""
+                        <li style="margin-bottom: 10px;">
+                            <strong>{cat['nombre']}</strong>: {cat['porcentaje']}% de acierto 
+                            ({cat['preguntas']} pregunta{'s' if cat['preguntas'] != 1 else ''})
+                        </li>
+                    """
+                analisis_categorias_html += """
+                        </ul>
+                        <p style="color: #856404; margin-top: 15px; font-weight: 600;">
+                            💡 Recomendación: Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos en estas áreas.
+                        </p>
+                    </div>
+                """
+            
+            # Categorías en desarrollo
+            if categorias_medias:
+                analisis_categorias_html += """
+                    <div style="background: #d1ecf1; border-radius: 8px; padding: 20px; margin: 15px 0; border-left: 4px solid #17a2b8;">
+                        <h5 style="color: #0c5460; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
+                            📈 Categorías en Desarrollo (50-80% acierto)
+                        </h5>
+                        <p style="color: #0c5460; margin-bottom: 15px;">Estas categorías muestran progreso pero necesitan más práctica:</p>
+                        <ul style="color: #0c5460; padding-left: 20px;">
+                """
+                for cat in categorias_medias:
+                    analisis_categorias_html += f"""
+                        <li style="margin-bottom: 10px;">
+                            <strong>{cat['nombre']}</strong>: {cat['porcentaje']}% de acierto 
+                            ({cat['preguntas']} pregunta{'s' if cat['preguntas'] != 1 else ''})
+                        </li>
+                    """
+                analisis_categorias_html += """
+                        </ul>
+                        <p style="color: #0c5460; margin-top: 15px; font-weight: 600;">
+                            💡 Recomendación: Continuar práctica con ejercicios intermedios y ejemplos aplicados.
+                        </p>
+                    </div>
+                """
+            
+            analisis_categorias_html += "</div>"
+        
+        contenido_partes.append(analisis_categorias_html)
+        
+        # Parte 3: Agradecimiento
+        contenido_partes.append("""
+            <div class="agradecimiento" style="background: #d4edda; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #28a745;">
+                <h4 style="color: #155724; margin-bottom: 15px; font-size: 18px; font-weight: 600;">
+                    🎓 Agradecimiento
+                </h4>
+                <p style="color: #155724; font-size: 14px; line-height: 1.6;">
+                    Agradecemos sinceramente la participación de su institución en la 
+                    <strong>Olimpiada Intercolegial de Matemática {}</strong>. 
+                    El compromiso y dedicación de sus estudiantes es admirable.
+                </p>
+                <p style="color: #155724; font-size: 14px; line-height: 1.6; margin-top: 10px;">
+                    Esperamos contar con su participación en futuras ediciones y seguir promoviendo 
+                    el desarrollo del pensamiento lógico-matemático en nuestros jóvenes.
+                </p>
+                <p style="color: #155724; font-size: 14px; line-height: 1.6; margin-top: 10px; font-weight: 600;">
+                    ¡Hasta la próxima olimpiada! 🏆
+                </p>
+            </div>
+        """.format(current_year))
+        
+        # Construir HTML completo del correo
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+            <title>Retroalimentación - {evaluacion.title}</title>
+            <style>
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                
+                body {{
+                    font-family: 'Open Sans', sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    background: #f4f4f4;
+                    padding: 20px;
+                }}
+                
+                .email-container {{
+                    max-width: 800px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                    overflow: hidden;
+                    border: 1px solid #ddd;
+                }}
+                
+                .header {{
+                    background: linear-gradient(135deg, #025a27 0%, #034a2a 100%);
+                    color: white;
+                    padding: 30px 30px;
+                    text-align: center;
+                    position: relative;
+                }}
+                
+                .header::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: linear-gradient(90deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%);
+                }}
+                
+                .header h1 {{
+                    font-size: 24px;
+                    font-weight: 700;
+                    margin: 0 0 10px 0;
+                    letter-spacing: 0.5px;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                }}
+                
+                .header h2 {{
+                    font-size: 18px;
+                    font-weight: 400;
+                    margin: 0;
+                    letter-spacing: 0.3px;
+                    opacity: 0.95;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                }}
+                
+                .content {{
+                    padding: 40px 30px;
+                }}
+                
+                .greeting {{
+                    font-size: 16px;
+                    margin-bottom: 25px;
+                    color: #555;
+                    font-weight: 400;
+                }}
+                
+                .footer {{
+                    background: #f4f4f4;
+                    padding: 30px;
+                    text-align: center;
+                    border-top: 1px solid #ddd;
+                }}
+                
+                .footer p {{
+                    color: #666;
+                    font-size: 14px;
+                    font-weight: 400;
+                }}
+                
+                .footer .signature {{
+                    font-weight: 600;
+                    color: #025a27;
+                    margin-top: 10px;
+                }}
+                
+                @media (max-width: 600px) {{
+                    body {{
+                        padding: 10px;
+                    }}
+                    
+                    .content {{
+                        padding: 20px 15px;
+                    }}
+                    
+                    .header {{
+                        padding: 20px;
+                    }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="header">
+                    <h1>Universidad Técnica Estatal de Quevedo</h1>
+                    <h2>Olimpiada Intercolegial de Matemática {current_year}</h2>
+                </div>
+                
+                <div class="content">
+                    <h1 style="font-size: 28px; font-weight: 700; color: #025a27; text-align: center; margin-bottom: 10px;">
+                        Retroalimentación de Evaluación
+                    </h1>
+                    <div class="subtitle" style="font-size: 18px; color: #555; text-align: center; margin-bottom: 30px;">
+                        {evaluacion.title}
+                    </div>
+                    
+                    <div class="greeting">
+                        Estimado/a <strong>{representante.NombresRepresentante}</strong>,
+                    </div>
+                    
+                    <p style="margin-bottom: 20px;">
+                        Le enviamos la retroalimentación correspondiente a la evaluación 
+                        <strong>{evaluacion.title}</strong> del grupo <strong>{grupo.name}</strong> 
+                        de la institución <strong>{representante.NombreColegio}</strong>.
+                    </p>
+                    
+                    {''.join(contenido_partes)}
+                    
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 25px 0; border: 1px solid #dee2e6;">
+                        <h4 style="color: #025a27; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
+                            📎 Archivo Adjunto
+                        </h4>
+                        <p style="color: #555; font-size: 14px;">
+                            Adjunto a este correo encontrará un archivo Excel con los resultados detallados 
+                            de todos los participantes del grupo, incluyendo puntajes, tiempos y análisis por pregunta.
+                        </p>
+                    </div>
+                    
+                    <p style="margin-top: 25px;">
+                        Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.
+                    </p>
+                </div>
+                
+                <div class="footer">
+                    <p>Atentamente,</p>
+                    <div class="signature">
+                        Carrera de Ingeniería Mecánica<br>
+                        Universidad Técnica Estatal Quevedo
+                    </div>
+                    <p style="margin-top: 15px; font-size: 12px; color: #999;">
+                        Este es un mensaje automático, por favor no responda a este correo.<br>
+                        Para soporte: <a href="mailto:olimpiadasmecanicauteq@gmail.com" style="color: #025a27;">olimpiadasmecanicauteq@gmail.com</a>
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Crear correo
+        asunto = f'Retroalimentación - {evaluacion.title} - {grupo.name}'
+        
+        email = EmailMessage(
+            subject=asunto,
+            body=strip_tags(html_content),  # Versión texto plano
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[correo_destino]
+        )
+        
+        # Añadir versión HTML
+        email.content_subtype = "html"
+        email.body = html_content
+        
+        # Adjuntar Excel
+        nombre_archivo = f'Resultados_{grupo.name}_{evaluacion.title.replace(" ", "_")}.xlsx'
+        email.attach(nombre_archivo, excel_buffer.getvalue(), 
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        
+        # Enviar correo
+        email.send()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Retroalimentación enviada exitosamente a {correo_destino}'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'}, status=400)
+    except Exception as e:
+        import traceback
+        print(f"Error al enviar retroalimentación: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': f'Error al enviar retroalimentación: {str(e)}'
+        }, status=500)
+
+
+def generar_excel_grupo(evaluacion, grupo):
+    """
+    Genera un archivo Excel con los resultados del grupo especificado
+    Usa la misma estructura completa que exportar_resultados (3 hojas)
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    from django.utils.html import strip_tags
+    from io import BytesIO
+    from datetime import datetime
+    from django.db.models import Avg, Max, Min
+    import html
+    
+    # Obtener participantes del grupo
+    participantes_filtrados = grupo.participantes.all()
+    
+    # Filtrar resultados por participantes del grupo
+    resultados_completados = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion, 
+        completada=True,
+        participante__in=participantes_filtrados
+    )
+    todos_resultados = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion,
+        participante__in=participantes_filtrados
+    )
+    
+    # Crear un nuevo workbook
+    wb = Workbook()
+    
+    # === HOJA 1: RESUMEN GENERAL ===
+    ws_resumen = wb.active
+    ws_resumen.title = "Resumen General"
+    
+    # Configurar estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    title_font = Font(bold=True, size=14)
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                   top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # Título principal
+    titulo_reporte = f"REPORTE DE RESULTADOS - {evaluacion.title} - {grupo.name}"
+    
+    ws_resumen.merge_cells('A1:F1')
+    ws_resumen['A1'] = titulo_reporte
+    ws_resumen['A1'].font = title_font
+    ws_resumen['A1'].alignment = Alignment(horizontal='center')
+    
+    # Información general
+    ws_resumen['A3'] = "Información General"
+    ws_resumen['A3'].font = header_font
+    ws_resumen['A3'].fill = header_fill
+    
+    ws_resumen['A4'] = "Título:"
+    ws_resumen['B4'] = evaluacion.title
+    ws_resumen['A5'] = "Etapa:"
+    ws_resumen['B5'] = f"Etapa {evaluacion.etapa}"
+    ws_resumen['A6'] = "Fecha de inicio:"
+    ws_resumen['B6'] = evaluacion.start_time.strftime("%d/%m/%Y %H:%M")
+    ws_resumen['A7'] = "Fecha de fin:"
+    ws_resumen['B7'] = evaluacion.end_time.strftime("%d/%m/%Y %H:%M")
+    ws_resumen['A8'] = "Duración:"
+    ws_resumen['B8'] = f"{evaluacion.duration_minutes} minutos"
+    ws_resumen['A9'] = "Grupo:"
+    ws_resumen['B9'] = grupo.name
+    
+    # Estadísticas de participación
+    participantes_completaron = resultados_completados.values_list('participante', flat=True).distinct().count()
+    participantes_con_resultados = todos_resultados.values_list('participante', flat=True).distinct().count()
+    participantes_en_progreso = todos_resultados.filter(completada=False).values_list('participante', flat=True).distinct().count()
+    
+    ws_resumen['D3'] = "Estadísticas de Participación"
+    ws_resumen['D3'].font = header_font
+    ws_resumen['D3'].fill = header_fill
+    
+    ws_resumen['D4'] = "Participantes que completaron:"
+    ws_resumen['E4'] = participantes_completaron
+    ws_resumen['D5'] = "Participantes en progreso:"
+    ws_resumen['E5'] = participantes_en_progreso
+    ws_resumen['D6'] = "Total con intentos:"
+    ws_resumen['E6'] = participantes_con_resultados
+    
+    # Estadísticas de rendimiento
+    if resultados_completados.exists():
+        stats = resultados_completados.aggregate(
+            promedio=Avg('puntos_obtenidos'),
+            maximo=Max('puntos_obtenidos'),
+            minimo=Min('puntos_obtenidos'),
+            tiempo_promedio=Avg('tiempo_utilizado')
+        )
+        
+        ws_resumen['A11'] = "Estadísticas de Rendimiento"
+        ws_resumen['A11'].font = header_font
+        ws_resumen['A11'].fill = header_fill
+        
+        ws_resumen['A12'] = "Promedio:"
+        ws_resumen['B12'] = f"{stats['promedio']:.2f}/10" if stats['promedio'] else "N/A"
+        ws_resumen['A13'] = "Mejor puntaje:"
+        ws_resumen['B13'] = f"{stats['maximo']:.2f}/10" if stats['maximo'] else "N/A"
+        ws_resumen['A14'] = "Peor puntaje:"
+        ws_resumen['B14'] = f"{stats['minimo']:.2f}/10" if stats['minimo'] else "N/A"
+        ws_resumen['A15'] = "Tiempo promedio:"
+        ws_resumen['B15'] = f"{int(stats['tiempo_promedio'])} min" if stats['tiempo_promedio'] else "N/A"
+    
+    # === HOJA 2: RESULTADOS DETALLADOS ===
+    ws_resultados = wb.create_sheet("Resultados Detallados")
+    
+    # Encabezados
+    headers = ['#', 'Participante', 'Cédula', 'Grupo', 'Puntaje', 'Porcentaje', 'Tiempo (min)', 
+              'Intento', 'Fecha Inicio', 'Fecha Fin', 'Estado']
+    
+    for col, header in enumerate(headers, 1):
+        cell = ws_resultados.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = border
+    
+    # Datos de resultados
+    resultados = todos_resultados.order_by('-puntos_obtenidos', 'tiempo_utilizado')
+    
+    for row, resultado in enumerate(resultados, 2):
+        ws_resultados.cell(row=row, column=1, value=row-1)
+        ws_resultados.cell(row=row, column=2, value=resultado.participante.NombresCompletos)
+        ws_resultados.cell(row=row, column=3, value=resultado.participante.cedula)
+        ws_resultados.cell(row=row, column=4, value=grupo.name)
+        ws_resultados.cell(row=row, column=5, value=f"{resultado.puntos_obtenidos:.2f}")
+        ws_resultados.cell(row=row, column=6, value=f"{resultado.get_puntaje_porcentaje():.1f}%")
+        ws_resultados.cell(row=row, column=7, value=resultado.tiempo_utilizado)
+        ws_resultados.cell(row=row, column=8, value=resultado.numero_intento)
+        ws_resultados.cell(row=row, column=9, value=resultado.fecha_inicio.strftime("%d/%m/%Y %H:%M") if resultado.fecha_inicio else "N/A")
+        ws_resultados.cell(row=row, column=10, value=resultado.fecha_fin.strftime("%d/%m/%Y %H:%M") if resultado.fecha_fin else "N/A")
+        ws_resultados.cell(row=row, column=11, value="Completado" if resultado.completada else "En progreso")
+        
+        # Aplicar bordes
+        for col_idx in range(1, len(headers) + 1):
+            ws_resultados.cell(row=row, column=col_idx).border = border
+    
+    # === HOJA 3: ANÁLISIS POR PREGUNTA ===
+    ws_preguntas = wb.create_sheet("Análisis por Pregunta")
+    
+    # Encabezados
+    headers_preguntas = ['Pregunta', 'Texto', 'Correctas', 'Incorrectas', 'Sin Responder', '% Acierto', 'Dificultad']
+    
+    for col, header in enumerate(headers_preguntas, 1):
+        cell = ws_preguntas.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = border
+    
+    # Datos por pregunta
+    for row, pregunta in enumerate(evaluacion.preguntas.all(), 2):
+        correctas = 0
+        incorrectas = 0
+        sin_responder = 0
+        
+        for resultado in resultados_completados:
+            respuestas = resultado.respuestas_guardadas
+            pregunta_id = str(pregunta.id)
+            
+            if pregunta_id in respuestas:
+                try:
+                    opcion = pregunta.opciones.get(id=respuestas[pregunta_id])
+                    if opcion.is_correct:
+                        correctas += 1
+                    else:
+                        incorrectas += 1
+                except:
+                    sin_responder += 1
+            else:
+                sin_responder += 1
+        
+        total = correctas + incorrectas + sin_responder
+        porcentaje = (correctas / total * 100) if total > 0 else 0
+        dificultad = 'Fácil' if porcentaje > 70 else 'Media' if porcentaje > 40 else 'Difícil'
+        
+        # Limpiar el texto HTML de la pregunta y decodificar entidades HTML
+        texto_sin_html = strip_tags(pregunta.text)
+        texto_limpio = html.unescape(texto_sin_html).strip()
+        # Limitar el largo del texto para que no desborde la celda
+        texto_pregunta = texto_limpio[:150] + "..." if len(texto_limpio) > 150 else texto_limpio
+        
+        ws_preguntas.cell(row=row, column=1, value=f"P{row-1}")
+        ws_preguntas.cell(row=row, column=2, value=texto_pregunta)
+        ws_preguntas.cell(row=row, column=3, value=correctas)
+        ws_preguntas.cell(row=row, column=4, value=incorrectas)
+        ws_preguntas.cell(row=row, column=5, value=sin_responder)
+        ws_preguntas.cell(row=row, column=6, value=f"{porcentaje:.1f}%")
+        ws_preguntas.cell(row=row, column=7, value=dificultad)
+        
+        # Aplicar bordes
+        for col in range(1, len(headers_preguntas) + 1):
+            ws_preguntas.cell(row=row, column=col).border = border
+    
+    # Ajustar ancho de columnas
+    for ws in [ws_resumen, ws_resultados, ws_preguntas]:
+        for column in ws.columns:
+            max_length = 0
+            column_letter = get_column_letter(column[0].column)
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # Guardar en buffer
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    return buffer
+
+
+@login_required
+def descargar_retroalimentacion_pdf(request, pk):
+    """
+    Genera y descarga un PDF con la retroalimentación del grupo
+    (similar al correo pero sin el archivo Excel adjunto)
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+    
+    # Verificar permisos
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        return JsonResponse({'success': False, 'error': 'No tienes permisos para esta acción'}, status=403)
+    
+    try:
+        import json
+        from django.utils.html import strip_tags
+        from io import BytesIO
+        from datetime import datetime
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+        import html as html_module
+        import os
+        
+        # Obtener evaluación
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        
+        # Parsear datos del request
+        data = json.loads(request.body)
+        grupo_id = data.get('grupo_id')
+        retroalimentacion_personalizada = data.get('retroalimentacion_personalizada', '')
+        categorias_dificiles = data.get('categorias_dificiles', [])
+        categorias_medias = data.get('categorias_medias', [])
+        
+        if not grupo_id:
+            return JsonResponse({'success': False, 'error': 'No se especificó el grupo'}, status=400)
+        
+        # Obtener grupo y representante
+        grupo = get_object_or_404(GrupoParticipantes, pk=grupo_id)
+        
+        if not grupo.representante:
+            return JsonResponse({
+                'success': False, 
+                'error': 'El grupo no tiene un representante asignado'
+            }, status=400)
+        
+        representante = grupo.representante
+        
+        # Crear buffer para PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter,
+                               rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=18)
+        
+        # Estilos
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Estilo personalizado para título
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#025a27'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Estilo para subtítulo
+        subtitle_style = ParagraphStyle(
+            'Subtitle',
+            parent=styles['Normal'],
+            fontSize=14,
+            textColor=colors.HexColor('#555555'),
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        # Estilo para encabezado de sección
+        heading_style = ParagraphStyle(
+            'SectionHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#025a27'),
+            spaceAfter=12,
+            spaceBefore=12,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Estilo para texto normal
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=11,
+            spaceAfter=12,
+            alignment=TA_JUSTIFY
+        )
+        
+        # Estilo para texto en caja
+        box_style = ParagraphStyle(
+            'BoxText',
+            parent=styles['Normal'],
+            fontSize=10,
+            leftIndent=20,
+            rightIndent=20,
+            spaceAfter=6
+        )
+        
+        # Construir contenido del PDF
+        current_year = datetime.now().year
+        
+        # Encabezado con fondo verde
+        header_data = [
+            [Paragraph('<b><font size=16>Universidad Técnica Estatal de Quevedo</font></b>', 
+                      ParagraphStyle('HeaderTitle', parent=subtitle_style, textColor=colors.white, fontSize=16, alignment=TA_CENTER))],
+            [Paragraph(f'<font size=12>Olimpiada Intercolegial de Matemática {current_year}</font>', 
+                      ParagraphStyle('HeaderSubtitle', parent=normal_style, textColor=colors.white, fontSize=12, alignment=TA_CENTER))]
+        ]
+        header_table = Table(header_data, colWidths=[6.5*inch])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#025a27')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+            ('TOPPADDING', (0, 0), (-1, -1), 15),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 20))
+        
+        # Cargar logos usando la misma lógica que exportar_ranking_pdf
+        logo_mecanica = None
+        logo_uteq = None
+        
+        # Cargar Logo Mecánica
+        logo_mecanica_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logoMecanica.png')
+        if os.path.exists(logo_mecanica_path):
+            try:
+                logo_mecanica = Image(logo_mecanica_path, width=1.6*inch, height=1.2*inch)
+            except Exception as e:
+                print(f"Error al cargar logo Mecánica: {e}")
+        
+        # Cargar Logo UTEQ
+        logo_uteq_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'logo-uteq.png')
+        if os.path.exists(logo_uteq_path):
+            try:
+                logo_uteq = Image(logo_uteq_path, width=1.6*inch, height=1.2*inch)
+            except Exception as e:
+                print(f"Error al cargar logo UTEQ: {e}")
+        
+        # Tabla de logos centrados
+        if logo_mecanica or logo_uteq:
+            logo_row = []
+            
+            if logo_mecanica:
+                logo_row.append(logo_mecanica)
+            else:
+                logo_row.append(Paragraph("", styles['Normal']))
+            
+            logo_row.append(Paragraph("", styles['Normal']))  # Espacio central
+            
+            if logo_uteq:
+                logo_row.append(logo_uteq)
+            else:
+                logo_row.append(Paragraph("", styles['Normal']))
+            
+            logo_table = Table([logo_row], colWidths=[2.4*inch, 1.2*inch, 2.4*inch])
+            logo_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, 0), 0),
+                ('RIGHTPADDING', (0, 0), (-1, 0), 0),
+                ('TOPPADDING', (0, 0), (-1, 0), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+            ]))
+            
+            story.append(logo_table)
+            story.append(Spacer(1, 20))
+        
+        # Título
+        story.append(Paragraph('Retroalimentación de Evaluación', title_style))
+        story.append(Paragraph(evaluacion.title, subtitle_style))
+        story.append(Spacer(1, 20))
+        
+        # Saludo
+        story.append(Paragraph(f'Estimado/a <b>{representante.NombresRepresentante}</b>,', normal_style))
+        story.append(Paragraph(
+            f'Le enviamos la retroalimentación correspondiente a la evaluación <b>{evaluacion.title}</b> '
+            f'del grupo <b>{grupo.name}</b> de la institución <b>{representante.NombreColegio}</b>.',
+            normal_style
+        ))
+        story.append(Spacer(1, 20))
+        
+        # Parte 1: Retroalimentación personalizada (si existe)
+        if retroalimentacion_personalizada and strip_tags(retroalimentacion_personalizada).strip():
+            story.append(Paragraph('Mensaje del Organizador', heading_style))
+            
+            # Limpiar HTML y entidades
+            texto_limpio = strip_tags(retroalimentacion_personalizada)
+            texto_limpio = html_module.unescape(texto_limpio)
+            
+            # Dividir en párrafos
+            parrafos = texto_limpio.split('\n')
+            for parrafo in parrafos:
+                if parrafo.strip():
+                    story.append(Paragraph(parrafo.strip(), box_style))
+            
+            story.append(Spacer(1, 20))
+        
+        # Parte 2: Análisis de categorías
+        if categorias_dificiles or categorias_medias:
+            story.append(Paragraph('Análisis de Rendimiento por Categorías', heading_style))
+            story.append(Spacer(1, 10))
+            
+            # Categorías críticas
+            if categorias_dificiles:
+                story.append(Paragraph('Categorías que Requieren Mayor Atención (< 50% acierto)', 
+                                      ParagraphStyle('Warning', parent=heading_style, fontSize=12, 
+                                                    textColor=colors.HexColor('#856404'))))
+                story.append(Paragraph('Las siguientes categorías necesitan ser reforzadas:', box_style))
+                
+                # Crear tabla de categorías
+                cat_data = [['Categoría', 'Acierto', 'Preguntas']]
+                for cat in categorias_dificiles:
+                    cat_data.append([
+                        cat['nombre'],
+                        f"{cat['porcentaje']}%",
+                        str(cat['preguntas'])
+                    ])
+                
+                cat_table = Table(cat_data, colWidths=[3.5*inch, 1*inch, 1*inch])
+                cat_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ffc107')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('TOPPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fff3cd')),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#856404')),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ]))
+                story.append(cat_table)
+                story.append(Spacer(1, 10))
+                story.append(Paragraph(
+                    '<b>Recomendación:</b> Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos en estas áreas.',
+                    box_style
+                ))
+                story.append(Spacer(1, 15))
+            
+            # Categorías en desarrollo
+            if categorias_medias:
+                story.append(Paragraph('Categorías en Desarrollo (50-80% acierto)', 
+                                      ParagraphStyle('Info', parent=heading_style, fontSize=12, 
+                                                    textColor=colors.HexColor('#0c5460'))))
+                story.append(Paragraph('Estas categorías muestran progreso pero necesitan más práctica:', box_style))
+                
+                # Crear tabla de categorías
+                cat_data = [['Categoría', 'Acierto', 'Preguntas']]
+                for cat in categorias_medias:
+                    cat_data.append([
+                        cat['nombre'],
+                        f"{cat['porcentaje']}%",
+                        str(cat['preguntas'])
+                    ])
+                
+                cat_table = Table(cat_data, colWidths=[3.5*inch, 1*inch, 1*inch])
+                cat_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#17a2b8')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('TOPPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#d1ecf1')),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#0c5460')),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ]))
+                story.append(cat_table)
+                story.append(Spacer(1, 10))
+                story.append(Paragraph(
+                    '<b>Recomendación:</b> Continuar práctica con ejercicios intermedios y ejemplos aplicados.',
+                    box_style
+                ))
+                story.append(Spacer(1, 20))
+        
+        # Parte 3: Agradecimiento
+        story.append(Paragraph('Agradecimiento', heading_style))
+        story.append(Paragraph(
+            f'Agradecemos sinceramente la participación de su institución en la '
+            f'<b>Olimpiada Intercolegial de Matemática {current_year}</b>. '
+            f'El compromiso y dedicación de sus estudiantes es admirable.',
+            normal_style
+        ))
+        story.append(Paragraph(
+            'Esperamos contar con su participación en futuras ediciones y seguir promoviendo '
+            'el desarrollo del pensamiento lógico-matemático en nuestros jóvenes.',
+            normal_style
+        ))
+        story.append(Paragraph('¡Hasta la próxima olimpiada!', normal_style))
+        story.append(Spacer(1, 20))
+        
+        # Cierre
+        story.append(Paragraph(
+            'Si tiene alguna pregunta o necesita información adicional, no dude en contactarnos.',
+            normal_style
+        ))
+        story.append(Spacer(1, 30))
+        
+        # Footer
+        footer_data = [
+            [Paragraph('Atentamente,', ParagraphStyle('Footer', parent=normal_style, alignment=TA_CENTER))],
+            [Paragraph('<b>Carrera de Ingeniería Mecánica</b><br/>Universidad Técnica Estatal Quevedo', 
+                      ParagraphStyle('FooterBold', parent=normal_style, alignment=TA_CENTER, 
+                                    textColor=colors.HexColor('#025a27'), fontName='Helvetica-Bold'))],
+            [Paragraph('<font size=9>Para soporte: olimpiadasmecanicauteq@gmail.com</font>', 
+                      ParagraphStyle('FooterSmall', parent=normal_style, alignment=TA_CENTER, 
+                                    textColor=colors.HexColor('#999999')))]
+        ]
+        footer_table = Table(footer_data, colWidths=[6.5*inch])
+        footer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(footer_table)
+        
+        # Construir PDF
+        doc.build(story)
+        
+        # Preparar respuesta
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        nombre_archivo = f'Retroalimentacion_{grupo.name}_{evaluacion.title.replace(" ", "_")}.pdf'
+        response['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+        
+        return response
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'}, status=400)
+    except Exception as e:
+        import traceback
+        print(f"Error al generar PDF: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': f'Error al generar PDF: {str(e)}'
+        }, status=500)
