@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python matholymp/manage.py runserver 0.0.0.0:8000
+    command: bash -c "python matholymp/manage.py migrate && python matholymp/manage.py runserver 0.0.0.0:8000"
     restart: always
     ports:
       - "8500:8000"
