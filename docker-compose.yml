@@ -24,8 +24,6 @@ services:
     command: >
       bash -c "
         mkdir -p /var/www/html /etc/nginx/logs /ssl &&
-        cp -r /home/app/nginx/html/. /var/www/html/ 2>/dev/null || true &&
-        cp -r /home/app/nginx/logs/. /etc/nginx/logs/ 2>/dev/null || true &&
         cp -r /home/app/nginx/ssl/. /ssl/ &&
         echo 'events { worker_connections 1024; }
         http {
@@ -38,9 +36,6 @@ services:
             ssl_certificate /ssl/__uteq_edu_ec2025ABRIL_cert_out.pem;
             ssl_certificate_key /ssl/__uteq_edu_ec.key;
             server_name localhost aplicaciones.uteq.edu.ec;
-            location /static/ {
-              alias /var/www/static/;
-            }
             location / {
               proxy_pass http://webtestmathuteq:8000;
               proxy_http_version 1.1;
