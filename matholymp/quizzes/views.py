@@ -5863,68 +5863,93 @@ def enviar_retroalimentacion(request, pk):
                 </div>
             """)
         
-        # Parte 2: Análisis de categorías
+        # Parte 2: Análisis de categorías - formato profesional con tabla
         analisis_categorias_html = ""
         
-        if categorias_dificiles or categorias_medias:
-            analisis_categorias_html = """
+        # Combinar todas las categorías
+        todas_categorias = categorias_dificiles + categorias_medias
+        
+        if todas_categorias:
+            # Calcular promedio general como calificación sobre 10
+            total_porcentaje = sum(cat['porcentaje'] for cat in todas_categorias)
+            promedio_porcentaje = total_porcentaje / len(todas_categorias) if todas_categorias else 0
+            calificacion_promedio = promedio_porcentaje / 10  # Convertir a escala de 10
+            
+            # Determinar color del badge según calificación
+            if calificacion_promedio >= 7:
+                badge_color = "#28a745"  # Verde
+            elif calificacion_promedio >= 5:
+                badge_color = "#ffc107"  # Amarillo
+            else:
+                badge_color = "#dc3545"  # Rojo
+            
+            analisis_categorias_html = f"""
                 <div class="analisis-categorias" style="margin: 30px 0;">
                     <h4 style="color: #025a27; margin-bottom: 20px; font-size: 20px; font-weight: 600;">
-                        📊 Análisis de Rendimiento por Categorías
+                        📊 Análisis de rendimiento
                     </h4>
+                    
+                    <!-- Resumen del Rendimiento -->
+                    <div style="background: #e3f2fd; border-radius: 8px; padding: 20px; margin: 15px 0; border-left: 4px solid #1976d2;">
+                        <h5 style="color: #1565c0; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
+                            📋 Resumen del rendimiento
+                        </h5>
+                        <p style="color: #1565c0; margin-bottom: 10px;">
+                            <strong>Categorías evaluadas:</strong> {len(todas_categorias)}
+                        </p>
+                        <p style="color: #1565c0; margin-bottom: 0;">
+                            <strong>Calificación promedio:</strong> 
+                            <span style="background: {badge_color}; color: white; padding: 4px 12px; border-radius: 4px; font-weight: 600;">
+                                {calificacion_promedio:.2f} / 10
+                            </span>
+                        </p>
+                    </div>
+                    
+                    <!-- Tabla de Categorías -->
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 15px 0; border: 1px solid #dee2e6;">
+                        <h5 style="color: #333; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
+                            📝 Rendimiento por categoría
+                        </h5>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: #e9ecef;">
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Categoría</th>
+                                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">Preguntas</th>
+                                    <th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">% Acierto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
             """
             
-            # Categorías críticas
-            if categorias_dificiles:
-                analisis_categorias_html += """
-                    <div style="background: #fff3cd; border-radius: 8px; padding: 20px; margin: 15px 0; border-left: 4px solid #ffc107;">
-                        <h5 style="color: #856404; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
-                            ⚠️ Categorías que Requieren Mayor Atención (< 50% acierto)
-                        </h5>
-                        <p style="color: #856404; margin-bottom: 15px;">Las siguientes categorías necesitan ser reforzadas:</p>
-                        <ul style="color: #856404; padding-left: 20px;">
-                """
-                for cat in categorias_dificiles:
-                    analisis_categorias_html += f"""
-                        <li style="margin-bottom: 10px;">
-                            <strong>{cat['nombre']}</strong>: {cat['porcentaje']}% de acierto 
-                            ({cat['preguntas']} pregunta{'s' if cat['preguntas'] != 1 else ''})
-                        </li>
-                    """
-                analisis_categorias_html += """
-                        </ul>
-                        <p style="color: #856404; margin-top: 15px; font-weight: 600;">
-                            💡 Recomendación: Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos en estas áreas.
-                        </p>
-                    </div>
+            for cat in todas_categorias:
+                # Determinar color del badge según porcentaje
+                if cat['porcentaje'] >= 70:
+                    cat_badge_color = "#28a745"  # Verde
+                elif cat['porcentaje'] >= 50:
+                    cat_badge_color = "#ffc107"  # Amarillo
+                elif cat['porcentaje'] > 0:
+                    cat_badge_color = "#dc3545"  # Rojo
+                else:
+                    cat_badge_color = "#6c757d"  # Gris
+                
+                analisis_categorias_html += f"""
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #dee2e6;"><strong>{cat['nombre']}</strong></td>
+                                    <td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">{cat['preguntas']}</td>
+                                    <td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">
+                                        <span style="background: {cat_badge_color}; color: white; padding: 4px 10px; border-radius: 4px; font-weight: 600;">
+                                            {cat['porcentaje']}%
+                                        </span>
+                                    </td>
+                                </tr>
                 """
             
-            # Categorías en desarrollo
-            if categorias_medias:
-                analisis_categorias_html += """
-                    <div style="background: #d1ecf1; border-radius: 8px; padding: 20px; margin: 15px 0; border-left: 4px solid #17a2b8;">
-                        <h5 style="color: #0c5460; margin-bottom: 15px; font-size: 16px; font-weight: 600;">
-                            📈 Categorías en Desarrollo (50-80% acierto)
-                        </h5>
-                        <p style="color: #0c5460; margin-bottom: 15px;">Estas categorías muestran progreso pero necesitan más práctica:</p>
-                        <ul style="color: #0c5460; padding-left: 20px;">
-                """
-                for cat in categorias_medias:
-                    analisis_categorias_html += f"""
-                        <li style="margin-bottom: 10px;">
-                            <strong>{cat['nombre']}</strong>: {cat['porcentaje']}% de acierto 
-                            ({cat['preguntas']} pregunta{'s' if cat['preguntas'] != 1 else ''})
-                        </li>
-                    """
-                analisis_categorias_html += """
-                        </ul>
-                        <p style="color: #0c5460; margin-top: 15px; font-weight: 600;">
-                            💡 Recomendación: Continuar práctica con ejercicios intermedios y ejemplos aplicados.
-                        </p>
+            analisis_categorias_html += """
+                            </tbody>
+                        </table>
                     </div>
-                """
-            
-            analisis_categorias_html += "</div>"
+                </div>
+            """
         
         contenido_partes.append(analisis_categorias_html)
         
@@ -6314,30 +6339,74 @@ def generar_excel_grupo(evaluacion, grupo):
         cell.border = border
     
     # Datos por pregunta
+    # Crear cache de opciones correctas por pregunta
+    preguntas_opciones_correctas = {}
+    for pregunta in evaluacion.preguntas.prefetch_related('opciones'):
+        opciones_correctas = {}
+        for opcion in pregunta.opciones.all():
+            opciones_correctas[opcion.id] = opcion.is_correct
+        preguntas_opciones_correctas[pregunta.id] = opciones_correctas
+    
     for row, pregunta in enumerate(evaluacion.preguntas.all(), 2):
         correctas = 0
         incorrectas = 0
         sin_responder = 0
         
+        # Obtener las opciones correctas para esta pregunta desde el cache
+        opciones_correctas_pregunta = preguntas_opciones_correctas.get(pregunta.id, {})
+        
         for resultado in resultados_completados:
             respuestas = resultado.respuestas_guardadas
-            pregunta_id = str(pregunta.id)
             
-            if pregunta_id in respuestas:
+            # Validar que respuestas no sea None o vacío
+            if not respuestas or not isinstance(respuestas, dict):
+                sin_responder += 1
+                continue
+            
+            # Buscar la respuesta para esta pregunta con el formato correcto
+            # Las claves se guardan como "pregunta_407", "pregunta_410", etc.
+            opcion_id = None
+            pregunta_key = f"pregunta_{pregunta.id}"
+            
+            if pregunta_key in respuestas:
+                opcion_id = respuestas[pregunta_key]
+            
+            if opcion_id is not None:
                 try:
-                    opcion = pregunta.opciones.get(id=respuestas[pregunta_id])
-                    if opcion.is_correct:
-                        correctas += 1
+                    # Normalizar opcion_id a entero
+                    if isinstance(opcion_id, str) and opcion_id.isdigit():
+                        opcion_id = int(opcion_id)
+                    elif not isinstance(opcion_id, int):
+                        sin_responder += 1
+                        continue
+                    
+                    # Verificar si la respuesta es correcta usando el cache
+                    if opcion_id in opciones_correctas_pregunta:
+                        if opciones_correctas_pregunta[opcion_id]:
+                            correctas += 1
+                        else:
+                            incorrectas += 1
                     else:
-                        incorrectas += 1
-                except:
+                        # La opción no existe, contar como sin responder
+                        sin_responder += 1
+                        
+                except (ValueError, TypeError):
                     sin_responder += 1
             else:
                 sin_responder += 1
         
-        total = correctas + incorrectas + sin_responder
-        porcentaje = (correctas / total * 100) if total > 0 else 0
-        dificultad = 'Fácil' if porcentaje > 70 else 'Media' if porcentaje > 40 else 'Difícil'
+        total_respuestas = correctas + incorrectas  # Solo respuestas dadas (no incluir sin_responder)
+        porcentaje = (correctas / total_respuestas * 100) if total_respuestas > 0 else 0
+        
+        # Determinar dificultad - Si nadie respondió, mostrar "Sin datos"
+        if correctas == 0 and incorrectas == 0:
+            dificultad = 'Sin datos'
+        elif porcentaje > 70:
+            dificultad = 'Fácil'
+        elif porcentaje > 40:
+            dificultad = 'Media'
+        else:
+            dificultad = 'Difícil'
         
         # Limpiar el texto HTML de la pregunta y decodificar entidades HTML
         texto_sin_html = strip_tags(pregunta.text)
@@ -6581,7 +6650,7 @@ def descargar_retroalimentacion_pdf(request, pk):
         
         # Parte 1: Retroalimentación personalizada (si existe)
         if retroalimentacion_personalizada and strip_tags(retroalimentacion_personalizada).strip():
-            story.append(Paragraph('Mensaje del Organizador', heading_style))
+            story.append(Paragraph('Mensaje de las autoridades organizadoras', heading_style))
             
             # Limpiar HTML y entidades
             texto_limpio = strip_tags(retroalimentacion_personalizada)

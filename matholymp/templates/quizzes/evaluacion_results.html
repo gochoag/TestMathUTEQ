@@ -410,12 +410,16 @@
                                     <div class="categoria-card p-3 border rounded">
                                         <div class="d-flex justify-content-between align-items-center mb-2">
                                             <h6 class="mb-0 fw-bold">{{ categoria.categoria_nombre }}</h6>
-                                            <span class="badge 
-                                                {% if categoria.dificultad == 'Fácil' %}bg-success
-                                                {% elif categoria.dificultad == 'Media' %}bg-warning
-                                                {% else %}bg-danger{% endif %}">
-                                                {{ categoria.dificultad }}
-                                            </span>
+                                            {% if categoria.correctas == 0 and categoria.incorrectas == 0 %}
+                                                <span class="badge bg-secondary">Sin datos</span>
+                                            {% else %}
+                                                <span class="badge 
+                                                    {% if categoria.dificultad == 'Fácil' %}bg-success
+                                                    {% elif categoria.dificultad == 'Media' %}bg-warning
+                                                    {% else %}bg-danger{% endif %}">
+                                                    {{ categoria.dificultad }}
+                                                </span>
+                                            {% endif %}
                                         </div>
                                         
                                         <div class="row text-center mb-2">
@@ -433,15 +437,7 @@
                                             </div>
                                         </div>
                                         
-                                        <div class="progress mb-2" style="height: 8px;">
-                                            <div class="progress-bar 
-                                                {% if categoria.porcentaje_acierto > 70 %}bg-success
-                                                {% elif categoria.porcentaje_acierto > 40 %}bg-warning
-                                                {% else %}bg-danger{% endif %}" 
-                                                role="progressbar" 
-                                                style="width: {{ categoria.porcentaje_acierto }}%">
-                                            </div>
-                                        </div>
+                                        <hr class="my-2" style="border-top: 1px solid #333;">
                                         
                                         <div class="text-center">
                                             <small class="text-muted">Porcentaje de Acierto: </small>
@@ -581,24 +577,26 @@
                                                     <span class="badge bg-secondary">{{ analisis.sin_responder }}</span>
                                                 </td>
                                                 <td class="text-center">
-                                                    <div class="progress" style="height: 20px; min-width: 80px;">
-                                                        <div class="progress-bar 
-                                                            {% if analisis.porcentaje_correctas > 70 %}bg-success
-                                                            {% elif analisis.porcentaje_correctas > 40 %}bg-warning
-                                                            {% else %}bg-danger{% endif %}" 
-                                                            role="progressbar" 
-                                                            style="width: {{ analisis.porcentaje_correctas }}%">
-                                                            {{ analisis.porcentaje_correctas|floatformat:1 }}%
-                                                        </div>
-                                                    </div>
+                                                    <span class="badge
+                                                        {% if analisis.porcentaje_correctas > 70 %}bg-success
+                                                        {% elif analisis.porcentaje_correctas > 40 %}bg-warning
+                                                        {% elif analisis.porcentaje_correctas > 0 %}bg-danger
+                                                        {% elif analisis.incorrectas > 0 %}bg-danger
+                                                        {% else %}bg-secondary{% endif %}">
+                                                        {{ analisis.porcentaje_correctas|floatformat:1 }}%
+                                                    </span>
                                                 </td>
                                                 <td class="text-center">
-                                                    <span class="badge 
-                                                        {% if analisis.dificultad == 'Fácil' %}bg-success
-                                                        {% elif analisis.dificultad == 'Media' %}bg-warning
-                                                        {% else %}bg-danger{% endif %}">
-                                                        {{ analisis.dificultad }}
-                                                    </span>
+                                                    {% if analisis.porcentaje_correctas == 0 and analisis.incorrectas == 0 %}
+                                                        <span class="badge bg-secondary">Sin datos</span>
+                                                    {% else %}
+                                                        <span class="badge 
+                                                            {% if analisis.dificultad == 'Fácil' %}bg-success
+                                                            {% elif analisis.dificultad == 'Media' %}bg-warning
+                                                            {% else %}bg-danger{% endif %}">
+                                                            {{ analisis.dificultad }}
+                                                        </span>
+                                                    {% endif %}
                                                 </td>
                                                 <td class="text-center">
                                                     <button class="btn btn-outline-primary btn-sm" 
@@ -737,7 +735,7 @@
     <div data-enviar-retroalimentacion-url="{% url 'quizzes:enviar_retroalimentacion' pk=evaluacion.id %}"></div>
     <div data-descargar-retroalimentacion-url="{% url 'quizzes:descargar_retroalimentacion_pdf' pk=evaluacion.id %}"></div>
     {% if grupo_seleccionado %}
-    <div data-grupo-seleccionado="{{ grupo_seleccionado.name|escapejs }}"></div>
+    <div data-grupo-seleccionado="{{ grupo_seleccionado.name }}"></div>
     <div data-grupo-id="{{ grupo_seleccionado.id }}"></div>
     {% endif %}
 </div>

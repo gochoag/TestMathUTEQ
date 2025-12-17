@@ -497,64 +497,54 @@ function generateRetroalimentacionHTML() {
         `;
     }
     
-    // Categorizar por rendimiento
-    const categoriasDificiles = categoriasData.filter(c => c.porcentaje < 50);
-    const categoriasMedias = categoriasData.filter(c => c.porcentaje >= 50 && c.porcentaje < 80);
-    const categoriasExcelentes = categoriasData.filter(c => c.porcentaje >= 80);
-    
     const grupoSeleccionado = document.querySelector('[data-grupo-seleccionado]')?.dataset.grupoSeleccionado || 'el Grupo';
+    
+    // Calcular promedio general como calificación sobre 10
+    const promedioGeneral = (categoriasData.reduce((sum, c) => sum + c.porcentaje, 0) / categoriasData.length) / 10;
     
     return `
         <div class="row">
             <div class="col-12">
-                <h5 class="mb-3">Retroalimentación para ${grupoSeleccionado}</h5>
                 
-                <div class="alert alert-info">
-                    <h6><i class="bi bi-info-circle me-2"></i>Resumen del Rendimiento</h6>
-                    <ul class="mb-0">
-                        <li>Categorías evaluadas: ${categoriasData.length}</li>
-                        <li>Promedio general: ${(categoriasData.reduce((sum, c) => sum + c.porcentaje, 0) / categoriasData.length).toFixed(1)}%</li>
-                    </ul>
+                <div class="alert alert-primary">
+                    <h6><i class="bi bi-clipboard-data me-2"></i>Resumen del Rendimiento</h6>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Categorías evaluadas:</strong> ${categoriasData.length}</p>
+                            <p class="mb-0"><strong>Calificación promedio:</strong> <span class="badge ${promedioGeneral >= 7 ? 'bg-success' : promedioGeneral >= 5 ? 'bg-warning' : 'bg-danger'} fs-6">${promedioGeneral.toFixed(2)} / 10</span></p>
+                        </div>
+                    </div>
                 </div>
                 
-                ${categoriasDificiles.length > 0 ? `
-                    <div class="alert alert-danger">
-                        <h6><i class="bi bi-exclamation-triangle me-2"></i>Categorías Críticas (< 50% acierto)</h6>
-                        <p>Las siguientes categorías requieren atención inmediata:</p>
-                        <ul>
-                            ${categoriasDificiles.map(c => `
-                                <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                            `).join('')}
-                        </ul>
-                        <p class="mb-0"><strong>Recomendación:</strong> Revisar fundamentos teóricos y proporcionar ejercicios de refuerzo específicos.</p>
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-list-check me-2"></i>Rendimiento por Categoría</h6>
                     </div>
-                ` : ''}
-                
-                ${categoriasMedias.length > 0 ? `
-                    <div class="alert alert-warning">
-                        <h6><i class="bi bi-gear me-2"></i>Categorías en Desarrollo (50-80% acierto)</h6>
-                        <p>Estas categorías muestran progreso pero necesitan refuerzo:</p>
-                        <ul>
-                            ${categoriasMedias.map(c => `
-                                <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                            `).join('')}
-                        </ul>
-                        <p class="mb-0"><strong>Recomendación:</strong> Continuar práctica con ejercicios intermedios y ejemplos aplicados.</p>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Categoría</th>
+                                        <th class="text-center">Preguntas</th>
+                                        <th class="text-center">% Acierto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${categoriasData.map(c => `
+                                        <tr>
+                                            <td><strong>${c.nombre}</strong></td>
+                                            <td class="text-center">${c.preguntas}</td>
+                                            <td class="text-center">
+                                                <span class="badge ${c.porcentaje >= 70 ? 'bg-success' : c.porcentaje >= 50 ? 'bg-warning' : 'bg-danger'}">${c.porcentaje}%</span>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                ` : ''}
-                
-                ${categoriasExcelentes.length > 0 ? `
-                    <div class="alert alert-success">
-                        <h6><i class="bi bi-check-circle me-2"></i>Categorías Dominadas (≥ 80% acierto)</h6>
-                        <p>¡Excelente dominio en estas áreas temáticas!</p>
-                        <ul>
-                            ${categoriasExcelentes.map(c => `
-                                <li><strong>${c.nombre}</strong>: ${c.porcentaje}% de acierto (${c.preguntas} preguntas)</li>
-                            `).join('')}
-                        </ul>
-                        <p class="mb-0"><strong>Recomendación:</strong> Utilizar estos conocimientos como base para temas más avanzados.</p>
-                    </div>
-                ` : ''}
+                </div>
 
             </div>
         </div>
@@ -597,7 +587,7 @@ function descargarRetroalimentacion() {
             html: `
                 <p>Se generará un PDF con la retroalimentación del grupo <strong>${grupoSeleccionado}</strong> que incluye:</p>
                 <ul class="text-start">
-                    <li>Retroalimentación personalizada ${retroalimentacionPersonalizada ? '(incluida)' : '(opcional)'}</li>
+                    <li>Retroalimentación ${retroalimentacionPersonalizada ? '(incluida)' : '(opcional)'}</li>
                     <li>Análisis de categorías a reforzar</li>
                     <li>Mensaje de agradecimiento</li>
                 </ul>
@@ -738,7 +728,7 @@ function enviarCorreoRetroalimentacion() {
             html: `
                 <p>Se enviará un correo electrónico al representante del grupo <strong>${grupoSeleccionado}</strong> con:</p>
                 <ul class="text-start">
-                    <li>Retroalimentación personalizada ${retroalimentacionPersonalizada ? '(incluida)' : '(no incluida)'}</li>
+                    <li>Retroalimentación ${retroalimentacionPersonalizada ? '(incluida)' : '(no incluida)'}</li>
                     <li>Análisis de categorías a reforzar</li>
                     <li>Archivo Excel con resultados detallados</li>
                 </ul>
