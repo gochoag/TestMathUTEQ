@@ -21,5 +21,14 @@ pipeline {
                 sh 'docker compose up -d --build'
             }
         }
+
+        stage('Verificar') {
+            steps {
+                sh 'sleep 10'
+                sh 'docker ps -a'
+                sh 'docker logs webtestmathuteq || true'
+                sh 'docker logs nginx_ssl_django_webtestmathuteq || true'
+            }
+        }
     }
 }
