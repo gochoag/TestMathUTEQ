@@ -18,7 +18,8 @@ pipeline {
         stage('Desplegar') {
             steps {
                 sh 'docker compose down --remove-orphans || true'
-                sh 'docker compose up -d --build'
+                sh 'docker compose build --no-cache'
+                sh 'docker compose up -d'
             }
         }
 
@@ -26,9 +27,7 @@ pipeline {
             steps {
                 sh 'sleep 5'
                 sh 'docker ps -a | grep testmath'
-                sh 'docker exec webtestmathuteq ls -la /app || true'
-                sh 'docker exec webtestmathuteq ls -la /app/matholymp || true'
-                sh 'docker logs webtestmathuteq --tail 20 || true'
+                sh 'docker logs webtestmathuteq --tail 30 || true'
             }
         }
     }
