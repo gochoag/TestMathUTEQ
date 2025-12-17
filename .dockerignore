@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+venv_test_math
+__pycache__
+*.pyc
+*.pyo
+.env
+*.md
+Jenkinsfile

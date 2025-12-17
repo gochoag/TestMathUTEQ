@@ -24,10 +24,11 @@ pipeline {
 
         stage('Verificar') {
             steps {
-                sh 'sleep 10'
-                sh 'docker ps -a'
-                sh 'docker logs webtestmathuteq || true'
-                sh 'docker logs nginx_ssl_django_webtestmathuteq || true'
+                sh 'sleep 5'
+                sh 'docker ps -a | grep testmath'
+                sh 'docker exec webtestmathuteq ls -la /app || true'
+                sh 'docker exec webtestmathuteq ls -la /app/matholymp || true'
+                sh 'docker logs webtestmathuteq --tail 20 || true'
             }
         }
     }
