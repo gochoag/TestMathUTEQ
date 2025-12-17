@@ -1,15 +1,17 @@
 services:
   webtestmathuteq:
     container_name: webtestmathuteq
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: python matholymp/manage.py runserver 0.0.0.0:8000
+    restart: always
     ports:
       - "8500:8000"
     env_file:
       - .env
-    restart: always
     networks:
-      - djangotestmathuteq_bridge
+      - testmath_network
 
   nginx_ssl_django_webtestmathuteq:
     container_name: nginx_ssl_django_webtestmathuteq
@@ -22,22 +24,45 @@ services:
     command: >
       bash -c "
         mkdir -p /var/www/html /etc/nginx/logs /ssl &&
-        cp -r /home/app/nginx/html/. /var/www/html/ &&
-        cp -r /home/app/nginx/logs/. /etc/nginx/logs/ &&
+        cp -r /home/app/nginx/html/. /var/www/html/ 2>/dev/null || true &&
+        cp -r /home/app/nginx/logs/. /etc/nginx/logs/ 2>/dev/null || true &&
         cp -r /home/app/nginx/ssl/. /ssl/ &&
-        cp /home/app/nginx/config/nginx.conf /etc/nginx/nginx.conf &&
+        echo 'events { worker_connections 1024; }
+        http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+          sendfile on;
+          keepalive_timeout 65;
+          server {
+            listen 443 ssl;
+            ssl_certificate /ssl/__uteq_edu_ec2025ABRIL_cert_out.pem;
+            ssl_certificate_key /ssl/__uteq_edu_ec.key;
+            server_name localhost aplicaciones.uteq.edu.ec;
+            location /static/ {
+              alias /var/www/static/;
+            }
+            location / {
+              proxy_pass http://webtestmathuteq:8000;
+              proxy_http_version 1.1;
+              proxy_set_header Host \$$host;
+              proxy_set_header X-Real-IP \$$remote_addr;
+              proxy_set_header X-Forwarded-For \$$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$$scheme;
+            }
+          }
+        }' > /etc/nginx/nginx.conf &&
         nginx -g 'daemon off;'
       "
     restart: always
     depends_on:
       - webtestmathuteq
     networks:
-      - djangotestmathuteq_bridge
+      - testmath_network
 
 volumes:
   nginxfiles:
     external: true
 
 networks:
-  djangotestmathuteq_bridge:
+  testmath_network:
     driver: bridge
