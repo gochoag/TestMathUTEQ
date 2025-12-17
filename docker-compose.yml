@@ -1,7 +1,4 @@
-version: "3.9"
-
 services:
-  
   webtestmathuteq:
     container_name: webtestmathuteq
     build: .
@@ -21,19 +18,27 @@ services:
     image: nginx
     tty: true
     ports:
-      - 9051:443
-      - 9050:444
+      - "9051:443"
     volumes:
-      - ./nginx/config/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/ssl:/ssl/
-      - ./nginx/html/:/var/www/html
-      - ./nginx/logs:/etc/nginx/logs
-      - ./matholymp/static/:/var/www/static
+      - nginxfiles:/home/app/nginx
+    command: >
+      bash -c "
+        mkdir -p /var/www/html /etc/nginx/logs /ssl &&
+        cp -r /home/app/nginx/html/. /var/www/html/ &&
+        cp -r /home/app/nginx/logs/. /etc/nginx/logs/ &&
+        cp -r /home/app/nginx/ssl/. /ssl/ &&
+        cp /home/app/nginx/config/nginx.conf /etc/nginx/nginx.conf &&
+        nginx -g 'daemon off;'
+      "
     restart: always
     depends_on:
       - webtestmathuteq
     networks:
       - djangotestmathuteq_bridge
+
+volumes:
+  nginxfiles:
+    external: true
 
 networks:
   djangotestmathuteq_bridge:
