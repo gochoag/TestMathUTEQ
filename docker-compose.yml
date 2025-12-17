@@ -3,8 +3,6 @@ services:
     container_name: webtestmathuteq
     build: .
     command: python matholymp/manage.py runserver 0.0.0.0:8000
-    volumes:
-      - .:/app
     ports:
       - "8500:8000"
     env_file:
