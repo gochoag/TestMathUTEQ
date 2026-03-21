@@ -33,7 +33,7 @@ services:
           keepalive_timeout 65;
           server {
             listen 443 ssl;
-            ssl_certificate /ssl/__uteq_edu_ec2025ABRIL_cert_out.pem;
+            ssl_certificate /ssl/__uteq_edu_ec2026Enero_cert_out.pem;
             ssl_certificate_key /ssl/__uteq_edu_ec.key;
             server_name localhost aplicaciones.uteq.edu.ec;
             location / {
