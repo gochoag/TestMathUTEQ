@@ -9,7 +9,7 @@
     z-index: 1040;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-right: 1px solid #dee2e6;
-    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
     padding: 0;
     margin-top: 0;
     overflow-y: hidden;
@@ -39,6 +39,14 @@
     padding: 2rem 2rem 2rem 2rem;
     transition: margin-left 0.2s;
 }
+@media (min-width: 992px) {
+    body.sidebar-collapsed .sidebar {
+        left: -250px;
+    }
+    body.sidebar-collapsed #main-content {
+        margin-left: 0;
+    }
+}
 @media (max-width: 991.98px) {
     #main-content {
         margin-left: 0;
@@ -59,9 +67,12 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    transition: background 0.2s, color 0.2s;
+    transition:
+        background 0.2s,
+        color 0.2s;
 }
-.sidebar .nav-link.active, .sidebar .nav-link:hover {
+.sidebar .nav-link.active,
+.sidebar .nav-link:hover {
     background: #0d6efd;
     color: #fff;
 }
@@ -113,7 +124,8 @@
     margin-bottom: 0.5rem;
     z-index: 1050;
 }
-.sidebar-user img, .sidebar-user i.bi-person-circle {
+.sidebar-user img,
+.sidebar-user i.bi-person-circle {
     width: 36px;
     height: 36px;
     object-fit: cover;
@@ -121,9 +133,9 @@
 
 /* Header personalizado */
 .custom-header {
-    background-color: #2E7D32 !important;
+    background-color: #2e7d32 !important;
     border-bottom: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     min-height: 64px;
     position: fixed;
     top: 0;
@@ -197,7 +209,7 @@ body .swal2-popup {
 .login-card {
     border-radius: 2rem !important;
     border-top: 4px solid #00923f !important;
-    box-shadow: 0 4px 32px 0 rgba(0,0,0,0.08);
+    box-shadow: 0 4px 32px 0 rgba(0, 0, 0, 0.08);
     background: #fff;
 }
 .login-logo-uteq {
@@ -285,5 +297,3 @@ body .swal2-popup {
         max-width: 80px;
     }
 }
-
-

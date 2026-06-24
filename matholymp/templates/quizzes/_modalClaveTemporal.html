@@ -2,7 +2,7 @@
 <div class="modal fade modal-clave-temporal" id="modalClaveTemporal" tabindex="-1" aria-labelledby="modalClaveTemporalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
+            <div class="modal-header bg-success text-white">
                 <h5 class="modal-title" id="modalClaveTemporalLabel">
                     <i class="bi bi-key me-2"></i>
                     Solicitud de Clave Temporal
@@ -19,12 +19,12 @@
                 <form id="formClaveTemporal">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label for="username" class="form-label">
+                        <label for="username" class="form-label fw-semibold">
                             <i class="bi bi-person me-1"></i>
                             Ingrese su usuario:
                         </label>
                         <input type="text" 
-                               class="form-control" 
+                               class="form-control login-input" 
                                id="username" 
                                name="username" 
                                placeholder="Ej: admin123 o 1234567890"
@@ -40,7 +40,7 @@
                     <i class="bi bi-x-circle me-1"></i>
                     Cancelar
                 </button>
-                <button type="button" class="btn btn-primary" id="btnSolicitarClave">
+                <button type="button" class="btn btn-success" id="btnSolicitarClave">
                     <i class="bi bi-envelope me-1"></i>
                     Solicitar Clave Temporal
                 </button>
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 icon: 'warning',
                 title: 'Campo requerido',
                 text: 'Por favor, ingrese su nombre de usuario.',
-                confirmButtonColor: '#007bff'
+                confirmButtonColor: '#00923f'
             });
             return;
         }
@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showCancelButton: true,
             confirmButtonText: 'Sí, enviar',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#007bff',
+            confirmButtonColor: '#00923f',
             cancelButtonColor: '#6c757d'
         }).then((result) => {
             if (result.isConfirmed) {

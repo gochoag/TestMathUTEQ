@@ -149,6 +149,7 @@ venvtestmath/
 .spyderproject
 .spyproject
 
+.commandcode
 # Rope project settings
 .ropeproject
 

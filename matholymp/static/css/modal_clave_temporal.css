@@ -1,8 +1,14 @@
 /* Estilos para el modal de solicitud de clave temporal */
 
+.modal-clave-temporal .modal-content {
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: 0 4px 32px 0 rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
 .modal-clave-temporal .modal-header {
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    border-bottom: none;
+    border-bottom: 0;
 }
 
 .modal-clave-temporal .modal-title {
@@ -14,10 +20,21 @@
     filter: brightness(0) invert(1);
 }
 
+.modal-clave-temporal .modal-body {
+    padding: 1.5rem;
+}
+
+.modal-clave-temporal .modal-footer {
+    border-top: 1px solid #dee2e6;
+    padding: 1rem 1.5rem 1.25rem;
+}
+
 .modal-clave-temporal .alert-info {
-    background-color: #e7f3ff;
-    border-color: #b3d9ff;
-    color: #0c5460;
+    background-color: #f8fafc;
+    border: 1px solid #dbe5e1;
+    border-left: 4px solid #00923f;
+    color: #495057;
+    border-radius: 0.75rem;
 }
 
 .modal-clave-temporal .form-label {
@@ -26,50 +43,23 @@
 }
 
 .modal-clave-temporal .form-control {
-    border: 2px solid #e9ecef;
-    border-radius: 8px;
     transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .modal-clave-temporal .form-control:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: #00923f;
+    box-shadow: 0 0 0 2px rgba(0, 146, 63, 0.13);
 }
 
 .modal-clave-temporal .form-text {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #6c757d;
-    font-style: italic;
 }
 
-.modal-clave-temporal .btn-primary {
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    border: none;
-    border-radius: 8px;
+.modal-clave-temporal .btn {
+    border-radius: 0.75rem;
     font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    transition: all 0.3s ease;
-}
-
-.modal-clave-temporal .btn-primary:hover {
-    background: linear-gradient(135deg, #0056b3, #004085);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
-}
-
-.modal-clave-temporal .btn-secondary {
-    background: linear-gradient(135deg, #6c757d, #545b62);
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    transition: all 0.3s ease;
-}
-
-.modal-clave-temporal .btn-secondary:hover {
-    background: linear-gradient(135deg, #545b62, #3d4449);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
+    padding: 0.65rem 1.25rem;
 }
 
 /* Animaciones para el modal */
@@ -100,7 +90,7 @@
 
 /* Estilos para SweetAlert2 personalizados */
 .swal2-popup {
-    border-radius: 12px !important;
+    border-radius: 1rem !important;
 }
 
 .swal2-title {
@@ -113,11 +103,11 @@
 }
 
 .swal2-confirm {
-    border-radius: 8px !important;
+    border-radius: 0.75rem !important;
     font-weight: 600 !important;
 }
 
 .swal2-cancel {
-    border-radius: 8px !important;
+    border-radius: 0.75rem !important;
     font-weight: 600 !important;
-} 
+}
