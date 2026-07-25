@@ -18,10 +18,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
- * Inicializa los datos desde el template
+ * Inicializa los datos desde los elementos json_script del template
  */
 function initializeData() {
-    // Los datos se pasarán desde el template HTML
+    // Leer datos de análisis de preguntas
     const analisisElement = document.getElementById('analisis-data');
     if (analisisElement) {
         try {
@@ -30,6 +30,34 @@ function initializeData() {
             console.warn('Error al parsear datos de análisis:', e);
             analisisData = [];
         }
+    }
+
+    // Leer datos de distribución de puntajes
+    const distribucionElement = document.getElementById('distribucion-data');
+    if (distribucionElement) {
+        try {
+            distribucionData = JSON.parse(distribucionElement.textContent);
+        } catch (e) {
+            console.warn('Error al parsear datos de distribución:', e);
+            distribucionData = [];
+        }
+    }
+
+    // Leer datos de categorías
+    const categoriasElement = document.getElementById('categorias-data');
+    if (categoriasElement) {
+        try {
+            categoriasData = JSON.parse(categoriasElement.textContent);
+        } catch (e) {
+            console.warn('Error al parsear datos de categorías:', e);
+            categoriasData = [];
+        }
+    }
+
+    // Leer URL de upload desde data attribute (igual que las demás URLs)
+    const uploadUrlElement = document.querySelector('[data-upload-url]');
+    if (uploadUrlElement) {
+        window.uploadImageUrl = uploadUrlElement.dataset.uploadUrl;
     }
 }
 
@@ -965,26 +993,4 @@ function exportarResultados() {
  */
 function imprimirReporte() {
     window.print();
-}
-
-/**
- * Función para actualizar datos de categorías (llamada desde el template)
- */
-function setCategoriasData(data) {
-    categoriasData = data;
-}
-
-/**
- * Función para actualizar datos de distribución (llamada desde el template)
- */
-function setDistribucionData(data) {
-    distribucionData = data;
-}
-
-/**
- * Función para actualizar datos de preguntas (llamada desde el template)
- */
-function setPreguntasData(data) {
-    preguntasData = data;
-    analisisData = data; // Mantener compatibilidad
 }

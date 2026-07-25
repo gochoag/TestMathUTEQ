@@ -1,4 +1,5 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
+{% load static %}
 {% block sidebar %}
     {% include 'quizzes/sidebar.html' %}
 {% endblock %}
@@ -40,7 +41,7 @@
                                     <input type="text" 
                                            name="search" 
                                            class="form-control" 
-                                           placeholder="Buscar por nombre o cédula..." 
+                                           placeholder="Buscar por nombre o Cédula..." 
                                            value="{{ search_query }}"
                                            aria-label="Buscar participantes">
                                     <button class="btn btn-outline-secondary" type="submit">
@@ -58,7 +59,7 @@
                         <div class="col-md-6">
                             <div class="alert alert-info mb-0">
                                 <i class="bi bi-search"></i>
-                                <strong>Búsqueda:</strong> "{{ search_query }}" - 
+                                <strong>búsqueda:</strong> "{{ search_query }}" - 
                                 <strong>{{ page_obj.paginator.count }}</strong> resultado{{ page_obj.paginator.count|pluralize }}
                             </div>
                         </div>
@@ -89,7 +90,7 @@
                                     <td>{{ p.password_temporal }}</td>
                                     <td class="text-center">
                                         <div class="d-flex justify-content-center gap-2">
-                                            <button class="btn btn-success btn-sm" onclick="confirmSendCredentials('{{ p.id }}', '{{ p.NombresCompletos }}')" title="Enviar credenciales por correo">
+                                            <button class="btn btn-success btn-sm" onclick="confirmSendCredentials('{{ p.id }}', '{{ p.NombresCompletos }}', '{% url "quizzes:send_credentials_email" "participante" 0 %}')" title="Enviar credenciales por correo">
                                                 <i class="bi bi-envelope"></i> Enviar correo
                                             </button>
                                             <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editParticipantModal{{ p.id }}">
@@ -117,7 +118,7 @@
                         </table>
                     </div>
 
-                    <!-- Footer con paginación y botón de volver -->
+                    <!-- Footer con Paginación y Botón de volver -->
                     <div class="d-flex justify-content-between align-items-end mt-3">
                         <!-- Botón Volver al Dashboard -->
                         <div>
@@ -228,92 +229,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-function confirmDelete(id, nombre) {
-    Swal.fire({
-        title: '¿Eliminar participante?',
-        html: `¿Estás seguro de que quieres eliminar al participante <strong>${nombre}</strong>?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = '?delete_id=' + id;
-        }
-    });
-}
-
-function confirmSendCredentials(id, nombre) {
-    Swal.fire({
-        title: '¿Enviar credenciales?',
-        html: `¿Estás seguro de que quieres enviar las credenciales de acceso por correo al participante <strong>${nombre}</strong>?`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, enviar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Mostrar indicador de carga con título y mensaje personalizados
-            Swal.fire({
-                title: 'Enviando credenciales...',
-                html: 'Por favor espera mientras se envían las credenciales por correo electrónico.',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                showConfirmButton: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
-            
-            // Usar fetch para hacer la petición sin redirección
-            fetch('{% url "quizzes:send_credentials_email" "participante" 0 %}'.replace('0', id), {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                }
-                throw new Error('Error en la respuesta del servidor');
-            })
-            .then(data => {
-                // Cerrar el loading
-                Swal.close();
-                
-                if (data.success) {
-                    // Mostrar toast de éxito usando la función global
-                    showDynamicToast({
-                        type: 'success',
-                        title: 'Éxito',
-                        message: data.message
-                    });
-                } else {
-                    // Mostrar toast de error usando la función global
-                    showDynamicToast({
-                        type: 'danger',
-                        title: 'Error',
-                        message: data.message
-                    });
-                }
-            })
-            .catch(error => {
-                // Cerrar el loading
-                Swal.close();
-                
-                console.error('Error:', error);
-                showDynamicToast({
-                    type: 'danger',
-                    title: 'Error',
-                    message: 'Hubo un error al enviar las credenciales. Por favor, intenta de nuevo.'
-                });
-            });
-        }
-    });
-}
-</script>
+<script src="{% static 'js/manage_participants.js' %}"></script>
 {% endblock %}
+

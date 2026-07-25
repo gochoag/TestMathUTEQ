@@ -1,4 +1,5 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
+{% load static %}
 {% block sidebar %}
     {% include 'quizzes/sidebar.html' %}
 {% endblock %}
@@ -50,7 +51,7 @@
                                     </td>
                                     <td class="text-center">
                                         {% if grupo.representante and grupo.participantes.exists %}
-                                        <button class="btn btn-success btn-sm" onclick="confirmSendEmail('{{ grupo.id }}', '{{ grupo.name }}', '{{ grupo.representante.NombresRepresentante }}')" title="Enviar correo al representante">
+                                        <button class="btn btn-success btn-sm" onclick="confirmSendEmail('{{ grupo.id }}', '{{ grupo.name }}', '{{ grupo.representante.NombresRepresentante }}', '{% url "quizzes:send_participants_email" 0 %}')" title="Enviar correo al representante">
                                             <i class="bi bi-envelope"></i> Enviar correo
                                         </button>
                                         {% endif %}
@@ -74,7 +75,7 @@
                         </table>
                     </div>
 
-                    <!-- Footer con paginación y botón de volver -->
+                    <!-- Footer con Paginación y Botón de volver -->
                     <div class="d-flex justify-content-between align-items-end mt-3">
                         <!-- Botón Volver al Dashboard -->
                         <div>
@@ -316,212 +317,5 @@
     </div>
 </div>
 
-<script>
-function confirmDeleteGrupo(id, nombre) {
-    Swal.fire({
-        title: '¿Eliminar grupo?',
-        html: `¿Estás seguro de que quieres eliminar el grupo <strong>${nombre}</strong>?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = '?delete_id=' + id;
-        }
-    });
-}
-
-function confirmSendEmail(id, nombreGrupo, nombreRepresentante) {
-    Swal.fire({
-        title: '¿Enviar correo?',
-        html: `¿Estás seguro de que quieres enviar un correo al representante <strong>${nombreRepresentante}</strong> con la lista de participantes del grupo <strong>${nombreGrupo}</strong>?`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, enviar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Mostrar indicador de carga con título y mensaje personalizados
-            Swal.fire({
-                title: 'Enviando correo...',
-                html: 'Por favor espera mientras se envía el correo electrónico al representante.',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                showConfirmButton: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
-            
-            // Usar fetch para hacer la petición sin redirección
-            fetch('{% url "quizzes:send_participants_email" 0 %}'.replace('0', id), {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                }
-                throw new Error('Error en la respuesta del servidor');
-            })
-            .then(data => {
-                // Cerrar el loading
-                Swal.close();
-                
-                if (data.success) {
-                    // Mostrar toast de éxito usando la función global
-                    showDynamicToast({
-                        type: 'success',
-                        title: 'Éxito',
-                        message: data.message
-                    });
-                } else {
-                    // Mostrar toast de error usando la función global
-                    showDynamicToast({
-                        type: 'danger',
-                        title: 'Error',
-                        message: data.message
-                    });
-                }
-            })
-            .catch(error => {
-                // Cerrar el loading
-                Swal.close();
-                
-                console.error('Error:', error);
-                showDynamicToast({
-                    type: 'danger',
-                    title: 'Error',
-                    message: 'Hubo un error al enviar el correo. Por favor, intenta de nuevo.'
-                });
-            });
-        }
-    });
-}
-
-// Función para filtrar participantes en los modales
-function filterParticipantes(modalId) {
-    
-    const searchInput = document.getElementById('searchParticipantes' + modalId);
-    if (!searchInput) {
-        return;
-    }
-    
-    const searchTerm = searchInput.value.toLowerCase().trim();
-       
-    
-    // Determinar en qué modal estamos
-    let modalSelector;
-    if (modalId === 'new' || modalId === 'New') {
-        modalSelector = '#addGrupoModal';
-    } else {
-        modalSelector = `#editGrupoModal${modalId}`;
-    }
-    
-    const modal = document.querySelector(modalSelector);
-    if (!modal) {
-        // Intentar buscar el modal de otra manera
-        const allModals = document.querySelectorAll('.modal');
-        return;
-    }
-    
-    const participanteItems = modal.querySelectorAll('.participante-item');
-    
-    let visibleCount = 0;
-    participanteItems.forEach(item => {
-        const label = item.querySelector('.form-check-label');
-        if (!label) return;
-        
-        const nombre = label.querySelector('strong')?.textContent.toLowerCase() || '';
-        const cedula = label.querySelector('small')?.textContent.replace(/[()]/g, '').toLowerCase() || '';
-        
-        
-        // Buscar en nombre y cédula
-        const matches = searchTerm === '' || 
-                       nombre.includes(searchTerm) || 
-                       cedula.includes(searchTerm);
-        
-        if (matches) {
-            item.style.display = 'block';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-    
-}
-
-// Función para limpiar la búsqueda
-function clearSearch(modalId) {
-    // Determinar en qué modal estamos
-    let modalSelector;
-    if (modalId === 'new' || modalId === 'New') {
-        modalSelector = '#addGrupoModal';
-    } else {
-        modalSelector = `#editGrupoModal${modalId}`;
-    }
-    
-    const modal = document.querySelector(modalSelector);
-    if (!modal) {
-        return;
-    }
-    
-    // Buscar el input de búsqueda dentro del modal
-    const searchInput = modal.querySelector('input[placeholder="Buscar participantes..."]');
-    if (!searchInput) {
-        return;
-    }
-    
-    // Limpiar el valor del input
-    searchInput.value = '';
-    
-    // Mostrar todos los participantes
-    const participanteItems = modal.querySelectorAll('.participante-item');
-    participanteItems.forEach(item => {
-        item.style.display = 'block';
-    });
-    
-    // Enfocar el input de búsqueda
-    searchInput.focus();
-}
-
-// Limpiar búsqueda cuando se abre un modal
-document.addEventListener('DOMContentLoaded', function() {
-    const modals = document.querySelectorAll('[id^="editGrupoModal"], #addGrupoModal');
-    modals.forEach(modal => {
-        modal.addEventListener('show.bs.modal', function() {
-            const searchInput = this.querySelector('input[placeholder="Buscar participantes..."]');
-            if (searchInput) {
-                searchInput.value = '';
-                // Mostrar todos los participantes
-                const participanteItems = this.querySelectorAll('.participante-item');
-                participanteItems.forEach(item => {
-                    item.style.display = 'block';
-                });
-            }
-        });
-    });
-    
-    // Agregar evento de input para búsqueda en tiempo real
-    document.addEventListener('input', function(e) {
-        if (e.target.matches('input[placeholder="Buscar participantes..."]')) {
-            let modalId = e.target.id.replace('searchParticipantes', '');
-            filterParticipantes(modalId);
-        }
-    });
-    
-    // También agregar evento keyup como respaldo
-    document.addEventListener('keyup', function(e) {
-        if (e.target.matches('input[placeholder="Buscar participantes..."]')) {
-            let modalId = e.target.id.replace('searchParticipantes', '');
-            filterParticipantes(modalId);
-        }
-    });
-});
-</script>
+<script src="{% static 'js/manage_grupos.js' %}"></script>
 {% endblock %} 

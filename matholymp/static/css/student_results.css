@@ -1,0 +1,98 @@
+.score-badge {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.score-badge:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.6s;
+}
+
+.score-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+}
+
+.score-badge:hover:before {
+    left: 100%;
+}
+
+.score-content {
+    z-index: 1;
+    position: relative;
+}
+
+.score-number {
+    display: block;
+    line-height: 1.1;
+}
+
+.score-label {
+    display: block;
+    font-weight: 600 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+    .card {
+        min-height: 350px;
+    }
+    
+    .score-badge {
+        min-width: 140px !important;
+        height: 50px !important;
+        padding: 6px 12px !important;
+    }
+    
+    .score-number {
+        font-size: 1.1rem !important;
+    }
+    
+    .score-label {
+        font-size: 0.65rem !important;
+    }
+}
+
+@media (min-width: 1200px) {
+    .card {
+        min-height: 450px;
+    }
+    
+    .score-badge {
+        min-width: 180px;
+        height: 65px;
+    }
+    
+    .score-number {
+        font-size: 1.4rem !important;
+    }
+}
+
+/* Grid layout improvements */
+.row {
+    margin-left: -10px;
+    margin-right: -10px;
+}
+
+.col-12, .col-md-6, .col-lg-4 {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.card {
+    min-height: 400px; /* Altura mínima para consistencia */
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+}

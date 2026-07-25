@@ -3,6 +3,10 @@
 
 {% block title %}Evaluaciones Disponibles{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/quiz.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -215,132 +219,8 @@
     </div>
 </div>
 
-<style>
-.bg-gradient-primary {
-    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-}
+{% endblock %}
 
-.card {
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    min-height: 400px; /* Altura mínima para consistencia */
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
-}
-
-.btn-lg {
-    padding: 12px 24px;
-    font-size: 1.1rem;
-}
-
-/* Responsive adjustments */
-@media (max-width: 576px) {
-    .card {
-        min-height: 350px;
-    }
-}
-
-@media (min-width: 1200px) {
-    .card {
-        min-height: 450px;
-    }
-}
-
-/* Grid layout improvements */
-.row {
-    margin-left: -10px;
-    margin-right: -10px;
-}
-
-.col-12, .col-md-6, .col-lg-4 {
-    padding-left: 10px;
-    padding-right: 10px;
-}
-
-/* Estilos personalizados para SweetAlert2 */
-.swal-popup-quiz-confirm {
-    font-family: inherit;
-}
-
-.swal-popup-quiz-confirm .swal2-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #343a40;
-}
-
-.swal-popup-quiz-confirm .swal2-content {
-    font-size: 1rem;
-    color: #6c757d;
-    line-height: 1.5;
-}
-
-.swal-popup-quiz-confirm .swal2-confirm {
-    font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-}
-
-.swal-popup-quiz-confirm .swal2-cancel {
-    font-weight: 500;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-}
-</style>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Confirmación SOLO para iniciar nueva evaluación (primera vez o nuevo intento)
-    document.querySelectorAll('.confirm-start-quiz').forEach(function(button) {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            const quizTitle = this.getAttribute('data-quiz-title');
-            const isRetry = this.getAttribute('data-is-retry') === 'true';
-            const quizUrl = this.getAttribute('href');
-            
-            const title = isRetry ? '¿Iniciar nuevo intento?' : '¿Iniciar evaluación?';
-            const text = isRetry ? 
-                `¿Estás seguro de que deseas iniciar un nuevo intento de la evaluación "${quizTitle}"?` :
-                `¿Estás seguro de que deseas iniciar la evaluación "${quizTitle}"?`;
-            
-            Swal.fire({
-                title: title,
-                text: text,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#007bff',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Sí, iniciar',
-                cancelButtonText: 'Cancelar',
-                reverseButtons: false,
-                customClass: {
-                    popup: 'swal-popup-quiz-confirm'
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    // Mostrar loading
-                    Swal.fire({
-                        title: 'Cargando evaluación...',
-                        text: 'Por favor espera mientras se prepara la evaluación',
-                        icon: 'info',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        showConfirmButton: false,
-                        didOpen: () => {
-                            Swal.showLoading();
-                        }
-                    });
-                    
-                    // Redirigir después de un breve delay
-                    setTimeout(() => {
-                        window.location.href = quizUrl;
-                    }, 1000);
-                }
-            });
-        });
-    });
-});
-</script>
+{% block extra_js %}
+<script src="{% static 'js/quiz.js' %}"></script>
 {% endblock %}

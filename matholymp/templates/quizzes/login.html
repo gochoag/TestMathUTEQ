@@ -110,44 +110,6 @@
 
 {% endblock %}
 
-<script>
-// Función para mostrar/ocultar contraseña
-function togglePassword() {
-    const passwordInput = document.getElementById('{{ form.password.id_for_label }}');
-    const eyeIcon = document.querySelector('.login-eye-icon i');
-    
-    if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        eyeIcon.classList.remove('bi-eye');
-        eyeIcon.classList.add('bi-eye-slash');
-    } else {
-        passwordInput.type = 'password';
-        eyeIcon.classList.remove('bi-eye-slash');
-        eyeIcon.classList.add('bi-eye');
-    }
-}
-
-// Auto-ocultar alertas después de 5 segundos
-document.addEventListener('DOMContentLoaded', function() {
-    const alerts = document.querySelectorAll('.alert');
-    alerts.forEach(function(alert) {
-        setTimeout(function() {
-            if (alert && alert.parentNode) {
-                alert.style.transition = 'opacity 0.5s ease-out';
-                alert.style.opacity = '0';
-                setTimeout(function() {
-                    if (alert.parentNode) {
-                        alert.parentNode.removeChild(alert);
-                    }
-                }, 500);
-            }
-        }, 5000);
-    });
-    
-    // Enfocar el campo de usuario al cargar la página
-    const usernameInput = document.getElementById('{{ form.username.id_for_label }}');
-    if (usernameInput && !usernameInput.value) {
-        usernameInput.focus();
-    }
-});
-</script>
+{% block extra_js %}
+<script src="{% static 'js/login.js' %}"></script>
+{% endblock %}

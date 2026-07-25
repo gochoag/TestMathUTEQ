@@ -1,0 +1,193 @@
+/* =============================================================
+   Estilos para la página de resultados de evaluación
+   evaluacion_results.css
+   ============================================================= */
+
+/* --- Tabla de preguntas --- */
+.pregunta-text {
+    font-size: 0.9em;
+    line-height: 1.3;
+}
+
+/* --- Cards de estadísticas --- */
+.stats-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+}
+
+/* --- Contenedor de gráficos --- */
+.chart-container {
+    position: relative;
+    margin: 1rem 0;
+}
+
+/* --- Estilos de impresión --- */
+@media print {
+    .btn, .alert {
+        display: none !important;
+    }
+
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+    }
+}
+
+/* --- Barra de progreso compacta --- */
+.progress-mini {
+    height: 8px;
+    margin-top: 2px;
+}
+
+/* --- Badge grande --- */
+.badge-lg {
+    font-size: 0.9em;
+    padding: 0.5em 0.7em;
+}
+
+/* --- Filtros --- */
+.filter-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.filter-section {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* --- Modales --- */
+.modal-xl {
+    max-width: 90%;
+}
+
+.question-content {
+    font-size: 1.1em;
+    line-height: 1.6;
+}
+
+.option-item {
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.option-item.correct {
+    background-color: #d1edff;
+    border-color: #0d6efd;
+}
+
+/* --- Animaciones de carga --- */
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* --- Responsivo --- */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.9em;
+    }
+
+    .progress {
+        min-width: 60px !important;
+    }
+
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+}
+
+/* --- Secciones de retroalimentación --- */
+.feedback-section {
+    border-left: 4px solid #28a745;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.improvement-area {
+    border-left: 4px solid #ffc107;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.strength-area {
+    border-left: 4px solid #28a745;
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+/* --- Encabezado de página --- */
+.page-header {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.title-section {
+    flex-grow: 1;
+}
+
+.title-section h2 {
+    font-size: 1.75rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    margin: 0;
+}
+
+.title-section .text-primary {
+    display: inline;
+    word-break: break-word;
+}
+
+.actions-section {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 991px) {
+    .header-content {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .title-section h2 {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .page-header {
+        padding: 15px;
+    }
+
+    .title-section h2 {
+        font-size: 1.25rem;
+    }
+
+    .actions-section {
+        flex-direction: column;
+    }
+}

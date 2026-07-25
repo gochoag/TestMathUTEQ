@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Gestionar Permisos de Administradores{% endblock %}
 
@@ -100,28 +101,5 @@
         </div>
     </div>
 </div>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('.btn-swal-toggle').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const form = btn.closest('form');
-          const username = btn.dataset.username;
-          const action = btn.textContent.trim(); // "Habilitar" o "Deshabilitar"
-  
-          Swal.fire({
-            title: `¿Seguro que quieres ${action.toLowerCase()}?`,
-            text: `Control de acceso para ${username}`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Sí, adelante',
-            cancelButtonText: 'Cancelar',
-          }).then((result) => {
-            if (result.isConfirmed) {
-              form.submit();
-            }
-          });
-        });
-      });
-    });
-  </script>
+<script src="{% static 'js/manage_admin_permissions.js' %}"></script>
 {% endblock %} 

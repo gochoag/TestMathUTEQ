@@ -2054,7 +2054,12 @@ def manage_questions(request, eval_id):
     can_modify, restriction_message = check_question_modification_allowed(evaluacion)
     
     # Optimizar consulta para incluir opciones y categorías, evitar N+1
-    preguntas = evaluacion.preguntas.prefetch_related('opciones').select_related('categoria').order_by('id')
+    preguntas_qs = evaluacion.preguntas.prefetch_related('opciones').select_related('categoria').order_by('id')
+    
+    # Paginación — 20 preguntas por página
+    paginator = Paginator(preguntas_qs, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
     
     # Obtener todas las categorías activas para el select
     from .models import Categoria
@@ -2062,7 +2067,9 @@ def manage_questions(request, eval_id):
     
     context = {
         'evaluacion': evaluacion,
-        'preguntas': preguntas,
+        'preguntas': page_obj,          # ahora es la página actual
+        'total_preguntas': paginator.count,  # total global para el badge
+        'page_obj': page_obj,
         'categorias': categorias,
         'can_modify_questions': can_modify,
         'restriction_message': restriction_message,
@@ -2922,13 +2929,30 @@ def evaluacion_results(request, pk):
                 'count': count
             })
     
+    # Serializar distribucion_puntajes para json_script
+    distribucion_puntajes_json = [
+        {'rango': item['rango'], 'count': item['count']}
+        for item in distribucion_puntajes
+    ]
+
+    # Serializar analisis_categorias para json_script
+    analisis_categorias_json = [
+        {
+            'nombre': cat['categoria_nombre'],
+            'porcentaje': float(cat['porcentaje_acierto']),
+            'preguntas': cat['total_preguntas'],
+            'dificultad': cat['dificultad'],
+        }
+        for cat in analisis_categorias
+    ]
+
     context = {
         'evaluacion': evaluacion,
         'total_preguntas': evaluacion.preguntas.count(),
         'participantes_count': participantes_elegibles,
         'evaluacion_status': evaluacion.get_status(),
         'evaluacion_status_display': evaluacion.get_status_display(),
-        
+
         # Filtros y grupos
         'grupos_disponibles': grupos_disponibles,
         'grupo_seleccionado': grupo_seleccionado,
@@ -2936,23 +2960,27 @@ def evaluacion_results(request, pk):
         'categorias_disponibles': categorias_disponibles,
         'categoria_seleccionada': categoria_seleccionada,
         'categoria_filtro': categoria_filtro,
-        
+
         # Estadísticas de participación
         'participantes_con_resultados': participantes_con_resultados,
         'participantes_completaron': participantes_completaron,
         'participantes_en_progreso': participantes_en_progreso,
         'participantes_no_iniciaron': participantes_no_iniciaron,
         'tasa_participacion': round(tasa_participacion, 1),
-        
+
         # Estadísticas de rendimiento
         'estadisticas_rendimiento': estadisticas_rendimiento,
-        
+
         # Análisis detallado
         'analisis_preguntas': analisis_preguntas,
         'analisis_preguntas_json': analisis_preguntas_json,
         'analisis_categorias': analisis_categorias,
         'distribucion_puntajes': distribucion_puntajes,
-        
+
+        # Versiones JSON para json_script (sin template-tags en <script>)
+        'distribucion_puntajes_json': distribucion_puntajes_json,
+        'analisis_categorias_json': analisis_categorias_json,
+
         # Top 5 resultados para mostrar
         'top_resultados': resultados_completados.order_by('-puntos_obtenidos', 'tiempo_utilizado')[:5],
     }

@@ -44,7 +44,7 @@
                 <div class="card-header bg-primary text-white">
                     <div class="d-flex justify-content-between align-items-center">
                         <strong><i class="bi bi-list-check me-2"></i>Banco de Preguntas</strong>
-                        <span class="badge bg-light text-dark">{{ preguntas.count }} pregunta{{ preguntas.count|pluralize }}</span>
+                        <span class="badge bg-light text-dark">{{ total_preguntas }} pregunta{{ total_preguntas|pluralize }}</span>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -54,7 +54,7 @@
                                 <div class="pregunta-card" data-pregunta-id="{{ pregunta.id }}">
                                     <div class="pregunta-header">
                                         <div class="pregunta-number">
-                                            <span class="number-badge">{{ forloop.counter }}</span>
+                                            <span class="number-badge">{{ page_obj.start_index|add:forloop.counter0 }}</span>
                                         </div>
                                         <div class="pregunta-info">
                                             <div class="pregunta-categoria mb-2">
@@ -124,6 +124,11 @@
                         </div>
                     {% endif %}
                 </div>
+                {% if page_obj.has_other_pages %}
+                <div class="card-footer bg-white border-top pt-3">
+                    {% include 'global/pagination.html' %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -223,23 +228,15 @@
 <!-- CKEditor y JS -->
 <script src="{% static 'ckeditor/ckeditor.js' %}"></script>
 <script>
-// Variables globales para URLs - DEFINIDAS ANTES que los otros scripts
+// URLs disponibles globalmente para manage_questions.js
 window.uploadImageUrl = "{% url 'quizzes:upload_image' %}";
 window.saveQuestionUrl = "{% url 'quizzes:save_question' eval_id=evaluacion.id %}";
 window.deleteQuestionUrl = "{% url 'quizzes:delete_question' pk=0 %}";
 window.getQuestionDataUrl = "{% url 'quizzes:get_question_data' pk=0 %}";
 window.updateQuestionUrl = "{% url 'quizzes:update_question' pk=0 %}";
+window.updatePuntosUrl = "{% url 'quizzes:actualizar_puntos_pregunta' pk=0 %}";
 window.canModifyQuestions = {% if can_modify_questions %}true{% else %}false{% endif %};
 window.restrictionMessage = "{{ restriction_message|escapejs }}";
-
-// También crear las variables normales para compatibilidad con código existente
-const uploadImageUrl = window.uploadImageUrl;
-const saveQuestionUrl = window.saveQuestionUrl;
-const deleteQuestionUrl = window.deleteQuestionUrl;
-const getQuestionDataUrl = window.getQuestionDataUrl;
-const updateQuestionUrl = window.updateQuestionUrl;
-
-
 </script>
 <script src="{% static 'js/ckeditor_config.js' %}"></script>
 <script src="{% static 'js/manage_questions.js' %}"></script>

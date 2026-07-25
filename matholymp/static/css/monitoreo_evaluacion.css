@@ -1,0 +1,109 @@
+/* Estilo para las transiciones del monitoreo en tiempo real */
+#tabla-monitoreo tbody tr {
+    transition: background-color 0.3s ease-in-out;
+}
+
+/* Efecto de pulso para cambios importantes */
+@keyframes pulso {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+.fila-actualizada {
+    animation: pulso 0.6s ease-in-out;
+}
+
+/* Indicador de tiempo real activo */
+.monitoreo-tiempo-real::after {
+    content: " 🔴";
+    animation: parpadeo 1s infinite;
+}
+
+@keyframes parpadeo {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+/* Estilos para el modal de intentos compacto */
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+#modalNuevoIntento .modal-body {
+    padding: 1rem 1.5rem;
+}
+
+#modalNuevoIntento .border {
+    border-width: 2px !important;
+}
+
+#nuevo-total {
+    font-size: 1.2rem !important;
+    padding: 0.5rem 1rem !important;
+    transition: transform 0.2s ease, background-color 0.3s ease;
+}
+
+#nuevo-total:hover {
+    background-color: #198754 !important;
+}
+
+/* Estilos para el modal de reducir cambios de pestañas */
+#nuevo-total-cambios {
+    font-size: 1.2rem !important;
+    padding: 0.5rem 1rem !important;
+    transition: transform 0.2s ease, background-color 0.3s ease;
+}
+
+/* Estilos para la búsqueda */
+#search-participantes {
+    transition: all 0.3s ease;
+}
+
+#search-participantes:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: #80bdff;
+}
+
+#clear-search {
+    border-left: none;
+}
+
+#clear-search:hover {
+    background-color: #e9ecef;
+}
+
+/* Estilos para el highlight de búsqueda */
+mark.bg-warning {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+/* Animación para resultados de búsqueda */
+#search-results-count {
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.search-no-results {
+    opacity: 0.7;
+}
+
+/* Mejorar el aspecto del input group */
+.input-group .input-group-text {
+    border-right: none;
+    background-color: #f8f9fa;
+}
+
+.input-group .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: none;
+}
+
+.input-group .form-control:focus + .btn {
+    border-color: #80bdff;
+}

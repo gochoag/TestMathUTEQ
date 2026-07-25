@@ -9,13 +9,58 @@ let isEditing = false;
 document.addEventListener('DOMContentLoaded', function() {
     initializeCKEditor();
     setupEventListeners();
+
+    // Ejecutar corrección inicial de imágenes
+    corregirAlineacionImagenesMejorada();
+    setTimeout(corregirAlineacionImagenesMejorada, 100);
+    window.addEventListener('load', corregirAlineacionImagenesMejorada);
+
+    // Observar cambios en el DOM para corregir imágenes dinámicamente
+    const observer = new MutationObserver(function(mutations) {
+        let necesitaCorreccion = false;
+
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                mutation.addedNodes.forEach(function(node) {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.querySelector && node.querySelector('img')) {
+                            necesitaCorreccion = true;
+                        }
+                    }
+                });
+            }
+        });
+
+        if (necesitaCorreccion) {
+            setTimeout(corregirAlineacionImagenesMejorada, 50);
+        }
+    });
+
+    // Observar cambios en el contenido de preguntas y opciones
+    const contenedores = document.querySelectorAll('.pregunta-text, .opcion-text, .cke_editable');
+    contenedores.forEach(contenedor => {
+        observer.observe(contenedor, {
+            childList: true,
+            subtree: true
+        });
+    });
+
+    // Limpiar formulario si se abre el modal sin edición activa
+    const modalPregunta = document.getElementById('modalPregunta');
+    if (modalPregunta) {
+        modalPregunta.addEventListener('show.bs.modal', function () {
+            if (!currentPreguntaId) {
+                clearForm();
+            }
+        });
+    }
 });
 
 // Inicializar CKEditor
 function initializeCKEditor() {
     if (window.CKEDITOR) {
         // Configuración específica para el editor de pregunta
-        const preguntaEditor = CKEDITOR.replace('editorPregunta', {
+        CKEDITOR.replace('editorPregunta', {
             ...window.ckeditorConfig,
             height: 200,
             toolbar: [
@@ -115,7 +160,7 @@ async function processBase64Images(content) {
                     formData.append('upload', blob, 'formula.png');
                     
                     // Subir imagen y reemplazar con URL
-                    const response = await fetch(uploadImageUrl, {
+                    const response = await fetch(window.uploadImageUrl, {
                         method: 'POST',
                         headers: {
                             'X-CSRFToken': getCookie('csrftoken')
@@ -193,7 +238,8 @@ async function saveQuestion() {
     const opcionCorrecta = document.querySelector('input[name="opcion_correcta"]:checked');
     
     // Obtener los puntos
-    const puntos = document.getElementById('puntosPregunta').value;
+    const puntosRaw = document.getElementById('puntosPregunta').value;
+    const puntos = parseInt(puntosRaw, 10);
     
     // Obtener la categoría
     const categoriaElement = document.getElementById('categoriaPregunta');
@@ -238,7 +284,7 @@ async function saveQuestion() {
     }
     
     // Validar puntos
-    if (!puntos || puntos < 1 || puntos > 10) {
+    if (isNaN(puntos) || puntos < 1 || puntos > 10) {
         Swal.fire({
             icon: 'error',
             title: 'Error',
@@ -256,7 +302,7 @@ async function saveQuestion() {
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
-                text: `La opción ${String.fromCharCode(65 + i)} (${'ABCD'[i]}) es obligatoria`,
+                text: `La opción ${'ABCD'[i]} es obligatoria`,
                 customClass: {
                     container: 'swal-over-modal'
                 }
@@ -283,7 +329,7 @@ async function saveQuestion() {
         pregunta: pregunta,
         opciones: opciones,
         opcion_correcta: opcionCorrecta.value,
-        puntos: parseInt(puntos),
+        puntos: puntos,  // ya es entero por parseInt en L197
         categoria: categoriaInt
     };
     
@@ -307,77 +353,71 @@ async function saveQuestion() {
     }
 
     // Determinar URL según si es edición o creación
-    const url = isEditing ? 
-        updateQuestionUrl.replace('0', currentPreguntaId) : 
-        saveQuestionUrl;
-    
+    const url = isEditing ?
+        window.updateQuestionUrl.replace('/0/', `/${currentPreguntaId}/`) :
+        window.saveQuestionUrl;
+
     // Enviar datos al backend
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+
         // Rehabilitar el botón de guardar
-        const btnGuardar = document.getElementById('btnGuardarPregunta');
         if (btnGuardar) {
             btnGuardar.disabled = false;
         }
-        
-        if (data.success) {
-            // Cerrar el loading
+
+        if (responseData.success) {
             Swal.close();
-            
+
             // Cerrar el modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('modalPregunta'));
             modal.hide();
-            
+
             // Mostrar mensaje de éxito
             Swal.fire({
                 icon: 'success',
                 title: '¡Éxito!',
-                text: data.message,
+                text: responseData.message,
                 timer: 2000,
                 showConfirmButton: false,
                 customClass: {
                     container: 'swal-over-modal'
                 }
             });
-            
+
             // Recargar la página para mostrar la nueva pregunta
             setTimeout(() => {
                 window.location.reload();
-                // Corregir imágenes después de recargar
-                setTimeout(corregirAlineacionImagenesMejorada, 100);
             }, 2000);
         } else {
-            // Cerrar el loading
             Swal.close();
-            
+
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
-                text: data.error,
+                text: responseData.error,
                 customClass: {
                     container: 'swal-over-modal'
                 }
             });
         }
-    })
-    .catch(error => {
+    } catch (error) {
         // Rehabilitar el botón de guardar
-        const btnGuardar = document.getElementById('btnGuardarPregunta');
         if (btnGuardar) {
             btnGuardar.disabled = false;
         }
-        
-        // Cerrar el loading
+
         Swal.close();
-        
+
         console.error('Error:', error);
         Swal.fire({
             icon: 'error',
@@ -387,7 +427,7 @@ async function saveQuestion() {
                 container: 'swal-over-modal'
             }
         });
-    });
+    }
 }
 
 // Función para eliminar pregunta
@@ -420,7 +460,7 @@ function deletePregunta(preguntaId) {
         }
     }).then((result) => {
         if (result.isConfirmed) {
-            fetch(deleteQuestionUrl.replace('0', preguntaId), {
+            fetch(window.deleteQuestionUrl.replace('/0/', `/${preguntaId}/`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -508,7 +548,7 @@ async function editPregunta(preguntaId) {
         });
         
         // Obtener datos de la pregunta
-        const response = await fetch(getQuestionDataUrl.replace('0', preguntaId));
+        const response = await fetch(window.getQuestionDataUrl.replace('0', preguntaId));
         const data = await response.json();
         
         if (data.success) {
@@ -685,7 +725,7 @@ async function actualizarPuntos(preguntaId, puntos) {
     }
 
     try {
-        const response = await fetch(`/pregunta/${preguntaId}/puntos/`, {
+        const response = await fetch(window.updatePuntosUrl.replace('/0/', `/${preguntaId}/`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -731,45 +771,6 @@ async function actualizarPuntos(preguntaId, puntos) {
     }
 }
 
-// Función para corregir la alineación de imágenes en spans
-function corregirAlineacionImagenes() {
-    // Buscar todas las imágenes dentro de spans en preguntas y opciones
-    const imagenesEnSpans = document.querySelectorAll('.pregunta-text span img, .opcion-text span img');
-    
-    imagenesEnSpans.forEach(img => {
-        // Aplicar estilos directamente para corregir la alineación
-        img.style.verticalAlign = 'middle';
-        img.style.position = 'relative';
-        img.style.top = '0';
-        img.style.margin = '0';
-        
-        // También corregir el span padre si existe
-        const spanPadre = img.closest('span');
-        if (spanPadre) {
-            spanPadre.style.verticalAlign = 'middle';
-            spanPadre.style.position = 'static';
-            spanPadre.style.top = 'auto';
-            spanPadre.style.display = 'inline';
-        }
-    });
-    
-    // Buscar spans que puedan tener estilos problemáticos
-    const spansProblematicos = document.querySelectorAll('.pregunta-text span, .opcion-text span');
-    
-    spansProblematicos.forEach(span => {
-        // Verificar si el span tiene estilos que puedan causar problemas
-        const computedStyle = window.getComputedStyle(span);
-        if (computedStyle.verticalAlign !== 'middle' || 
-            computedStyle.position !== 'static' || 
-            computedStyle.top !== 'auto') {
-            
-            span.style.verticalAlign = 'middle';
-            span.style.position = 'static';
-            span.style.top = 'auto';
-            span.style.display = 'inline';
-        }
-    });
-}
 
 // Función mejorada para corregir la alineación de imágenes
 function corregirAlineacionImagenesMejorada() {
@@ -807,85 +808,26 @@ function corregirAlineacionImagenesMejorada() {
         }
     });
     
-    // Corregir específicamente spans problemáticos
-    const spansProblematicos = document.querySelectorAll('.pregunta-text span, .opcion-text span, .cke_editable span');
+    // Corregir estilos de alineación en spans del contenido
+    const spansDeContenido = document.querySelectorAll('.pregunta-text span, .opcion-text span, .cke_editable span');
     
-    spansProblematicos.forEach(span => {
+    spansDeContenido.forEach(span => {
         const computedStyle = window.getComputedStyle(span);
         
-        // Lista de propiedades problemáticas
-        const propiedadesProblematicas = {
-            'vertical-align': 'middle',
+        // Estilos de alineación esperados
+        const estilosDeAlineacion = {
+            'verticalAlign': 'middle',
             'position': 'static',
             'top': 'auto',
             'display': 'inline'
         };
-        
+
         // Aplicar correcciones solo si es necesario
-        Object.entries(propiedadesProblematicas).forEach(([propiedad, valor]) => {
+        Object.entries(estilosDeAlineacion).forEach(([propiedad, valor]) => {
             if (computedStyle[propiedad] !== valor) {
                 span.style[propiedad] = valor;
             }
         });
     });
 }
-
-// Ejecutar la corrección cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', function() {
-    // Ejecutar corrección inicial
-    corregirAlineacionImagenesMejorada();
-    
-    // Ejecutar corrección después de un pequeño delay para asegurar que todo esté cargado
-    setTimeout(corregirAlineacionImagenesMejorada, 100);
-    
-    // Ejecutar corrección cuando se cargue la ventana completamente
-    window.addEventListener('load', corregirAlineacionImagenesMejorada);
-    
-    // Observar cambios en el DOM para corregir imágenes dinámicamente
-    const observer = new MutationObserver(function(mutations) {
-        let necesitaCorreccion = false;
-        
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                mutation.addedNodes.forEach(function(node) {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        if (node.querySelector && node.querySelector('img')) {
-                            necesitaCorreccion = true;
-                        }
-                    }
-                });
-            }
-        });
-        
-        if (necesitaCorreccion) {
-            setTimeout(corregirAlineacionImagenesMejorada, 50);
-        }
-    });
-    
-    // Observar cambios en el contenido de preguntas y opciones
-    const contenedores = document.querySelectorAll('.pregunta-text, .opcion-text, .cke_editable');
-    contenedores.forEach(contenedor => {
-        observer.observe(contenedor, {
-            childList: true,
-            subtree: true
-        });
-    });
-});
-
-// Función para corregir imágenes después de recargar contenido dinámicamente
-function corregirImagenesDespuesDeCarga() {
-    setTimeout(corregirAlineacionImagenesMejorada, 50);
-}
-
-// Event listener para limpiar el formulario cuando se abre el modal para agregar pregunta
-document.addEventListener('DOMContentLoaded', function() {
-    const modalPregunta = document.getElementById('modalPregunta');
-    if (modalPregunta) {
-        modalPregunta.addEventListener('show.bs.modal', function (event) {
-            // Si no es una edición (no hay currentPreguntaId), limpiar el formulario
-            if (!currentPreguntaId) {
-                clearForm();
-            }
-        });
-    }
-}); 
+

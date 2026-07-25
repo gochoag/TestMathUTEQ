@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block sidebar %}
     {% include 'quizzes/sidebar.html' %}
 {% endblock %}
@@ -253,22 +254,5 @@
     </div>
 </div>
 
-<script>
-    // Función para confirmar eliminación
-    function confirmDeleteRepresentante(id, nombre) {
-        Swal.fire({
-            title: '¿Eliminar representante?',
-            html: `¿Estás seguro de que quieres eliminar al representante <strong>${nombre}</strong>?`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Sí, eliminar',
-            cancelButtonText: 'Cancelar',
-            reverseButtons: false
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = '?delete_id=' + id;
-            }
-        });
-    }
-</script>
+<script src="{% static 'js/manage_representantes.js' %}"></script>
 {% endblock %} 

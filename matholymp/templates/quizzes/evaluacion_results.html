@@ -5,190 +5,7 @@
 {% block title %}Resultados - {{ evaluacion.title }}{% endblock %}
 
 {% block extra_css %}
-<style>
-.pregunta-text {
-    font-size: 0.9em;
-    line-height: 1.3;
-}
-
-.stats-card {
-    transition: transform 0.2s ease-in-out;
-}
-
-.stats-card:hover {
-    transform: translateY(-2px);
-}
-
-.chart-container {
-    position: relative;
-    margin: 1rem 0;
-}
-
-@media print {
-    .btn, .alert {
-        display: none !important;
-    }
-    
-    .card {
-        border: 1px solid #dee2e6 !important;
-        box-shadow: none !important;
-    }
-}
-
-.progress-mini {
-    height: 8px;
-    margin-top: 2px;
-}
-
-.badge-lg {
-    font-size: 0.9em;
-    padding: 0.5em 0.7em;
-}
-
-/* Estilos para filtros */
-.filter-card {
-    border-left: 4px solid #0d6efd;
-}
-
-.filter-section {
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-}
-
-/* Estilos para modales */
-.modal-xl {
-    max-width: 90%;
-}
-
-.question-content {
-    font-size: 1.1em;
-    line-height: 1.6;
-}
-
-.option-item {
-    padding: 0.75rem;
-    margin: 0.5rem 0;
-    border-radius: 6px;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-}
-
-.option-item.correct {
-    background-color: #d1edff;
-    border-color: #0d6efd;
-}
-
-/* Animaciones para cargas */
-.loading-spinner {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Mejoras responsivas */
-@media (max-width: 768px) {
-    .table-responsive {
-        font-size: 0.9em;
-    }
-    
-    .progress {
-        min-width: 60px !important;
-    }
-    
-    .btn-sm {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.8rem;
-    }
-}
-
-/* Estilos para retroalimentación */
-.feedback-section {
-    border-left: 4px solid #28a745;
-    padding-left: 1rem;
-    margin: 1rem 0;
-}
-
-.improvement-area {
-    border-left: 4px solid #ffc107;
-    padding-left: 1rem;
-    margin: 1rem 0;
-}
-
-.strength-area {
-    border-left: 4px solid #28a745;
-    padding-left: 1rem;
-    margin: 1rem 0;
-}
-
-/* Estilos para encabezado de página */
-.page-header {
-    background: #fff;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border: 1px solid #e9ecef;
-}
-
-.header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
-}
-
-.title-section {
-    flex-grow: 1;
-}
-
-.title-section h2 {
-    font-size: 1.75rem;
-    line-height: 1.3;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    margin: 0;
-}
-
-.title-section .text-primary {
-    display: inline;
-    word-break: break-word;
-}
-
-.actions-section {
-    display: flex;
-    gap: 10px;
-    flex-shrink: 0;
-}
-
-@media (max-width: 991px) {
-    .header-content {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .title-section h2 {
-        font-size: 1.5rem;
-    }
-}
-
-@media (max-width: 576px) {
-    .page-header {
-        padding: 15px;
-    }
-    
-    .title-section h2 {
-        font-size: 1.25rem;
-    }
-    
-    .actions-section {
-        flex-direction: column;
-    }
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/evaluacion_results.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -230,7 +47,7 @@
                     <div class="row align-items-end">
                         <div class="col-md-3">
                             <label for="grupoSelect" class="form-label">Filtrar por Grupo/Colegio:</label>
-                            <select id="grupoSelect" class="form-select" onchange="aplicarFiltros()">
+                            <select id="grupoSelect" class="form-select">
                                 <option value="todos" {% if grupo_filtro == 'todos' %}selected{% endif %}>
                                     Todos los Participantes
                                 </option>
@@ -243,7 +60,7 @@
                         </div>
                         <div class="col-md-3">
                             <label for="categoriaSelect" class="form-label">Filtrar por Categoría:</label>
-                            <select id="categoriaSelect" class="form-select" onchange="aplicarFiltros()">
+                            <select id="categoriaSelect" class="form-select">
                                 <option value="todas" {% if categoria_filtro == 'todas' %}selected{% endif %}>
                                     Todas las Categorías
                                 </option>
@@ -386,7 +203,7 @@
                             <div class="mt-3">
                                 <h6 class="text-muted">Tasa de Participación</h6>
                                 <div class="progress" style="height: 25px;">
-                                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ tasa_participacion }}%">
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ tasa_participacion|unlocalize }}%">
                                         {{ tasa_participacion }}%
                                     </div>
                                 </div>
@@ -721,12 +538,7 @@
 <script src="{% static 'ckeditor/ckeditor.js' %}"></script>
 <script src="{% static 'js/ckeditor_config.js' %}"></script>
 
-<!-- Script de datos JSON para JavaScript -->
-{% if analisis_preguntas_json %}
-{{ analisis_preguntas_json|json_script:"analisis-data" }}
-{% else %}
-<script id="analisis-data" type="application/json">[]</script>
-{% endif %}
+
 
 <!-- Datos para JavaScript -->
 <div style="display: none;">
@@ -734,84 +546,22 @@
     <div data-export-url="{% url 'quizzes:exportar_resultados' pk=evaluacion.id %}"></div>
     <div data-enviar-retroalimentacion-url="{% url 'quizzes:enviar_retroalimentacion' pk=evaluacion.id %}"></div>
     <div data-descargar-retroalimentacion-url="{% url 'quizzes:descargar_retroalimentacion_pdf' pk=evaluacion.id %}"></div>
+    <div data-upload-url="{% url 'quizzes:upload_image' %}"></div>
     {% if grupo_seleccionado %}
     <div data-grupo-seleccionado="{{ grupo_seleccionado.name }}"></div>
     <div data-grupo-id="{{ grupo_seleccionado.id }}"></div>
     {% endif %}
 </div>
 
-<!-- Script para pasar datos a JavaScript -->
-<script>
-// Variable global para upload de imágenes requerida por CKEditor
-window.uploadImageUrl = "{% url 'quizzes:upload_image' %}";
-
-// Pasar datos de distribución de puntajes
-{% if distribucion_puntajes %}
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setDistribucionData === 'function') {
-        setDistribucionData([
-            {% for item in distribucion_puntajes %}
-            {
-                rango: '{{ item.rango|escapejs }}',
-                count: {{ item.count }}
-            }{% if not forloop.last %},{% endif %}
-            {% endfor %}
-        ]);
-    }
-});
+<!-- Datos JSON para JavaScript via json_script (seguro y sin template-tags en <script>) -->
+{% if analisis_preguntas_json %}
+{{ analisis_preguntas_json|json_script:"analisis-data" }}
+{% else %}
+<script id="analisis-data" type="application/json">[]</script>
 {% endif %}
-
-// Pasar datos de categorías
-{% if analisis_categorias %}
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setCategoriasData === 'function') {
-        // Función auxiliar para convertir comas a puntos
-        function parseDecimal(value) {
-            if (typeof value === 'string') {
-                return parseFloat(value.replace(',', '.'));
-            }
-            return value;
-        }
-        
-        setCategoriasData([
-            {% for categoria in analisis_categorias %}
-            {
-                nombre: '{{ categoria.categoria_nombre|escapejs }}',
-                porcentaje: parseDecimal('{{ categoria.porcentaje_acierto|default_if_none:0|floatformat:1 }}'),
-                preguntas: {{ categoria.total_preguntas }},
-                dificultad: '{{ categoria.dificultad|escapejs }}'
-            }{% if not forloop.last %},{% endif %}
-            {% endfor %}
-        ]);
-    }
-});
-{% endif %}
-
-// Pasar datos de preguntas
-{% if analisis_preguntas %}
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setPreguntasData === 'function') {
-        // Función auxiliar para convertir comas a puntos
-        function parseDecimal(value) {
-            if (typeof value === 'string') {
-                return parseFloat(value.replace(',', '.'));
-            }
-            return value;
-        }
-        
-        setPreguntasData([
-            {% for analisis in analisis_preguntas %}
-            {
-                numero: {{ forloop.counter }},
-                porcentaje: parseDecimal('{{ analisis.porcentaje_correctas|default_if_none:0|floatformat:1 }}')
-            }{% if not forloop.last %},{% endif %}
-            {% endfor %}
-        ]);
-    }
-});
-{% endif %}
-</script>
+{{ distribucion_puntajes_json|json_script:"distribucion-data" }}
+{{ analisis_categorias_json|json_script:"categorias-data" }}
 
 <!-- Incluir archivo JavaScript externo -->
-<script src="{% load static %}{% static 'js/evaluacion_results.js' %}"></script>
+<script src="{% static 'js/evaluacion_results.js' %}"></script>
 {% endblock %}
