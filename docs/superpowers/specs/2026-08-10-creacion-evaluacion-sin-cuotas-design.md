@@ -17,12 +17,14 @@ guardarlas.
 ## Cambio acotado
 
 En `matholymp/static/js/manage_quizs.js`, `createQuiz()` dejará de incluir
-`cuotas_unidades` en el cuerpo JSON enviado al endpoint de creación. No se
-modificarán modelos, migraciones, el endpoint ni el formulario de cuotas.
+`cuotas_unidades` en el cuerpo JSON enviado al endpoint de creación. El
+endpoint dejará de crear cuotas predeterminadas cuando esa clave no llegue en
+la solicitud. No se modificarán modelos, migraciones ni el formulario de
+cuotas.
 
 ## Validación
 
 Se comprobará que el archivo no contenga referencias ejecutables a
 `cuotas_unidades` en `createQuiz()`, que el JavaScript sea sintácticamente
-válido y que la creación pueda llegar al endpoint sin lanzar un
-`ReferenceError`.
+válido y que el endpoint no cree `EvaluacionCuotaUnidad` cuando se genere una
+evaluación nueva sin cuotas.
