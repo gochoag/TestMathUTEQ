@@ -4,7 +4,7 @@
     position: fixed;
     top: 64px;
     left: 0;
-    height: calc(100vh - 64px);
+    height: calc(100vh - 64px) !important;
     width: 250px;
     z-index: 1040;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
@@ -80,15 +80,16 @@
     font-size: 1.2rem;
 }
 .sidebar-user {
-    border-top: 1px solid #e5e5e5;
-    padding: 0.2rem 1rem 4.2rem 1rem;
+    border-top: 1px solid #dee2e6;
+    padding: 0.75rem 1rem;
     display: flex !important;
     align-items: center;
     justify-content: flex-start;
     flex-shrink: 0;
-    background: inherit;
+    background: #f8f9fa;
     width: 100%;
     position: relative;
+    margin-top: auto;
 }
 .sidebar-user .dropdown-toggle {
     padding: 0.5rem 0;
@@ -118,7 +119,8 @@
 .sidebar-user .dropdown-menu {
     min-width: 180px;
     position: absolute;
-    bottom: 100%;
+    bottom: 100% !important;
+    top: auto !important;
     left: 0;
     right: 0;
     margin-bottom: 0.5rem;

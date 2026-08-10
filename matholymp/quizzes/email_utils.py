@@ -3,6 +3,7 @@ Utilidades para el envío de correos electrónicos
 """
 
 import datetime
+from django.conf import settings
 
 def generate_email_messages(subject, nombre, system_name, username, nueva_password, email_type='credentials', additional_content=None):
     """
@@ -21,8 +22,10 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         tuple: (plain_message, html_message)
     """
     
-    # Obtener el año actual
+    # Obtener el año actual y la URL de acceso
     current_year = datetime.datetime.now().year
+    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+    login_url = f"{site_url}/login/"
     
     if email_type == 'credentials':
         # Mensaje en texto plano para credenciales
@@ -34,7 +37,7 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
         Usuario: {username}
         Contraseña: {nueva_password}
 
-        Puede acceder al sistema usando estas credenciales.
+        Puede acceder al sistema en {login_url} usando estas credenciales.
 
         Si tiene alguna pregunta o necesita ayuda, no dude en contactarnos al correo: olimpiadasmecanicauteq@gmail.com
 
@@ -275,7 +278,7 @@ def generate_email_messages(subject, nombre, system_name, username, nueva_passwo
                     </div>
                     
                     <div style="text-align: center; margin: 30px 0;">
-                        <a href="https://aplicaciones.uteq.edu.ec:9051/login/" style="background: #025a27; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; font-size: 16px;">Acceder al Sistema</a>
+                        <a href="{login_url}" style="background: #025a27; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; font-size: 16px;">Acceder al Sistema</a>
                     </div>
                     
                     <div class="info-box">

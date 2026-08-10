@@ -4,8 +4,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.conf import settings
+from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, IntentosParticipante, AuditLog
 from .email_utils import generate_email_messages
-from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, MonitoreoEvaluacion, IntentosParticipante
+from .scope_utils import get_user_scope, filter_queryset_by_scope
+from .decorators import superuser_required, full_access_required, admin_required
 from django.utils import timezone
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import authenticate, login,logout
@@ -165,6 +167,93 @@ def session_check(request):
     }, status=200 if request.user.is_authenticated else 403)
 
 
+def obtener_diccionario_respuestas(resultado):
+    """
+    Extrae el diccionario plano {'pregunta_102': '415'} desde respuestas_guardadas,
+    soporta diccionarios planos y snapshots congelados.
+    """
+    if not resultado or not resultado.respuestas_guardadas:
+        return {}
+        
+    data = resultado.respuestas_guardadas
+    if isinstance(data, dict):
+        if 'preguntas_snapshot' in data:
+            resp_dict = {}
+            for item in data['preguntas_snapshot']:
+                p_id = item.get('pregunta_id')
+                o_id = item.get('respuesta_estudiante_id')
+                if p_id and o_id:
+                    resp_dict[f'pregunta_{p_id}'] = str(o_id)
+                    resp_dict[str(p_id)] = str(o_id)
+            return resp_dict
+        return data
+    return {}
+
+
+def generar_snapshot_respuestas(preguntas_mostradas, respuestas_diccionario):
+    """
+    Genera un snapshot JSON congelado e inmutable al entregar un examen.
+    Preserva los textos completos de las preguntas, opciones, respuesta elegida y la opción correcta.
+    """
+    preguntas_snapshot = []
+    respuestas_diccionario = respuestas_diccionario or {}
+    
+    for pregunta in preguntas_mostradas:
+        pregunta_key = f'pregunta_{pregunta.id}'
+        opcion_seleccionada_id_raw = respuestas_diccionario.get(pregunta_key)
+        
+        opciones_list = []
+        opcion_seleccionada_dict = None
+        opcion_correcta_dict = None
+        es_correcta = False
+        
+        opciones_qs = pregunta.opciones.all()
+        for opcion in opciones_qs:
+            es_sel = False
+            if opcion_seleccionada_id_raw is not None:
+                es_sel = (str(opcion.id) == str(opcion_seleccionada_id_raw))
+                
+            opcion_info = {
+                'id': opcion.id,
+                'text': opcion.text,
+                'is_correct': opcion.is_correct,
+                'seleccionada': es_sel
+            }
+            opciones_list.append(opcion_info)
+            
+            if opcion.is_correct:
+                opcion_correcta_dict = opcion_info
+            
+            if es_sel:
+                opcion_seleccionada_dict = opcion_info
+                if opcion.is_correct:
+                    es_correcta = True
+                    
+        peso = getattr(pregunta, 'puntos', 1) or 1
+        puntos_ganados = peso if es_correcta else 0
+        
+        opcion_id_int = None
+        if opcion_seleccionada_id_raw is not None and str(opcion_seleccionada_id_raw).isdigit():
+            opcion_id_int = int(opcion_seleccionada_id_raw)
+            
+        preguntas_snapshot.append({
+            'pregunta_id': pregunta.id,
+            'text': pregunta.text,
+            'puntos_pregunta': peso,
+            'puntos_ganados': puntos_ganados,
+            'es_correcta': es_correcta,
+            'opciones': opciones_list,
+            'respuesta_estudiante_id': opcion_id_int,
+            'respuesta_estudiante': opcion_seleccionada_dict,
+            'opcion_correcta': opcion_correcta_dict
+        })
+        
+    return {
+        'completada': True,
+        'fecha_entrega': timezone.now().isoformat(),
+        'preguntas_snapshot': preguntas_snapshot
+    }
+
 
 @login_required
 def take_quiz(request, pk):
@@ -275,45 +364,37 @@ def take_quiz(request, pk):
                 except Exception as e:
                     print(f"Error al actualizar monitoreo al continuar (tiempo calculado): {e}")
                     pass
-            else:
                 # Si se acabó el tiempo, finalizar este intento
                 respuestas_guardadas = resultado_activo.respuestas_guardadas or {}
                 preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
                 
-                score = 0
-                puntos_obtenidos = 0
-                total_questions = len(preguntas_mostradas)
+                puntos_ganados = 0
+                puntos_posibles_totales = 0
                 
                 for pregunta in preguntas_mostradas:
+                    peso = getattr(pregunta, 'puntos', 1) or 1
+                    puntos_posibles_totales += peso
                     pregunta_key = f'pregunta_{pregunta.id}'
                     if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
-                        # Nuevo sistema de puntuación:
-                        # Correcta: +1 punto, Incorrecta: 0 puntos, No respondida: 0 puntos
                         if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
-                            score += 1
-                            puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                            puntos_ganados += peso
                         
+                puntaje_ponderado = (puntos_ganados / puntos_posibles_totales) * 10 if puntos_posibles_totales > 0 else 0
+                puntaje_ponderado = round(max(0, puntaje_ponderado), 3)
                 
-                # Ponderar a escala de 10 puntos
-                puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
-                # Asegurar que el puntaje no sea negativo
-                puntaje_ponderado = max(0, puntaje_ponderado)
-                
-                # Calcular porcentaje basado en puntaje ponderado
-                percentage = (puntaje_ponderado / 10) * 100
-                
-                # Calcular tiempo utilizado cuando se agota el tiempo
                 if resultado_activo.fecha_inicio:
-                    tiempo_utilizado = (timezone.now() - resultado_activo.fecha_inicio).total_seconds() / 60  # en minutos
+                    tiempo_utilizado_seg = int((timezone.now() - resultado_activo.fecha_inicio).total_seconds())
                 else:
-                    tiempo_utilizado = evaluacion.duration_minutes
+                    tiempo_utilizado_seg = evaluacion.duration_minutes * 60
                 
-                resultado_activo.puntaje = percentage
-                resultado_activo.puntos_obtenidos = puntaje_ponderado  # Guardar puntaje ponderado sobre 10
-                resultado_activo.puntos_totales = 10  # Puntos totales siempre son 10
-                resultado_activo.tiempo_utilizado = tiempo_utilizado
+                snapshot_data = generar_snapshot_respuestas(preguntas_mostradas, respuestas_guardadas)
+                
+                resultado_activo.puntos_obtenidos = puntaje_ponderado
+                resultado_activo.puntos_totales = 10
+                resultado_activo.tiempo_utilizado = tiempo_utilizado_seg
                 resultado_activo.fecha_fin = timezone.now()
                 resultado_activo.completada = True
+                resultado_activo.respuestas_guardadas = snapshot_data
                 resultado_activo.tiempo_restante = 0
                 resultado_activo.save()
                 
@@ -398,50 +479,45 @@ def take_quiz(request, pk):
         else:
             # Procesar envío normal de evaluación con nuevo sistema de puntuación
             score = 0
-            puntos_obtenidos = 0
-            puntos_totales = 0
+            puntos_ganados = 0
+            puntos_posibles_totales = 0
             numero_intento_actual = resultado_activo.numero_intento if resultado_activo else 1
             preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, numero_intento_actual)
-            total_questions = len(preguntas_mostradas)
             
             respuestas_finales = {}
             for pregunta in preguntas_mostradas:
                 selected = request.POST.get(f'pregunta_{pregunta.id}')
                 respuestas_finales[f'pregunta_{pregunta.id}'] = selected
+                peso = getattr(pregunta, 'puntos', 1) or 1
+                puntos_posibles_totales += peso
                 
-                # Nuevo sistema de puntuación:
-                # Correcta: +1 punto, Incorrecta: 0 puntos, No respondida: 0 puntos
                 if selected:
                     if pregunta.opciones.filter(id=selected, is_correct=True).exists():
-                        score += 1
-                        puntos_obtenidos += 1  # +1 punto por respuesta correcta
+                        puntos_ganados += peso
                    
-            # Ponderar a escala de 10 puntos
-            puntaje_ponderado = (puntos_obtenidos / total_questions) * 10 if total_questions > 0 else 0
-            # Asegurar que el puntaje no sea negativo
-            puntaje_ponderado = max(0, puntaje_ponderado)
-            puntos_obtenidos = puntaje_ponderado
+            puntaje_ponderado = (puntos_ganados / puntos_posibles_totales) * 10 if puntos_posibles_totales > 0 else 0
+            puntos_obtenidos = round(max(0, puntaje_ponderado), 3)
             puntos_totales = 10
             
-            # Calcular porcentaje basado en puntos totales (mantener compatibilidad)
-            percentage = (puntaje_ponderado / 10) * 100
-            
-            # Calcular tiempo utilizado
-            tiempo_utilizado = 0
-            if resultado_activo:
-                tiempo_total = evaluacion.duration_minutes * 60  # en segundos
+            # Calcular tiempo utilizado en segundos
+            if resultado_activo and resultado_activo.fecha_inicio:
+                tiempo_utilizado = int((timezone.now() - resultado_activo.fecha_inicio).total_seconds())
+            else:
+                tiempo_total = evaluacion.duration_minutes * 60
                 tiempo_restante = int(request.POST.get('tiempo_restante', 0))
-                tiempo_utilizado = tiempo_total - tiempo_restante
+                tiempo_utilizado = max(0, tiempo_total - tiempo_restante)
+        
+        # Generar snapshot congelado para inmutabilidad del examen entregado
+        snapshot_data = generar_snapshot_respuestas(preguntas_mostradas, respuestas_finales)
         
         # Guardar resultado en la base de datos con nuevo sistema de puntuación
         if resultado_activo:
-            resultado_activo.puntaje = percentage
-            resultado_activo.puntos_obtenidos = puntos_obtenidos  # Guardar puntaje ponderado sobre 10
-            resultado_activo.puntos_totales = puntos_totales  # Puntos totales siempre son 10
-            resultado_activo.tiempo_utilizado = tiempo_utilizado // 60  # convertir a minutos
+            resultado_activo.puntos_obtenidos = puntos_obtenidos
+            resultado_activo.puntos_totales = puntos_totales
+            resultado_activo.tiempo_utilizado = tiempo_utilizado
             resultado_activo.fecha_fin = timezone.now()
             resultado_activo.completada = True
-            resultado_activo.respuestas_guardadas = respuestas_finales
+            resultado_activo.respuestas_guardadas = snapshot_data
             resultado_activo.tiempo_restante = 0
             resultado_activo.save()
             
@@ -456,23 +532,18 @@ def take_quiz(request, pk):
                 
                 # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
                 if finalizada_por_cambios_pestana:
-                    if monitoreo.alertas is None:
-                        monitoreo.alertas = []
-                    
-                    monitoreo.alertas.append({
-                        'tipo': 'finalizacion_automatica',
-                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
-                        'timestamp': timezone.now().isoformat(),
-                        'motivo': 'cambios_pestana_excedidos',
-                        'cambios_realizados': monitoreo.cambios_pestana or 4
-                    })
-                    
+                    monitoreo.agregar_alerta(
+                        'finalizacion_automatica',
+                        'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
+                        severidad='alta'
+                    )
                     # Marcar la finalización administrativa en el monitoreo
                     monitoreo.finalizado_por_admin = request.user
                     monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
                     monitoreo.fecha_finalizacion_admin = timezone.now()
-                
-                monitoreo.save()
+                    monitoreo.save()
+                else:
+                    monitoreo.save()
                 
         else:
             # Obtener el siguiente número de intento
@@ -482,13 +553,12 @@ def take_quiz(request, pk):
                 evaluacion=evaluacion,
                 participante=participante,
                 numero_intento=siguiente_intento,
-                puntaje=percentage,
-                puntos_obtenidos=puntos_obtenidos,  # Guardar puntaje ponderado sobre 10
-                puntos_totales=puntos_totales,  # Puntos totales siempre son 10
-                tiempo_utilizado=tiempo_utilizado // 60,
+                puntos_obtenidos=puntos_obtenidos,
+                puntos_totales=puntos_totales,
+                tiempo_utilizado=tiempo_utilizado,
                 fecha_fin=timezone.now(),
                 completada=True,
-                respuestas_guardadas=respuestas_finales,
+                respuestas_guardadas=snapshot_data,
                 tiempo_restante=0
             )
             
@@ -503,23 +573,18 @@ def take_quiz(request, pk):
                 
                 # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
                 if finalizada_por_cambios_pestana:
-                    if monitoreo.alertas is None:
-                        monitoreo.alertas = []
-                    
-                    monitoreo.alertas.append({
-                        'tipo': 'finalizacion_automatica',
-                        'mensaje': f'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
-                        'timestamp': timezone.now().isoformat(),
-                        'motivo': 'cambios_pestana_excedidos',
-                        'cambios_realizados': monitoreo.cambios_pestana or 4
-                    })
-                    
+                    monitoreo.agregar_alerta(
+                        'finalizacion_automatica',
+                        'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
+                        severidad='alta'
+                    )
                     # Marcar la finalización administrativa en el monitoreo
                     monitoreo.finalizado_por_admin = request.user
                     monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
                     monitoreo.fecha_finalizacion_admin = timezone.now()
-                
-                monitoreo.save()
+                    monitoreo.save()
+                else:
+                    monitoreo.save()
         
         # Agregar un mensaje específico si fue finalizada por cambios de pestaña
         if finalizada_por_cambios_pestana:
@@ -794,19 +859,8 @@ def registrar_cambio_pestana(request, pk):
                 monitoreo.save()
             
             # Registrar alerta de cambio de pestaña
-            from datetime import datetime
             alerta_texto = f"Cambio de pestaña #{cambios_pestana} - Tiempo restante: {tiempo_restante//60}:{tiempo_restante%60:02d}"
-            
-            if monitoreo.alertas is None:
-                monitoreo.alertas = []
-            
-            monitoreo.alertas.append({
-                'tipo': 'cambio_pestana',
-                'mensaje': alerta_texto,
-                'timestamp': datetime.now().isoformat(),
-                'cambio_numero': cambios_pestana,
-                'tiempo_restante': tiempo_restante
-            })
+            monitoreo.agregar_alerta('cambio_pestana', alerta_texto, severidad='media')
             
             monitoreo.cambios_pestana = cambios_pestana
             monitoreo.ultima_actividad = timezone.now()
@@ -912,14 +966,19 @@ def obtener_progreso_evaluacion(request, pk):
 def dashboard(request):
     user = request.user
     context = {}
+    is_global, scope_carrera, scope_concurso = get_user_scope(user)
+    context['is_global'] = is_global
+    context['scope_carrera'] = scope_carrera
+    context['scope_concurso'] = scope_concurso
+
     # Determinar el tipo de usuario
     if user.is_superuser:
         context['role'] = 'superadmin'
         context['has_full_access'] = True
     elif AdminProfile.objects.filter(user=user).exists():
-        admin_profile = AdminProfile.objects.get(user=user)
+        admin_profile = AdminProfile.objects.select_related('carrera', 'carrera__facultad').get(user=user)
         context['role'] = 'admin'
-        context['has_full_access'] = True  # Todos los administradores tienen acceso completo
+        context['has_full_access'] = admin_profile.acceso_total
         context['admin_profile'] = admin_profile
     elif Participantes.objects.filter(user=user).exists():
         context['role'] = 'participant'
@@ -931,12 +990,9 @@ def dashboard(request):
 
 # Gestión de participantes
 @login_required
+@admin_required
 def manage_participants(request):
     user = request.user
-    # Superadmin, admin con acceso total, o admin normal pueden acceder
-    if not (user.is_superuser or hasattr(user, 'adminprofile')):
-        messages.error(request, 'No tienes permisos para acceder a esta sección.')
-        return redirect('quizzes:dashboard')
 
     # Eliminar participante
     delete_id = request.GET.get('delete_id')
@@ -984,8 +1040,37 @@ def manage_participants(request):
         
         # Crear el participante con manejo de validaciones
         try:
-            participante, password = Participantes.create_participant(cedula, NombresCompletos, email, phone, edad)
-            messages.success(request, f"Participante {NombresCompletos} creado correctamente.")
+            is_global, scope_carrera, scope_concurso = get_user_scope(request)
+            if not scope_concurso:
+                messages.warning(request, '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de registrar un participante.')
+                return redirect('quizzes:manage_participants')
+
+            participante, password = Participantes.create_participant(
+                cedula, NombresCompletos, email, phone, edad,
+                concurso=scope_concurso, carrera=scope_carrera
+            )
+            try:
+                subject = 'Credenciales de Acceso - Sistema Olymp'
+                system_name = 'Sistema Olymp'
+                plain_message, html_message = generate_email_messages(
+                    subject=subject,
+                    nombre=NombresCompletos,
+                    system_name=system_name,
+                    username=cedula,
+                    nueva_password=password,
+                    email_type='credentials'
+                )
+                send_mail(
+                    subject,
+                    plain_message,
+                    settings.EMAIL_HOST_USER,
+                    [participante.email],
+                    fail_silently=False,
+                    html_message=html_message
+                )
+                messages.success(request, f"Participante {NombresCompletos} creado correctamente y correo de credenciales enviado a {participante.email}.")
+            except Exception as email_err:
+                messages.warning(request, f"Participante {NombresCompletos} creado correctamente, pero no se pudo enviar el correo de credenciales: {str(email_err)}")
             return redirect('quizzes:manage_participants')
         except ValidationError as e:
             error_message = extract_validation_error_message(e)
@@ -1016,86 +1101,90 @@ def manage_participants(request):
             messages.error(request, f"Teléfono: {error_phone}")
             return redirect('quizzes:manage_participants')
         
-        # Obtener el participante y actualizar sus datos
-        participante = Participantes.objects.select_related('user').get(id=edit_id)
-        user_obj = participante.user
-        
-        # Verificar si la nueva cédula ya existe en otro participante (global)
-        if cedula != participante.cedula:
-            if Participantes.objects.filter(cedula=cedula).exclude(id=participante.id).exists():
-                messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
-                return redirect('quizzes:manage_participants')
-        
-        # Validar correo único si cambió
-        if email != participante.email:  # Solo verificar si el correo cambió
+        try:
+            participante = Participantes.objects.get(id=edit_id)
+            user_obj = participante.user
+            
+            # Normalizar email
             email_normalized = email.lower().strip()
             
-            # Verificar si ya existe otro participante con este correo
-            if Participantes.objects.filter(email__iexact=email_normalized).exclude(id=participante.id).exists():
+            # Verificar si la nueva cédula ya existe en otro participante
+            if cedula != participante.cedula and Participantes.objects.filter(cedula=cedula).exists():
+                messages.error(request, f"La cédula {cedula} ya está registrada por otro participante.")
+                return redirect('quizzes:manage_participants')
+            
+            # Verificar si el nuevo email ya existe en otro participante
+            if email_normalized != participante.email and Participantes.objects.filter(email__iexact=email_normalized).exists():
                 messages.error(request, f"El correo {email} ya está registrado por otro participante.")
                 return redirect('quizzes:manage_participants')
             
-            # Verificar conflictos con representantes
-            from quizzes.models import Representante
-            if Representante.objects.filter(
-                models.Q(CorreoInstitucional__iexact=email_normalized) | 
-                models.Q(CorreoRepresentante__iexact=email_normalized)
-            ).exists():
-                messages.error(request, f"El correo {email} ya está siendo usado por un representante.")
-                return redirect('quizzes:manage_participants')
-        
-        # Convertir edad vacía a None
-        if edad == '':
-            edad = None
-        elif edad:
-            try:
-                edad = int(edad)
-            except ValueError:
-                messages.error(request, "La edad debe ser un número válido.")
-                return redirect('quizzes:manage_participants')
-        
-        try:
-            # Usar transacción para asegurar consistencia
-            from django.db import transaction
-            with transaction.atomic():
-                # Mantener username igual a la cédula
-                user_obj.username = cedula
-                user_obj.first_name = NombresCompletos
-                user_obj.email = email.lower().strip()  # Normalizar correo
-                participante.cedula = cedula
-                participante.NombresCompletos = NombresCompletos
-                participante.email = email.lower().strip()  # Normalizar correo
-                participante.phone = phone
-                participante.edad = edad
-                
-                # Validar y guardar
-                user_obj.full_clean()
-                participante.full_clean()
-                user_obj.save()
-                participante.save()
-                
-            messages.success(request, f"Participante {NombresCompletos} actualizado correctamente.")
-            return redirect('quizzes:manage_participants')
+            # Verificar si el nuevo email está en uso por representantes
+            if email_normalized != participante.email:
+                if Representante.objects.filter(
+                    models.Q(CorreoInstitucional__iexact=email_normalized) | 
+                    models.Q(CorreoRepresentante__iexact=email_normalized)
+                ).exists():
+                    messages.error(request, f"El correo {email} ya está siendo usado por un representante.")
+                    return redirect('quizzes:manage_participants')
             
-        except ValidationError as e:
-            error_message = extract_validation_error_message(e)
-            messages.error(request, f"Error de validación: {error_message}")
-            return redirect('quizzes:manage_participants')
-        except IntegrityError as e:
-            if 'email' in str(e).lower():
-                messages.error(request, 'El correo electrónico ya está en uso.')
-            elif 'cedula' in str(e).lower():
-                messages.error(request, 'La cédula ya está registrada.')
-            else:
-                messages.error(request, 'Error de integridad en la base de datos.')
-            return redirect('quizzes:manage_participants')
-        except Exception as e:
-            messages.error(request, f'Error inesperado al actualizar participante: {str(e)}')
+            # Convertir edad vacía a None
+            if edad == '':
+                edad = None
+            elif edad:
+                try:
+                    edad = int(edad)
+                except ValueError:
+                    messages.error(request, "La edad debe ser un número válido.")
+                    return redirect('quizzes:manage_participants')
+            
+            try:
+                # Usar transacción para asegurar consistencia
+                from django.db import transaction
+                with transaction.atomic():
+                    # Mantener username igual a la cédula
+                    user_obj.username = cedula
+                    user_obj.first_name = NombresCompletos
+                    user_obj.email = email.lower().strip()  # Normalizar correo
+                    participante.cedula = cedula
+                    participante.NombresCompletos = NombresCompletos
+                    participante.email = email.lower().strip()  # Normalizar correo
+                    participante.phone = phone
+                    participante.edad = edad
+                    
+                    # Validar y guardar
+                    user_obj.full_clean()
+                    participante.full_clean()
+                    user_obj.save()
+                    participante.save()
+                    
+                messages.success(request, f"Participante {NombresCompletos} actualizado correctamente.")
+                return redirect('quizzes:manage_participants')
+                
+            except ValidationError as e:
+                error_message = extract_validation_error_message(e)
+                messages.error(request, f"Error de validación: {error_message}")
+                return redirect('quizzes:manage_participants')
+            except IntegrityError as e:
+                if 'email' in str(e).lower():
+                    messages.error(request, 'El correo electrónico ya está en uso.')
+                elif 'cedula' in str(e).lower():
+                    messages.error(request, 'La cédula ya está registrada.')
+                else:
+                    messages.error(request, 'Error de integridad en la base de datos.')
+                return redirect('quizzes:manage_participants')
+            except Exception as e:
+                messages.error(request, f'Error inesperado al actualizar participante: {str(e)}')
+                return redirect('quizzes:manage_participants')
+        except Participantes.DoesNotExist:
+            messages.error(request, 'Participante no encontrado.')
             return redirect('quizzes:manage_participants')
 
     # Búsqueda de participantes
     search_query = request.GET.get('search', '').strip()
-    participantes = Participantes.objects.select_related('user').all()
+    participantes = filter_queryset_by_scope(
+        Participantes.objects.select_related('user', 'carrera', 'concurso').order_by('-id'),
+        request
+    )
     
     if search_query:
         participantes = participantes.filter(
@@ -1118,20 +1207,35 @@ def manage_participants(request):
 
 # Gestión de admins
 @login_required
+@full_access_required
 def manage_admins(request):
     user = request.user
-    # Solo superadmin o admin con acceso total puede gestionar otros admins
-    if not (user.is_superuser or (hasattr(user, 'adminprofile') and user.adminprofile.acceso_total)):
-        messages.error(request, 'Solo los administradores con acceso total pueden gestionar otros administradores.')
-        return redirect('quizzes:dashboard')
 
     # Eliminar admin
     delete_id = request.GET.get('delete_id')
     if delete_id:
         admin = AdminProfile.objects.filter(id=delete_id).first()
         if admin:
+            if admin.user == user:
+                messages.error(request, 'No puedes eliminar tu propia cuenta de administrador activa.')
+                return redirect('quizzes:manage_admins')
+                
+            # Un admin con acceso total (no superuser) NO puede eliminar a otro de su mismo estatus
+            if not user.is_superuser and admin.acceso_total:
+                messages.error(request, 'Un Administrador con Acceso Total no puede eliminar a otro Administrador de su mismo estatus.')
+                return redirect('quizzes:manage_admins')
+
+            # Registrar log de auditoría
+            AuditLog.registrar_accion(
+                usuario_ejecutor=user,
+                accion='ELIMINACION_ADMINISTRADOR',
+                detalles=f'Eliminó al administrador "{admin.user.username}" ({admin.user.get_full_name() or "Sin nombre"}) - Email: {admin.user.email} - Carrera: {admin.carrera.nombre if admin.carrera else "Global"}',
+                request=request
+            )
+
             admin.user.delete()
             admin.delete()
+            messages.success(request, 'Administrador eliminado correctamente.')
         return redirect('quizzes:manage_admins')
 
     # Agregar admin
@@ -1173,6 +1277,14 @@ def manage_admins(request):
         
         try:
             password = get_random_string(length=8)
+            carrera_id = request.POST.get('carrera_id')
+            if not user.is_superuser:
+                carrera_id = user.adminprofile.carrera_id if hasattr(user, 'adminprofile') and user.adminprofile.carrera_id else None
+                
+            if not carrera_id:
+                messages.error(request, "Debe seleccionar una carrera obligatoriamente para el nuevo administrador.")
+                return redirect('quizzes:manage_admins')
+
             new_user = User.objects.create_user(
                 username=username, 
                 password=password, 
@@ -1180,8 +1292,34 @@ def manage_admins(request):
                 last_name=last_name, 
                 email=email_normalized
             )
-            admin_profile = AdminProfile.objects.create(user=new_user, created_by=user, password=password)
-            messages.success(request, f"Administrador {first_name} {last_name} creado correctamente.")
+            admin_profile = AdminProfile.objects.create(
+                user=new_user, 
+                created_by=user,
+                carrera_id=carrera_id
+            )
+            try:
+                subject = 'Credenciales de Acceso - Panel de Administración Olymp'
+                system_name = 'Panel de Administración Olymp'
+                full_name = f"{first_name} {last_name}".strip()
+                plain_message, html_message = generate_email_messages(
+                    subject=subject,
+                    nombre=full_name,
+                    system_name=system_name,
+                    username=username,
+                    nueva_password=password,
+                    email_type='credentials'
+                )
+                send_mail(
+                    subject,
+                    plain_message,
+                    settings.EMAIL_HOST_USER,
+                    [email_normalized],
+                    fail_silently=False,
+                    html_message=html_message
+                )
+                messages.success(request, f"Administrador {first_name} {last_name} creado correctamente y correo de credenciales enviado a {email_normalized}.")
+            except Exception as email_err:
+                messages.warning(request, f"Administrador {first_name} {last_name} creado correctamente, pero no se pudo enviar el correo de credenciales: {str(email_err)}")
             return redirect('quizzes:manage_admins')
         except IntegrityError as e:
             if 'username' in str(e).lower():
@@ -1202,6 +1340,14 @@ def manage_admins(request):
         first_name = request.POST.get('first_name')
         last_name = request.POST.get('last_name')
         email = request.POST.get('email')
+        carrera_id = request.POST.get('carrera_id')
+        
+        if not user.is_superuser:
+            carrera_id = user.adminprofile.carrera_id if hasattr(user, 'adminprofile') and user.adminprofile.carrera_id else None
+            
+        if not carrera_id:
+            messages.error(request, "Debe seleccionar una carrera obligatoriamente.")
+            return redirect('quizzes:manage_admins')
         
         # Validar campos obligatorios
         if not username or not first_name or not email:
@@ -1211,18 +1357,31 @@ def manage_admins(request):
         try:
             admin = AdminProfile.objects.select_related('user').get(id=edit_id)
             user_obj = admin.user
+
+            # Verificar jerarquía de edición
+            if not user.is_superuser:
+                # Un admin secundario no puede editar a otro admin de acceso total ni a sí mismo desde la tabla
+                if admin.acceso_total or user_obj == user:
+                    messages.error(request, 'No tienes permisos para editar a este administrador.')
+                    return redirect('quizzes:manage_admins')
+                # Preservar username e imponer la carrera del usuario secundario
+                username = user_obj.username
+                if hasattr(user, 'adminprofile') and user.adminprofile.carrera_id:
+                    carrera_id = user.adminprofile.carrera_id
+                else:
+                    carrera_id = admin.carrera_id
             
             # Normalizar email
             email_normalized = email.lower().strip()
             
-            # Verificar si el nuevo username ya existe en otro usuario
+            # Verificar si el nuevo username ya existe en otro usuario (solo si el superuser intentó cambiarlo)
             if username != user_obj.username and User.objects.filter(username=username).exists():
-                messages.error(request, f"El nombre de usuario '{username}' ya está registrado por otro usuario.")
+                messages.error(request, f"El nombre de usuario '{username}' ya está registrado.")
                 return redirect('quizzes:manage_admins')
             
             # Verificar si el nuevo email ya existe en otro usuario
-            if email_normalized != user_obj.email and User.objects.filter(email__iexact=email_normalized).exists():
-                messages.error(request, f"El correo electrónico '{email}' ya está registrado por otro usuario.")
+            if email_normalized != user_obj.email and User.objects.filter(email__iexact=email_normalized).exclude(id=user_obj.id).exists():
+                messages.error(request, f"El correo electrónico '{email}' ya está registrado.")
                 return redirect('quizzes:manage_admins')
             
             # Verificar conflictos con participantes y representantes
@@ -1249,7 +1408,19 @@ def manage_admins(request):
                 # Validar y guardar
                 user_obj.full_clean()
                 user_obj.save()
+                
+                if carrera_id:
+                    admin.carrera_id = carrera_id
+                admin.save()
             
+            # Registrar log de auditoría
+            AuditLog.registrar_accion(
+                usuario_ejecutor=user,
+                accion='EDICION_ADMINISTRADOR',
+                detalles=f'Editó al administrador "{user_obj.username}" (Nombres: {first_name} {last_name}, Email: {email_normalized}) - Carrera: {admin.carrera.nombre if admin.carrera else "Global"}',
+                request=request
+            )
+
             messages.success(request, f"Administrador {first_name} {last_name} actualizado correctamente.")
             return redirect('quizzes:manage_admins')
             
@@ -1272,18 +1443,19 @@ def manage_admins(request):
             messages.error(request, f'Error inesperado al actualizar administrador: {str(e)}')
             return redirect('quizzes:manage_admins')
 
-    admins = AdminProfile.objects.select_related('user').all()
-    return render(request, 'quizzes/manage_admins.html', {'admins': admins})
+    from .models import Carrera
+    admins = filter_queryset_by_scope(
+        AdminProfile.objects.select_related('user', 'carrera', 'carrera__facultad').all(),
+        request
+    )
+    carreras = Carrera.objects.select_related('facultad').filter(activa=True)
+    return render(request, 'quizzes/manage_admins.html', {'admins': admins, 'carreras': carreras})
 
 
-# Gestión de permisos de admins
 @login_required
+@superuser_required
 def manage_admin_permissions(request):
     user = request.user
-    # Solo superadmin puede gestionar permisos (esto se mantiene solo para superuser)
-    if not user.is_superuser:
-        messages.error(request, 'Solo los superadministradores pueden gestionar permisos de otros administradores.')
-        return redirect('quizzes:dashboard')
 
     # Cambiar acceso total de un admin
     if request.method == 'POST':
@@ -1357,10 +1529,8 @@ def extract_validation_error_message(validation_error):
 
 # Vista para listar y registrar representantes
 @login_required
+@admin_required
 def manage_representantes(request):
-    if not can_manage_representantes(request.user):
-        messages.error(request, 'No tienes permisos para acceder a esta sección.')
-        return redirect('quizzes:dashboard')
 
     # Eliminar representante
     delete_id = request.GET.get('delete_id')
@@ -1415,6 +1585,11 @@ def manage_representantes(request):
                 return redirect('quizzes:manage_representantes')
             
             try:
+                is_global, scope_carrera, scope_concurso = get_user_scope(request)
+                if not scope_concurso:
+                    messages.warning(request, '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de registrar un representante.')
+                    return redirect('quizzes:manage_representantes')
+
                 # Usar transacción para asegurar consistencia
                 from django.db import transaction
                 with transaction.atomic():
@@ -1426,6 +1601,7 @@ def manage_representantes(request):
                         NombresRepresentante=data.get('NombresRepresentante'),
                         TelefonoRepresentante=telefono_rep,
                         CorreoRepresentante=correo_rep,
+                        concurso=scope_concurso,
                     )
                     # Validar el objeto creado
                     representante.full_clean()
@@ -1537,8 +1713,10 @@ def manage_representantes(request):
                 messages.error(request, f'Error inesperado al actualizar representante: {str(e)}')
                 return redirect('quizzes:manage_representantes')
 
-    from .models import SystemConfig
-    representantes = Representante.objects.filter(anio=SystemConfig.get_active_year())
+    representantes = filter_queryset_by_scope(
+        Representante.objects.order_by('-id'),
+        request
+    )
     
     # Paginación
     paginator = Paginator(representantes, 10)  # 10 elementos por página
@@ -1552,10 +1730,8 @@ def manage_representantes(request):
 
 # Vista para listar y crear grupos de participantes
 @login_required
+@admin_required
 def manage_grupos(request):
-    if not can_manage_representantes(request.user):
-        messages.error(request, 'No tienes permisos para acceder a esta sección.')
-        return redirect('quizzes:dashboard')
 
     # Eliminar grupo
     delete_id = request.GET.get('delete_id')
@@ -1588,7 +1764,12 @@ def manage_grupos(request):
                 messages.error(request, f'Los siguientes participantes ya están en otros grupos: {", ".join(nombres_problema)}')
                 return redirect('quizzes:manage_grupos')
             
-            grupo = GrupoParticipantes.objects.create(name=name, representante=representante)
+            is_global, scope_carrera, scope_concurso = get_user_scope(request)
+            if not scope_concurso:
+                messages.warning(request, '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de registrar un grupo.')
+                return redirect('quizzes:manage_grupos')
+
+            grupo = GrupoParticipantes.objects.create(name=name, representante=representante, concurso=scope_concurso)
             grupo.participantes.set(participantes_ids)
             messages.success(request, 'Grupo creado exitosamente.')
             return redirect('quizzes:manage_grupos')
@@ -1625,20 +1806,34 @@ def manage_grupos(request):
             messages.success(request, 'Grupo actualizado exitosamente.')
             return redirect('quizzes:manage_grupos')
 
-    from .models import SystemConfig
-    grupos = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').filter(anio=SystemConfig.get_active_year())
+    grupos = filter_queryset_by_scope(
+        GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes'),
+        request
+    )
     
     # Obtener representantes disponibles (que no están en ningún grupo)
-    representantes_disponibles = Representante.objects.filter(grupos__isnull=True, anio=SystemConfig.get_active_year())
+    representantes_disponibles = filter_queryset_by_scope(
+        Representante.objects.filter(grupos__isnull=True),
+        request
+    )
     
     # Obtener todos los representantes para mostrar en modales de edición
-    representantes_todos = Representante.objects.filter(anio=SystemConfig.get_active_year())
+    representantes_todos = filter_queryset_by_scope(
+        Representante.objects.all(),
+        request
+    )
     
     # Obtener participantes disponibles (que no están en ningún grupo)
-    participantes_disponibles = Participantes.objects.filter(grupos__isnull=True)
+    participantes_disponibles = filter_queryset_by_scope(
+        Participantes.objects.filter(grupos__isnull=True),
+        request
+    )
     
     # Obtener todos los participantes para mostrar en modales de edición
-    participantes_todos = Participantes.objects.all()
+    participantes_todos = filter_queryset_by_scope(
+        Participantes.objects.all(),
+        request.user
+    )
     
     # Paginación para grupos
     paginator = Paginator(grupos, 10)  # 10 elementos por página
@@ -1655,11 +1850,50 @@ def manage_grupos(request):
     })
 
 
+# Vista para leer los headers del Excel con openpyxl (misma librería que procesa datos)
+@login_required
+def get_excel_headers(request):
+    if not can_manage_representantes(request.user):
+        return JsonResponse({'error': 'No tienes permisos para acceder a esta sección.'}, status=403)
+    
+    if request.method == 'POST':
+        try:
+            excel_file = request.FILES.get('excel_file')
+            if not excel_file:
+                return JsonResponse({'error': 'No se ha seleccionado ningún archivo.'}, status=400)
+            
+            workbook = load_workbook(excel_file, data_only=True)
+            worksheet = workbook.active
+            
+            # Leer la primera fila (headers) incluyendo columnas vacías
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            if not header_row:
+                return JsonResponse({'error': 'El archivo Excel está vacío.'}, status=400)
+            
+            headers = []
+            for idx, cell_value in enumerate(header_row[0]):
+                headers.append({
+                    'index': idx + 1,  # 1-based, igual que en process_excel_participants
+                    'name': str(cell_value).strip() if cell_value else None
+                })
+            
+            return JsonResponse({'success': True, 'headers': headers})
+            
+        except Exception as e:
+            return JsonResponse({'error': f'Error al leer el archivo: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+
 # Vista para procesar archivo Excel de participantes
 @login_required
 def process_excel_participants(request):
     if not can_manage_representantes(request.user):
         return JsonResponse({'error': 'No tienes permisos para acceder a esta sección.'}, status=403)
+    
+    is_global, scope_carrera, scope_concurso = get_user_scope(request)
+    if not scope_concurso:
+        return JsonResponse({'error': '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de procesar un archivo Excel.'}, status=400)
     
     if request.method == 'POST':
         try:
@@ -1695,7 +1929,12 @@ def process_excel_participants(request):
                         if col_index < len(row):
                             value = row[col_index]
                             if value is not None:
-                                row_data[model_field] = str(value).strip()
+                                val_str = str(value).strip()
+                                if val_str.endswith('.0'):
+                                    val_str = val_str[:-2]
+                                if model_field == 'cedula' and len(val_str) == 9 and val_str.isdigit():
+                                    val_str = '0' + val_str
+                                row_data[model_field] = val_str
                             else:
                                 row_data[model_field] = ''
                         else:
@@ -1738,10 +1977,10 @@ def process_excel_participants(request):
                 # Validar edad si está presente
                 if row_data.get('edad'):
                     try:
-                        edad = int(row_data['edad'])
+                        edad = int(float(row_data['edad']))
                         if edad < 0 or edad > 120:
                             row_errors.append('Edad debe estar entre 0 y 120')
-                    except ValueError:
+                    except (ValueError, TypeError):
                         row_errors.append('Edad debe ser un número válido')
                 
                 if row_errors:
@@ -1771,7 +2010,13 @@ def process_excel_participants(request):
 def save_excel_participants(request):
     if not can_manage_representantes(request.user):
         return JsonResponse({'error': 'No tienes permisos para acceder a esta sección.'}, status=403)
-    
+
+    is_global, scope_carrera, scope_concurso = get_user_scope(request)
+    if not scope_concurso:
+        return JsonResponse({'error': '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de guardar participantes.'}, status=400)
+
+    scope_carrera_final = scope_carrera or (scope_concurso.carrera if scope_concurso else None)
+
     if request.method == 'POST':
         try:
             participants_data = json.loads(request.POST.get('participants_data', '[]'))
@@ -1783,18 +2028,26 @@ def save_excel_participants(request):
                 try:
                     data = participant_info['data']
                     
+                    cedula = str(data.get('cedula', '')).strip()
+                    if cedula.endswith('.0'):
+                        cedula = cedula[:-2]
+                    if len(cedula) == 9 and cedula.isdigit():
+                        cedula = '0' + cedula
+                    
                     # Verificar si la cédula ya existe
-                    if Participantes.objects.filter(cedula=data['cedula']).exists():
-                        errors.append(f"Cédula {data['cedula']} ya existe")
+                    if Participantes.objects.filter(cedula=cedula).exists():
+                        errors.append(f"Cédula {cedula} ya existe")
                         continue
                     
-                    # Crear el participante
+                    # Crear el participante asignando concurso y carrera del scope activo
                     participante, password = Participantes.create_participant(
-                        cedula=data['cedula'],
+                        cedula=cedula,
                         NombresCompletos=data['NombresCompletos'],
                         email=data['email'],
                         phone=data.get('phone', ''),
-                        edad=int(data['edad']) if data.get('edad') else None
+                        edad=int(float(data['edad'])) if data.get('edad') else None,
+                        concurso=scope_concurso,
+                        carrera=scope_carrera_final
                     )
                     
                     created_count += 1
@@ -1844,7 +2097,6 @@ def manage_quizs(request):
     - Admin con acceso_total = False
     """
     user = request.user
-    
     # Verificar que sea admin (superuser o admin con perfil)
     is_superuser = user.is_superuser
     is_admin = AdminProfile.objects.filter(user=user).exists()
@@ -1853,10 +2105,23 @@ def manage_quizs(request):
         messages.error(request, 'No tienes permisos para acceder a esta página.')
         return redirect('quizzes:dashboard')
     
-    # Obtener evaluaciones del año activo
-    from .models import SystemConfig
-    evaluaciones = Evaluacion.objects.filter(anio=SystemConfig.get_active_year()).order_by('-start_time')
+    # Obtener evaluaciones del ámbito
+    evaluaciones = filter_queryset_by_scope(
+        Evaluacion.objects.order_by('-start_time'),
+        request
+    )
     
+    is_global, scope_carrera, scope_concurso = get_user_scope(request)
+    num_etapas = scope_concurso.num_etapas if scope_concurso else 2
+
+    # Obtener las Unidades Temáticas de la carrera actual para la configuración dinámica de cuotas
+    from .models import UnidadTematica
+    unidades = UnidadTematica.objects.none()
+    if scope_carrera:
+        unidades = UnidadTematica.objects.filter(carrera=scope_carrera).order_by('numero')
+    elif scope_concurso and scope_concurso.carrera:
+        unidades = UnidadTematica.objects.filter(carrera=scope_concurso.carrera).order_by('numero')
+
     # Determinar el tipo específico de admin para el contexto
     if is_superuser:
         admin_type = 'superuser'
@@ -1871,10 +2136,11 @@ def manage_quizs(request):
     
     context = {
         'evaluaciones': evaluaciones,
+        'unidades': unidades,
         'role': 'admin',
         'admin_type': admin_type,
         'has_full_access': has_full_access,
-        'num_etapas': SystemConfig.get_num_etapas(),
+        'num_etapas': num_etapas,
         'now': timezone.now(),
         'user': user
     }
@@ -1893,9 +2159,11 @@ def student_quizs(request):
     
     participante = Participantes.objects.get(user=request.user)
     
-    # Obtener evaluaciones del año activo
-    from .models import SystemConfig
-    todas_evaluaciones = Evaluacion.objects.filter(anio=SystemConfig.get_active_year()).order_by('etapa', 'start_time')
+    # Obtener evaluaciones correspondientes a la carrera del estudiante
+    if participante.carrera:
+        todas_evaluaciones = Evaluacion.objects.filter(concurso__carrera=participante.carrera).order_by('etapa', 'start_time')
+    else:
+        todas_evaluaciones = Evaluacion.objects.order_by('etapa', 'start_time')
     
     # Filtrar evaluaciones autorizadas para este participante y agregar información de estado
     evaluaciones_autorizadas = []
@@ -1998,41 +2266,52 @@ def revisar_intento_evaluacion(request, pk):
     resultado = get_object_or_404(ResultadoEvaluacion, pk=pk, participante=participante, completada=True)
     evaluacion = resultado.evaluacion
     
-    # Obtener solo las preguntas que le tocaron a este participante en este intento específico
-    preguntas_del_intento = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento)
+    snapshot = resultado.get_snapshot_respuestas()
     preguntas_con_respuestas = []
-    respuestas_guardadas = resultado.respuestas_guardadas or {}
     
-    for pregunta in preguntas_del_intento:
-        pregunta_key = f"pregunta_{pregunta.id}"
-        respuesta_estudiante_id = respuestas_guardadas.get(pregunta_key)
-        
-        # Obtener las opciones
-        opciones_data = []
-        opcion_correcta = None
-        respuesta_estudiante = None
-        
-        for opcion in pregunta.opciones.all():
-            opciones_data.append({
-                'id': opcion.id,
-                'text': opcion.text,
-                'is_correct': opcion.is_correct,
-                'seleccionada': str(opcion.id) == str(respuesta_estudiante_id)
+    if snapshot:
+        for s in snapshot:
+            preguntas_con_respuestas.append({
+                'pregunta': {'id': s.get('pregunta_id'), 'text': s.get('text')},
+                'opciones': s.get('opciones', []),
+                'respuesta_estudiante': s.get('respuesta_estudiante'),
+                'opcion_correcta': s.get('opcion_correcta'),
+                'es_correcta': s.get('es_correcta', False)
             })
-            
-            if opcion.is_correct:
-                opcion_correcta = opcion
-            
-            if str(opcion.id) == str(respuesta_estudiante_id):
-                respuesta_estudiante = opcion
+    else:
+        # Fallback para exámenes legacy anteriores al snapshot
+        preguntas_del_intento = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento)
+        respuestas_guardadas = resultado.respuestas_guardadas or {}
         
-        preguntas_con_respuestas.append({
-            'pregunta': pregunta,
-            'opciones': opciones_data,
-            'respuesta_estudiante': respuesta_estudiante,
-            'opcion_correcta': opcion_correcta,
-            'es_correcta': respuesta_estudiante and respuesta_estudiante.is_correct if respuesta_estudiante else False
-        })
+        for pregunta in preguntas_del_intento:
+            pregunta_key = f"pregunta_{pregunta.id}"
+            respuesta_estudiante_id = respuestas_guardadas.get(pregunta_key)
+            
+            opciones_data = []
+            opcion_correcta = None
+            respuesta_estudiante = None
+            
+            for opcion in pregunta.opciones.all():
+                opciones_data.append({
+                    'id': opcion.id,
+                    'text': opcion.text,
+                    'is_correct': opcion.is_correct,
+                    'seleccionada': str(opcion.id) == str(respuesta_estudiante_id)
+                })
+                
+                if opcion.is_correct:
+                    opcion_correcta = opcion
+                
+                if str(opcion.id) == str(respuesta_estudiante_id):
+                    respuesta_estudiante = opcion
+            
+            preguntas_con_respuestas.append({
+                'pregunta': pregunta,
+                'opciones': opciones_data,
+                'respuesta_estudiante': respuesta_estudiante,
+                'opcion_correcta': opcion_correcta,
+                'es_correcta': respuesta_estudiante and respuesta_estudiante.is_correct if respuesta_estudiante else False
+            })
     
     context = {
         'participante': participante,
@@ -2054,16 +2333,42 @@ def manage_questions(request, eval_id):
     can_modify, restriction_message = check_question_modification_allowed(evaluacion)
     
     # Optimizar consulta para incluir opciones y categorías, evitar N+1
-    preguntas_qs = evaluacion.preguntas.prefetch_related('opciones').select_related('categoria').order_by('id')
+    preguntas_qs = evaluacion.preguntas.prefetch_related('opciones').select_related('categoria', 'categoria__unidad').order_by('id')
     
     # Paginación — 20 preguntas por página
     paginator = Paginator(preguntas_qs, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    # Obtener todas las categorías activas para el select
-    from .models import Categoria
-    categorias = Categoria.objects.filter(activa=True).order_by('nombre')
+    from .models import UnidadTematica, Categoria, EvaluacionCuotaUnidad
+    from django.db.models import Count
+    
+    # Obtener carrera de la evaluación para cargar sus Unidades Temáticas
+    carrera = evaluacion.concurso.carrera if (evaluacion.concurso and evaluacion.concurso.carrera) else None
+    unidades = UnidadTematica.objects.filter(carrera=carrera).order_by('numero') if carrera else UnidadTematica.objects.none()
+    
+    # Contar preguntas creadas en la evaluación agrupadas por unidad temática
+    preguntas_por_unidad = dict(
+        evaluacion.preguntas.values_list('categoria__unidad_id').annotate(total=Count('id'))
+    )
+    
+    # Obtener cuotas actuales configuradas
+    cuotas_map = {c.unidad_id: c.cantidad_preguntas for c in evaluacion.cuotas_unidades.all()}
+    
+    unidades_info = []
+    for idx, u in enumerate(unidades):
+        disponibles = preguntas_por_unidad.get(u.id, 0)
+        cantidad_cuota = cuotas_map.get(u.id, 4 if idx == 0 else 2)
+        unidades_info.append({
+            'unidad': u,
+            'disponibles': disponibles,
+            'cantidad': cantidad_cuota
+        })
+    
+    # Obtener todas las categorías (temas) activas con su unidad relacionada
+    categorias = Categoria.objects.filter(activa=True).select_related('unidad').order_by('unidad__numero', 'nombre')
+    if carrera:
+        categorias = categorias.filter(unidad__carrera=carrera)
     
     context = {
         'evaluacion': evaluacion,
@@ -2071,10 +2376,56 @@ def manage_questions(request, eval_id):
         'total_preguntas': paginator.count,  # total global para el badge
         'page_obj': page_obj,
         'categorias': categorias,
+        'unidades_info': unidades_info,
         'can_modify_questions': can_modify,
         'restriction_message': restriction_message,
     }
     return render(request, 'quizzes/manage_questions.html', context)
+
+
+@csrf_exempt
+@login_required
+def update_evaluacion_cuotas(request, eval_id):
+    """
+    Vista AJAX para guardar las cuotas de preguntas por Unidad Temática en la vista de gestionar preguntas
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=eval_id)
+    can_modify, restriction_message = check_question_modification_allowed(evaluacion)
+    if not can_modify:
+        return JsonResponse({'success': False, 'error': restriction_message}, status=403)
+        
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            cuotas_input = data.get('cuotas_unidades', [])
+            
+            if not isinstance(cuotas_input, list):
+                return JsonResponse({'success': False, 'error': 'Formato de cuotas inválido.'}, status=400)
+                
+            from .models import EvaluacionCuotaUnidad
+            evaluacion.cuotas_unidades.all().delete()
+            
+            for item in cuotas_input:
+                u_id = item.get('unidad_id')
+                cant = int(item.get('cantidad', 0))
+                if u_id and cant >= 0:
+                    EvaluacionCuotaUnidad.objects.create(
+                        evaluacion=evaluacion,
+                        unidad_id=u_id,
+                        cantidad_preguntas=cant
+                    )
+                    
+            evaluacion.save()  # Recalcula preguntas_a_mostrar
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Configuración de cuotas de preguntas guardada exitosamente.',
+                'preguntas_a_mostrar': evaluacion.preguntas_a_mostrar
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+            
+    return JsonResponse({'success': False, 'error': 'Método no permitido.'}, status=405)
 
 @csrf_exempt
 @login_required
@@ -2089,7 +2440,6 @@ def create_evaluacion(request):
         end_date = data.get('end_date')
         end_time = data.get('end_time')
         duration = data.get('duration')
-        preguntas_a_mostrar = data.get('preguntas_a_mostrar', 10)
         description = data.get('description', '')
         
         from datetime import datetime
@@ -2103,23 +2453,22 @@ def create_evaluacion(request):
         if not title or not etapa or not duration or not start_date or not start_time or not end_date or not end_time:
             return JsonResponse({'success': False, 'error': 'Faltan campos obligatorios.'}, status=400)
         
-        # Validar etapa
+        is_global, scope_carrera, scope_concurso = get_user_scope(request)
+        if not scope_concurso:
+            return JsonResponse({
+                'success': False,
+                'error': '⚠️ Debes seleccionar un Concurso activo específico en la barra superior (Navbar) antes de crear una evaluación.'
+            }, status=400)
+
+        # Validar etapa según las etapas configuradas en el concurso activo
         try:
-            from .models import SystemConfig
             etapa = int(etapa)
-            allowed_etapas = [1, 3] if SystemConfig.get_num_etapas() == 2 else [1, 2, 3]
+            num_etapas = scope_concurso.num_etapas
+            allowed_etapas = [1, 2] if num_etapas == 2 else [1, 2, 3]
             if etapa not in allowed_etapas:
-                return JsonResponse({'success': False, 'error': 'Etapa inválida para la configuración actual.'}, status=400)
+                return JsonResponse({'success': False, 'error': f'Etapa inválida. El concurso activo "{scope_concurso.nombre}" tiene configuradas únicamente {num_etapas} etapas.'}, status=400)
         except ValueError:
             return JsonResponse({'success': False, 'error': 'Etapa debe ser un número.'}, status=400)
-        
-        # Validar preguntas a mostrar
-        try:
-            preguntas_a_mostrar = int(preguntas_a_mostrar)
-            if preguntas_a_mostrar < 1 or preguntas_a_mostrar > 100:
-                return JsonResponse({'success': False, 'error': 'Preguntas a mostrar debe estar entre 1 y 100.'}, status=400)
-        except ValueError:
-            return JsonResponse({'success': False, 'error': 'Preguntas a mostrar debe ser un número.'}, status=400)
         
         try:
             evaluacion = Evaluacion.objects.create(
@@ -2128,8 +2477,9 @@ def create_evaluacion(request):
                 start_time=start_dt,
                 end_time=end_dt,
                 duration_minutes=int(duration),
-                preguntas_a_mostrar=preguntas_a_mostrar
+                concurso=scope_concurso
             )
+            
             return JsonResponse({
                 'success': True, 
                 'id': evaluacion.id, 
@@ -2140,6 +2490,127 @@ def create_evaluacion(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
     return JsonResponse({'success': False, 'error': 'Método no permitido.'}, status=405)
+
+@csrf_exempt
+@login_required
+def delete_evaluacion(request, pk):
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    if request.method == 'DELETE':
+        evaluacion.delete()
+        return JsonResponse({'success': True, 'message': 'Evaluación eliminada correctamente.'})
+    
+    return JsonResponse({'success': False, 'error': 'Método no permitido.'}, status=405)
+
+@login_required
+def edit_evaluacion(request, pk):
+    """
+    Vista para editar una evaluación
+    """
+    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    
+    # Verificar permisos básicos (solo admins pueden editar)
+    if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
+        messages.error(request, 'No tienes permisos para acceder a esta página.')
+        return redirect('quizzes:dashboard')
+    
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            
+            # Validar datos
+            title = data.get('title', '').strip()
+            start_date = data.get('start_date')
+            start_time = data.get('start_time')
+            end_date = data.get('end_date')
+            end_time = data.get('end_time')
+            duration = data.get('duration')
+            cuotas_unidades_input = data.get('cuotas_unidades', None)
+            
+            if not all([title, start_date, start_time, end_date, end_time, duration]):
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Todos los campos son obligatorios'
+                }, status=400)
+            
+            # Convertir fechas
+            from datetime import datetime
+            start_dt = timezone.make_aware(datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M"))
+            end_dt = timezone.make_aware(datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M"))
+            
+            # Validar que la fecha de inicio sea anterior a la de fin
+            if start_dt >= end_dt:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'La fecha de inicio debe ser anterior a la fecha de finalización'
+                }, status=400)
+            
+            # Actualizar evaluación
+            evaluacion.title = title
+            evaluacion.etapa = int(data.get('etapa', evaluacion.etapa))
+            evaluacion.start_time = start_dt
+            evaluacion.end_time = end_dt
+            evaluacion.duration_minutes = int(duration)
+            evaluacion.save()
+            
+            if cuotas_unidades_input is not None and isinstance(cuotas_unidades_input, list):
+                from .models import EvaluacionCuotaUnidad
+                evaluacion.cuotas_unidades.all().delete()
+                for item in cuotas_unidades_input:
+                    u_id = item.get('unidad_id')
+                    cant = int(item.get('cantidad', 0))
+                    if u_id and cant > 0:
+                        EvaluacionCuotaUnidad.objects.create(
+                            evaluacion=evaluacion,
+                            unidad_id=u_id,
+                            cantidad_preguntas=cant
+                        )
+                evaluacion.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Evaluación actualizada exitosamente',
+                'evaluacion': {
+                    'id': evaluacion.id,
+                    'title': evaluacion.title,
+                    'start_time': evaluacion.start_time.strftime("%d/%m/%Y %H:%M"),
+                    'end_time': evaluacion.end_time.strftime("%d/%m/%Y %H:%M"),
+                    'duration_minutes': evaluacion.duration_minutes,
+                    'preguntas_a_mostrar': evaluacion.preguntas_a_mostrar,
+                    'status': evaluacion.get_status(),
+                    'status_display': evaluacion.get_status_display()
+                }
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Datos JSON inválidos'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Error al actualizar la evaluación: {str(e)}'
+            }, status=500)
+    
+    # GET request - mostrar formulario de edición con Unidades y sus cuotas asociadas
+    from .models import UnidadTematica
+    carrera = evaluacion.concurso.carrera if (evaluacion.concurso and evaluacion.concurso.carrera) else None
+    unidades = UnidadTematica.objects.filter(carrera=carrera).order_by('numero') if carrera else UnidadTematica.objects.none()
+    
+    cuotas_map = {c.unidad_id: c.cantidad_preguntas for c in evaluacion.cuotas_unidades.all()}
+    unidades_con_cuotas = []
+    for idx, u in enumerate(unidades):
+        unidades_con_cuotas.append({
+            'unidad': u,
+            'cantidad': cuotas_map.get(u.id, 4 if idx == 0 else 2)
+        })
+
+    context = {
+        'evaluacion': evaluacion,
+        'unidades_con_cuotas': unidades_con_cuotas
+    }
+    return render(request, 'quizzes/edit_evaluacion.html', context)
 
 @csrf_exempt
 @login_required
@@ -2245,7 +2716,7 @@ def save_question(request, eval_id):
             if not categoria_id:
                 return JsonResponse({
                     'success': False, 
-                    'error': 'La categoría es obligatoria'
+                    'error': 'La categoría (Tema) es obligatoria'
                 }, status=400)
             
             if len(opciones) != 4:
@@ -2254,7 +2725,7 @@ def save_question(request, eval_id):
                     'error': 'Debe proporcionar exactamente 4 opciones'
                 }, status=400)
             
-            if not opcion_correcta or not opcion_correcta.isdigit() or int(opcion_correcta) < 1 or int(opcion_correcta) > 4:
+            if not opcion_correcta or not str(opcion_correcta).isdigit() or int(opcion_correcta) < 1 or int(opcion_correcta) > 4:
                 return JsonResponse({
                     'success': False, 
                     'error': 'Debe seleccionar una opción correcta válida'
@@ -2450,7 +2921,7 @@ def update_question(request, pk):
             if not categoria_id:
                 return JsonResponse({
                     'success': False, 
-                    'error': 'La categoría es obligatoria'
+                    'error': 'La categoría (Tema) es obligatoria'
                 }, status=400)
             
             if not opcion_correcta:
@@ -2579,7 +3050,7 @@ def edit_evaluacion(request, pk):
             end_date = data.get('end_date')
             end_time = data.get('end_time')
             duration = data.get('duration')
-            preguntas_a_mostrar = data.get('preguntas_a_mostrar', 10)
+            cuotas_unidades_input = data.get('cuotas_unidades', None)
             
             if not all([title, start_date, start_time, end_date, end_time, duration]):
                 return JsonResponse({
@@ -2599,28 +3070,27 @@ def edit_evaluacion(request, pk):
                     'error': 'La fecha de inicio debe ser anterior a la fecha de finalización'
                 }, status=400)
             
-            # Validar preguntas a mostrar
-            try:
-                preguntas_a_mostrar = int(preguntas_a_mostrar)
-                if preguntas_a_mostrar < 1 or preguntas_a_mostrar > 100:
-                    return JsonResponse({
-                        'success': False, 
-                        'error': 'Preguntas a mostrar debe estar entre 1 y 100'
-                    }, status=400)
-            except ValueError:
-                return JsonResponse({
-                    'success': False, 
-                    'error': 'Preguntas a mostrar debe ser un número'
-                }, status=400)
-            
             # Actualizar evaluación
             evaluacion.title = title
             evaluacion.etapa = int(data.get('etapa', evaluacion.etapa))
             evaluacion.start_time = start_dt
             evaluacion.end_time = end_dt
             evaluacion.duration_minutes = int(duration)
-            evaluacion.preguntas_a_mostrar = preguntas_a_mostrar
             evaluacion.save()
+            
+            if cuotas_unidades_input is not None and isinstance(cuotas_unidades_input, list):
+                from .models import EvaluacionCuotaUnidad
+                evaluacion.cuotas_unidades.all().delete()
+                for item in cuotas_unidades_input:
+                    u_id = item.get('unidad_id')
+                    cant = int(item.get('cantidad', 0))
+                    if u_id and cant > 0:
+                        EvaluacionCuotaUnidad.objects.create(
+                            evaluacion=evaluacion,
+                            unidad_id=u_id,
+                            cantidad_preguntas=cant
+                        )
+                evaluacion.save()
             
             return JsonResponse({
                 'success': True,
@@ -2795,7 +3265,7 @@ def evaluacion_results(request, pk):
         opciones_correctas_pregunta = preguntas_opciones_correctas.get(pregunta.id, {})
         
         for resultado in resultados_con_respuestas:
-            respuestas = resultado.respuestas_guardadas
+            respuestas = obtener_diccionario_respuestas(resultado)
             
             # Validar que respuestas no sea None o vacío
             if not respuestas or not isinstance(respuestas, dict):
@@ -3035,53 +3505,18 @@ def ranking_evaluacion(request, pk):
     # Obtener el filtro de estado
     filtro_estado = request.GET.get('estado', 'todos')
     
-    # Obtener resultados ordenados por puntaje y tiempo - solo el mejor por participante
-    from django.db.models import Max
-    
-    # Primero, obtener el mejor puntaje por participante
-    mejores_puntajes = ResultadoEvaluacion.objects.filter(
+    # Obtener el mejor resultado por participante ordenado por nota (desc) y tiempo en segundos (asc)
+    todos_completados = ResultadoEvaluacion.objects.filter(
         evaluacion=evaluacion,
         completada=True
-    ).values('participante').annotate(
-        mejor_puntaje=Max('puntos_obtenidos')
-    )
+    ).order_by('-puntos_obtenidos', 'tiempo_utilizado').select_related('participante')
     
-    # Crear una lista de participantes con sus mejores puntajes
-    participantes_con_mejor_puntaje = []
-    for item in mejores_puntajes:
-        participante_id = item['participante']
-        mejor_puntaje = item['mejor_puntaje']
-        
-        # Obtener todos los intentos con el mejor puntaje para este participante
-        intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante_id=participante_id,
-            completada=True,
-            puntos_obtenidos=mejor_puntaje,
-            fecha_inicio__isnull=False,
-            fecha_fin__isnull=False
-        )
-        
-        # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
-        mejor_resultado = None
-        menor_tiempo = float('inf')
-        
-        for intento in intentos_con_mejor_puntaje:
-            tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
-            if tiempo_real < menor_tiempo:
-                menor_tiempo = tiempo_real
-                mejor_resultado = intento
-        
-        if mejor_resultado:
-            participantes_con_mejor_puntaje.append(mejor_resultado)
-    
-    # Ordenar por puntaje descendente y tiempo real ascendente
-    def get_tiempo_real(resultado):
-        if resultado.fecha_inicio and resultado.fecha_fin:
-            return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
-        return float('inf')  # Si no tiene fechas, lo colocamos al final
-    
-    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
+    resultados = []
+    vistos = set()
+    for r in todos_completados:
+        if r.participante_id not in vistos:
+            vistos.add(r.participante_id)
+            resultados.append(r)
     
     # Calcular estadísticas
     total_participantes = len(resultados)
@@ -3104,8 +3539,7 @@ def ranking_evaluacion(request, pk):
     
     # Determinar ganadores según la etapa y configuración
     ganadores = []
-    from .models import SystemConfig
-    num_etapas = SystemConfig.get_num_etapas()
+    num_etapas = evaluacion.concurso.num_etapas if evaluacion.concurso else 3
     if evaluacion.etapa == 1:
         top_n = 15 if num_etapas == 3 else 5
         if total_participantes >= top_n:
@@ -3215,9 +3649,9 @@ def gestionar_participantes_evaluacion(request, pk):
                             'cedula': participante.cedula
                         })
             elif evaluacion.etapa == 2:
-                # Para etapa 2: solo aplica si el sistema está en 3 etapas
-                from .models import SystemConfig
-                if SystemConfig.get_num_etapas() == 3:
+                # Para etapa 2: solo aplica si el concurso está en 3 etapas
+                num_etapas = evaluacion.concurso.num_etapas if evaluacion.concurso else 3
+                if num_etapas == 3:
                     if has_full_access(request.user):
                         participantes_automaticos = evaluacion.get_participantes_etapa2()
                         participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
@@ -3249,7 +3683,6 @@ def gestionar_participantes_evaluacion(request, pk):
                             })
             elif evaluacion.etapa == 3:
                 # Para etapa 3: soportar flujo de 3 etapas y de 2 etapas (saltando etapa 2)
-                from .models import SystemConfig
                 if has_full_access(request.user):
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
                     participantes_automaticos_ids = set(p.id for p in participantes_automaticos)
@@ -3300,8 +3733,8 @@ def gestionar_participantes_evaluacion(request, pk):
             # Para superusuarios en etapas avanzadas, incluir automáticos si no hay asignados manualmente
             participantes_automaticos = []
             if has_full_access(request.user) and evaluacion.etapa in [2, 3] and not evaluacion.participantes_individuales.exists():
-                from .models import SystemConfig
-                if evaluacion.etapa == 2 and SystemConfig.get_num_etapas() == 3:
+                num_etapas = evaluacion.concurso.num_etapas if evaluacion.concurso else 3
+                if evaluacion.etapa == 2 and num_etapas == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa2()
                 elif evaluacion.etapa == 3:
                     participantes_automaticos = evaluacion.get_participantes_etapa3()
@@ -3600,10 +4033,9 @@ def exportar_resultado_pdf(request, pk):
         
         elements.append(Paragraph("RESULTADOS DE LA EVALUACIÓN", results_title_style))
         
-        # Calcular puntuación en formato mejorado
-        puntaje_porcentaje = resultado.puntaje if hasattr(resultado, 'puntaje') else (resultado.puntos_obtenidos / resultado.puntos_totales * 100 if resultado.puntos_totales > 0 else 0)
-        puntaje_numerico = resultado.puntos_obtenidos if hasattr(resultado, 'puntos_obtenidos') else 0
-        puntos_totales = resultado.puntos_totales if hasattr(resultado, 'puntos_totales') else 0
+        # Calcular puntuación en formato numérico sobre 10
+        puntaje_numerico = float(resultado.puntos_obtenidos) if hasattr(resultado, 'puntos_obtenidos') else 0.0
+        puntos_totales = resultado.puntos_totales if hasattr(resultado, 'puntos_totales') else 10
         
         # Tabla de resultados mejorada
         resultados_data = [
@@ -3648,13 +4080,13 @@ def exportar_resultado_pdf(request, pk):
         ]))
         
         # Destacar la puntuación final con color según el rendimiento
-        if puntaje_porcentaje >= 80:
+        if puntaje_numerico >= 8.0:
             results_table.setStyle(TableStyle([
                 ('BACKGROUND', (1, 1), (1, 1), success_color),
                 ('TEXTCOLOR', (1, 1), (1, 1), colors.white),
                 ('FONTNAME', (1, 1), (1, 1), 'Helvetica-Bold'),
             ]))
-        elif puntaje_porcentaje >= 60:
+        elif puntaje_numerico >= 6.0:
             results_table.setStyle(TableStyle([
                 ('BACKGROUND', (1, 1), (1, 1), warning_color),
                 ('TEXTCOLOR', (1, 1), (1, 1), colors.white),
@@ -3681,13 +4113,13 @@ def exportar_resultado_pdf(request, pk):
             leading=16
         )
         
-        if puntaje_porcentaje >= 90:
+        if puntaje_numerico >= 9.0:
             mensaje = "<b>¡EXCELENTE DESEMPEÑO!</b><br/>"
-        elif puntaje_porcentaje >= 80:
+        elif puntaje_numerico >= 8.0:
             mensaje = "<b>¡MUY BUEN TRABAJO!</b><br/>"
-        elif puntaje_porcentaje >= 70:
+        elif puntaje_numerico >= 7.0:
             mensaje = "<b>BUEN DESEMPEÑO</b><br/>"
-        elif puntaje_porcentaje >= 60:
+        elif puntaje_numerico >= 6.0:
             mensaje = "<b>DESEMPEÑO ACEPTABLE</b><br/>"
         else:
             mensaje = "<b>OPORTUNIDAD DE MEJORA</b><br/>"
@@ -3824,16 +4256,9 @@ def send_participants_email(request, grupo_id):
         """
         
         for participante in grupo.participantes.all():
-            # Si no tiene contraseña temporal, generar una nueva
-            if not participante.password_temporal:
-                nueva_password = get_random_string(length=6)
-                participante.password_temporal = nueva_password
-                participante.save()
-                # Actualizar también la contraseña del usuario
-                participante.user.set_password(nueva_password)
-                participante.user.save()
-            else:
-                nueva_password = participante.password_temporal
+            nueva_password = get_random_string(length=6)
+            participante.user.set_password(nueva_password)
+            participante.user.save()
             
             participantes_html += f"""
                 <tr style="border-bottom: 1px solid #e0e0e0;">
@@ -3931,9 +4356,6 @@ def send_credentials_email(request, user_type, user_id):
             
             # Siempre generar una nueva contraseña temporal
             nueva_password = get_random_string(length=6)
-            user_obj.password_temporal = nueva_password
-            user_obj.save()
-            # Actualizar también la contraseña del usuario
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
@@ -3941,6 +4363,12 @@ def send_credentials_email(request, user_type, user_id):
             system_name = 'Sistema Olymp'
             
         elif user_type == 'admin':
+            if not request.user.is_superuser:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'message': 'Solo el Superadministrador global puede enviar credenciales a administradores.'}, status=403)
+                messages.error(request, 'Solo el Superadministrador global puede enviar credenciales a administradores.')
+                return redirect('quizzes:manage_admins')
+
             user_obj = AdminProfile.objects.get(id=user_id)
             nombre = user_obj.user.get_full_name()
             email = user_obj.user.email
@@ -3948,9 +4376,6 @@ def send_credentials_email(request, user_type, user_id):
             
             # Siempre generar una nueva contraseña
             nueva_password = get_random_string(length=8)
-            user_obj.password = nueva_password
-            user_obj.save()
-            # Actualizar también la contraseña del usuario
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
@@ -4312,57 +4737,22 @@ def exportar_ranking_pdf(request, pk):
     # Obtener el filtro de estado desde los parámetros GET
     filtro_estado = request.GET.get('estado', 'todos')
     
-    # Obtener resultados únicos por participante - SOLO EL MEJOR PUNTAJE
-    from django.db.models import Max
-    
-    # Obtener el mejor puntaje por participante
-    mejores_puntajes = ResultadoEvaluacion.objects.filter(
+    # Obtener el mejor resultado por participante ordenado por nota (desc) y tiempo en segundos (asc)
+    todos_completados = ResultadoEvaluacion.objects.filter(
         evaluacion=evaluacion,
         completada=True
-    ).values('participante').annotate(
-        mejor_puntaje=Max('puntos_obtenidos')
-    )
+    ).order_by('-puntos_obtenidos', 'tiempo_utilizado').select_related('participante')
     
-    # Obtener los resultados únicos con mejor puntaje
-    participantes_con_mejor_puntaje = []
-    for item in mejores_puntajes:
-        participante_id = item['participante']
-        mejor_puntaje = item['mejor_puntaje']
-        
-        # Obtener todos los intentos con el mejor puntaje para este participante
-        intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante_id=participante_id,
-            completada=True,
-            puntos_obtenidos=mejor_puntaje,
-            fecha_inicio__isnull=False,
-            fecha_fin__isnull=False
-        )
-        
-        # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
-        mejor_resultado = None
-        menor_tiempo = float('inf')
-        
-        for intento in intentos_con_mejor_puntaje:
-            tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
-            if tiempo_real < menor_tiempo:
-                menor_tiempo = tiempo_real
-                mejor_resultado = intento
-        
-        if mejor_resultado:
-            participantes_con_mejor_puntaje.append(mejor_resultado)
-    
-    # Ordenar por puntaje descendente y tiempo real ascendente
-    def get_tiempo_real(resultado):
-        if resultado.fecha_inicio and resultado.fecha_fin:
-            return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
-        return float('inf')  # Si no tiene fechas, lo colocamos al final
-    
-    resultados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
+    resultados = []
+    vistos = set()
+    for r in todos_completados:
+        if r.participante_id not in vistos:
+            vistos.add(r.participante_id)
+            resultados.append(r)
     
     # Aplicar filtro de estado y agregar información del colegio
-    from .models import SystemConfig, GrupoParticipantes
-    num_etapas = SystemConfig.get_num_etapas()
+    from .models import GrupoParticipantes
+    num_etapas = evaluacion.concurso.num_etapas if evaluacion.concurso else 3
     
     # Pre-cargar información de colegios para optimizar consultas
     participante_ids = [resultado.participante.id for resultado in resultados]
@@ -4968,28 +5358,20 @@ def monitoreo_evaluacion(request, pk):
         return redirect('quizzes:dashboard')
     
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    participantes_autorizados = evaluacion.get_participantes_autorizados()
+    total_participantes = len(participantes_autorizados)
     
-    # Obtener todos los monitoreos activos para esta evaluación
-    monitoreos = MonitoreoEvaluacion.objects.filter(
-        evaluacion=evaluacion,
-        estado='activo'
-    ).select_related('participante', 'resultado')
-    
-    # Estadísticas generales
-    total_participantes = len(evaluacion.get_participantes_autorizados())
-    participantes_activos = monitoreos.filter(ultima_actividad__gte=timezone.now() - timezone.timedelta(hours=1)).count()
-    participantes_finalizados = MonitoreoEvaluacion.objects.filter(
-        evaluacion=evaluacion,
-        estado='finalizado'
-    ).count()
+    resultados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion).select_related('participante')
+    participantes_activos = sum(1 for r in resultados if r.esta_activo())
+    participantes_finalizados = sum(1 for r in resultados if r.completada)
     
     context = {
         'evaluacion': evaluacion,
-        'monitoreos': monitoreos,
+        'resultados': resultados,
         'total_participantes': total_participantes,
         'participantes_activos': participantes_activos,
         'participantes_finalizados': participantes_finalizados,
-        'participantes_pendientes': total_participantes - participantes_activos - participantes_finalizados,
+        'participantes_pendientes': max(0, total_participantes - participantes_activos - participantes_finalizados),
     }
     
     return render(request, 'quizzes/monitoreo_evaluacion.html', context)
@@ -4999,9 +5381,8 @@ def monitoreo_evaluacion(request, pk):
 @login_required
 def actualizar_monitoreo(request, pk):
     """
-    Endpoint para actualizar el estado del monitoreo desde el frontend
+    Endpoint de compatibilidad HTTP para actualizar actividad desde el frontend
     """
-    # Verificar permisos básicos (solo admins pueden actualizar monitoreo)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
@@ -5011,41 +5392,27 @@ def actualizar_monitoreo(request, pk):
     try:
         data = json.loads(request.body)
         participante_id = data.get('participante_id')
-        evaluacion_id = data.get('evaluacion_id')
+        evaluacion_id = data.get('evaluacion_id') or pk
         
-        # Obtener o crear el monitoreo
         participante = get_object_or_404(Participantes, pk=participante_id)
         evaluacion = get_object_or_404(Evaluacion, pk=evaluacion_id)
-        resultado = get_object_or_404(ResultadoEvaluacion, participante=participante, evaluacion=evaluacion)
         
-        monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
+        resultado = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante=participante,
-            defaults={'resultado': resultado}
-        )
+            completada=False
+        ).first()
         
-        if not created:
-            monitoreo.resultado = resultado
-        
-        # Actualizar datos del monitoreo
-        monitoreo.pagina_actual = data.get('pagina_actual', monitoreo.pagina_actual)
-        monitoreo.preguntas_respondidas = data.get('preguntas_respondidas', monitoreo.preguntas_respondidas)
-        monitoreo.preguntas_revisadas = data.get('preguntas_revisadas', monitoreo.preguntas_revisadas)
-        monitoreo.tiempo_activo = data.get('tiempo_activo', monitoreo.tiempo_activo)
-        monitoreo.tiempo_inactivo = data.get('tiempo_inactivo', monitoreo.tiempo_inactivo)
-        
-        # Verificar inactividad (más de 1 hora sin actividad)
-        tiempo_ultima_actividad = (timezone.now() - monitoreo.ultima_actividad).total_seconds()
-        if tiempo_ultima_actividad > 3600:  # 1 hora
-            monitoreo.agregar_alerta('inactividad', f'Estudiante inactivo por {int(tiempo_ultima_actividad/3600)} horas', 'media')
-        
-        monitoreo.save()
-        
-        return JsonResponse({
-            'success': True,
-            'monitoreo_id': monitoreo.id,
-            'ultima_actividad': monitoreo.ultima_actividad.isoformat()
-        })
+        if resultado:
+            resultado.ultima_actividad = timezone.now()
+            resultado.save()
+            return JsonResponse({
+                'success': True,
+                'resultado_id': resultado.id,
+                'ultima_actividad': resultado.ultima_actividad.isoformat()
+            })
+            
+        return JsonResponse({'success': True, 'message': 'No hay examen activo en progreso'})
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
@@ -5055,119 +5422,63 @@ def actualizar_monitoreo(request, pk):
 @login_required
 def obtener_estado_monitoreo(request, pk):
     """
-    Endpoint para obtener el estado actual del monitoreo
+    Endpoint HTTP AJAX Polling para obtener el estado actual del monitoreo en tiempo real
     """
-    # Verificar permisos básicos (solo admins pueden acceder al estado del monitoreo)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
     evaluacion = get_object_or_404(Evaluacion, pk=pk)
-    
-    # Obtener todos los participantes autorizados
     participantes_autorizados = evaluacion.get_participantes_autorizados()
     datos_monitoreo = []
     
     for participante in participantes_autorizados:
-        # Verificar si el participante tiene un resultado completado
         resultado = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
-            participante=participante,
-            completada=True
-        ).first()
+            participante=participante
+        ).order_by('-numero_intento').first()
         
-        # Obtener o crear el monitoreo para este participante
-        monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
-            evaluacion=evaluacion,
-            participante=participante,
-            defaults={'resultado': resultado} if resultado else {}
-        )
-        
-        # Si el participante tiene un resultado completado, asegurar que el monitoreo esté finalizado
-        if resultado and monitoreo.estado != 'finalizado':
-            monitoreo.estado = 'finalizado'
-            monitoreo.resultado = resultado
-            monitoreo.save()
-        
-        # Si no hay resultado completado pero el monitoreo está finalizado, cambiar a activo
-        if not resultado and monitoreo.estado == 'finalizado':
-            monitoreo.estado = 'activo'
-            monitoreo.save()
-        
-        # Calcular intentos para este participante
         intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
         intentos_usados = participante.get_intentos_usados(evaluacion)
+        ha_iniciado = resultado is not None
         
-        # Lógica mejorada para manejar estados con nuevos intentos
-        # 1. Si tiene resultado completado y NO hay intentos disponibles -> Finalizado
-        # 2. Si tiene resultado completado pero SÍ hay intentos disponibles -> Inactivo (puede hacer nuevo intento)
-        # 3. Si NO tiene resultado completado pero tiene intentos disponibles -> Depende si ha iniciado o no
-        # 4. Si está rindiendo actualmente (resultado no completado) -> Activo
+        if not resultado:
+            estado = 'pendiente'
+        elif resultado.completada:
+            estado = 'finalizado' if intentos_disponibles == 0 else 'inactivo'
+        elif resultado.esta_activo():
+            estado = 'activo'
+        else:
+            estado = 'inactivo'
+            
+        preguntas_respondidas = len(resultado.respuestas_guardadas) if (resultado and isinstance(resultado.respuestas_guardadas, dict)) else 0
+        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento if resultado else 1)
+        total_preguntas = len(preguntas_mostradas)
+        porcentaje_avance = round((preguntas_respondidas / total_preguntas * 100), 1) if total_preguntas > 0 else 0
         
-        # Verificar si tiene un resultado actualmente en progreso (no completado)
-        resultado_en_progreso = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante=participante,
-            completada=False
-        ).first()
+        alertas = resultado.alertas_detectadas if (resultado and resultado.alertas_detectadas) else []
         
-        # Actualizar lógica del estado del monitoreo
-        if resultado_en_progreso:
-            # Está rindiendo actualmente
-            if monitoreo.estado != 'activo':
-                monitoreo.estado = 'activo'
-                monitoreo.resultado = resultado_en_progreso
-                monitoreo.ultima_actividad = timezone.now()
-                monitoreo.save()
-        elif resultado and intentos_disponibles == 0:
-            # Tiene resultado completado y NO tiene más intentos -> Finalizado definitivo
-            if monitoreo.estado != 'finalizado':
-                monitoreo.estado = 'finalizado'
-                monitoreo.resultado = resultado
-                monitoreo.save()
-        elif resultado and intentos_disponibles > 0:
-            # Tiene resultado completado pero SÍ tiene intentos disponibles -> Puede reiniciar
-            if monitoreo.estado == 'finalizado':
-                monitoreo.estado = 'inactivo'  # Puede iniciar nuevo intento cuando quiera
-                monitoreo.save()
-        elif not resultado and intentos_disponibles > 0:
-            # No ha completado ningún intento pero tiene intentos -> Pendiente
-            if monitoreo.estado == 'finalizado':
-                monitoreo.estado = 'pendiente'
-                monitoreo.save()
-        
-        # Verificar si el participante ha iniciado alguna vez la evaluación
-        # (si tiene cualquier resultado, completado o no)
-        ha_iniciado = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante=participante
-        ).exists()
-        
-        # Agregar datos del monitoreo
         datos_monitoreo.append({
-            'id': monitoreo.id,
-            'participante_id': monitoreo.participante.id,
-            'participante_nombre': monitoreo.participante.NombresCompletos,
-            'participante_cedula': monitoreo.participante.cedula,
-            'estado': monitoreo.estado,
-            'esta_activo': monitoreo.esta_activo() if monitoreo.estado == 'activo' else False,
-            'ha_iniciado': ha_iniciado,  # Ha iniciado si tiene cualquier resultado
-            'preguntas_respondidas': monitoreo.preguntas_respondidas,
-            'preguntas_revisadas': monitoreo.preguntas_revisadas,
-            'porcentaje_avance': round(monitoreo.get_porcentaje_avance(), 1),
-            'ultima_actividad': monitoreo.ultima_actividad.isoformat(),
-            'alertas_count': len(monitoreo.alertas_detectadas),
-            'alertas_recientes': [
-                alerta for alerta in monitoreo.alertas_detectadas[-3:]  # Últimas 3 alertas
-            ],
-            'tiene_resultado_completado': resultado is not None,
-            'puntaje': resultado.puntaje if resultado else None,
-            'puntaje_numerico': resultado.get_puntaje_numerico() if resultado else None,
-            # CAMPOS DE INTENTOS
+            'id': resultado.id if resultado else f"part_{participante.id}",
+            'resultado_id': resultado.id if resultado else None,
+            'participante_id': participante.id,
+            'participante_nombre': participante.NombresCompletos,
+            'participante_cedula': participante.cedula,
+            'estado': estado,
+            'esta_activo': resultado.esta_activo() if resultado else False,
+            'ha_iniciado': ha_iniciado,
+            'preguntas_respondidas': preguntas_respondidas,
+            'preguntas_revisadas': total_preguntas,
+            'porcentaje_avance': porcentaje_avance,
+            'ultima_actividad': resultado.ultima_actividad.isoformat() if (resultado and resultado.ultima_actividad) else None,
+            'alertas_count': len(alertas),
+            'alertas_recientes': alertas[-3:],
+            'tiene_resultado_completado': (resultado.completada) if resultado else False,
+            'puntos_obtenidos': float(resultado.puntos_obtenidos) if (resultado and resultado.completada) else None,
+            'puntaje_numerico': resultado.get_puntaje_numerico() if (resultado and resultado.completada) else None,
             'intentos_disponibles': intentos_disponibles,
             'intentos_usados': intentos_usados,
-            # CAMPOS DE CAMBIOS DE PESTAÑAS
-            'cambios_pestana_actuales': resultado_en_progreso.cambios_pestana if resultado_en_progreso and hasattr(resultado_en_progreso, 'cambios_pestana') else (resultado.cambios_pestana if resultado and hasattr(resultado, 'cambios_pestana') else 0),
-            'cambios_pestana_maximo': 4  # Límite máximo de cambios de pestañas
+            'cambios_pestana_actuales': resultado.cambios_pestana if resultado else 0,
+            'cambios_pestana_maximo': 4
         })
     
     return JsonResponse({
@@ -5180,9 +5491,8 @@ def obtener_estado_monitoreo(request, pk):
 @login_required
 def finalizar_evaluacion_admin(request, pk):
     """
-    Endpoint para finalizar una evaluación por decisión administrativa
+    Endpoint HTTP POST para finalizar una evaluación por decisión administrativa
     """
-    # Verificar permisos básicos (solo admins pueden finalizar evaluaciones)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
@@ -5191,17 +5501,27 @@ def finalizar_evaluacion_admin(request, pk):
     
     try:
         data = json.loads(request.body)
-        monitoreo_id = data.get('monitoreo_id')
+        monitoreo_id = data.get('monitoreo_id') or data.get('resultado_id')
         motivo = data.get('motivo', 'Finalización administrativa')
         
-        monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
         
-        # Finalizar la evaluación
-        monitoreo.finalizar_por_admin(request.user, motivo)
+        # Buscar por ID de ResultadoEvaluacion o por participante
+        resultado = ResultadoEvaluacion.objects.filter(pk=monitoreo_id).first()
+        if not resultado:
+            resultado = ResultadoEvaluacion.objects.filter(
+                evaluacion=evaluacion,
+                participante_id=data.get('participante_id')
+            ).order_by('-numero_intento').first()
+            
+        if not resultado:
+            return JsonResponse({'error': 'No se encontró un resultado de evaluación para finalizar'}, status=404)
+            
+        resultado.finalizar_por_admin(request.user, motivo)
         
         return JsonResponse({
             'success': True,
-            'message': f'Evaluación de {monitoreo.participante.NombresCompletos} finalizada exitosamente'
+            'message': f'Evaluación de {resultado.participante.NombresCompletos} finalizada exitosamente'
         })
         
     except Exception as e:
@@ -5211,20 +5531,19 @@ def finalizar_evaluacion_admin(request, pk):
 @login_required
 def detalle_monitoreo(request, monitoreo_id):
     """
-    Vista para ver el detalle completo de un monitoreo específico
+    Vista para ver el detalle completo de auditoría de un resultado de evaluación
     """
-    # Verificar permisos básicos (solo admins pueden acceder al detalle del monitoreo)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
         return redirect('quizzes:dashboard')
     
-    monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
+    resultado = get_object_or_404(ResultadoEvaluacion, pk=monitoreo_id)
     
     context = {
-        'monitoreo': monitoreo,
-        'evaluacion': monitoreo.evaluacion,
-        'participante': monitoreo.participante,
-        'resultado': monitoreo.resultado,
+        'resultado': resultado,
+        'evaluacion': resultado.evaluacion,
+        'participante': resultado.participante,
+        'alertas': resultado.alertas_detectadas or [],
     }
     
     return render(request, 'quizzes/detalle_monitoreo.html', context)
@@ -5236,7 +5555,6 @@ def agregar_alerta_manual(request, monitoreo_id):
     """
     Endpoint para agregar alertas manuales desde el panel de administración
     """
-    # Verificar permisos básicos (solo admins pueden agregar alertas manuales)
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
@@ -5245,12 +5563,12 @@ def agregar_alerta_manual(request, monitoreo_id):
     
     try:
         data = json.loads(request.body)
-        tipo_alerta = data.get('tipo_alerta')
-        descripcion = data.get('descripcion')
+        tipo_alerta = data.get('tipo_alerta', 'manual')
+        descripcion = data.get('descripcion', '')
         severidad = data.get('severidad', 'baja')
         
-        monitoreo = get_object_or_404(MonitoreoEvaluacion, pk=monitoreo_id)
-        monitoreo.agregar_alerta(tipo_alerta, descripcion, severidad)
+        resultado = get_object_or_404(ResultadoEvaluacion, pk=monitoreo_id)
+        resultado.agregar_alerta(tipo_alerta, descripcion, severidad)
         
         return JsonResponse({
             'success': True,
@@ -5281,9 +5599,6 @@ def send_credentials_for_clave_temporal(tipo_usuario, user_id):
             
             # Generar nueva contraseña temporal
             nueva_password = get_random_string(length=6)
-            user_obj.password_temporal = nueva_password
-            user_obj.save()
-            # Actualizar también la contraseña del usuario
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
@@ -5298,9 +5613,6 @@ def send_credentials_for_clave_temporal(tipo_usuario, user_id):
             
             # Generar nueva contraseña
             nueva_password = get_random_string(length=8)
-            user_obj.password = nueva_password
-            user_obj.save()
-            # Actualizar también la contraseña del usuario
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
@@ -5434,52 +5746,125 @@ def solicitar_clave_temporal(request):
 
 
 @login_required
+@full_access_required
 def settings_view(request):
-    """Vista de configuración general."""
-    # Permitir solo superusuarios o administradores con acceso total
-    if not (request.user.is_superuser or has_full_access(request.user)):
-        messages.error(request, 'No tiene permisos para acceder a Configuración.')
-        return redirect('quizzes:dashboard')
-    from .models import SystemConfig
+    """Centro de Configuración General, Organizacional y Curricular del Sistema."""
+    from .models import Facultad, Carrera, Concurso, UnidadTematica, Tema
+    
     if request.method == 'POST':
+        action = request.POST.get('action')
         try:
-            if 'num_etapas' in request.POST:
-                num_etapas_val = int(request.POST.get('num_etapas'))
-                if num_etapas_val not in [2, 3]:
-                    messages.error(request, 'Valor de etapas inválido. Debe ser 2 o 3.')
-                    return redirect('quizzes:settings')
-                obj = SystemConfig.objects.first()
-                if obj is None:
-                    obj = SystemConfig(num_etapas=num_etapas_val)
-                else:
-                    obj.num_etapas = num_etapas_val
-                obj.save()
-                messages.success(request, f'Configuración actualizada a {num_etapas_val} etapas.')
+            if action in ['crear_facultad', 'crear_carrera'] and not request.user.is_superuser:
+                messages.error(request, 'Solo el Superadministrador global tiene permisos para gestionar Facultades y Carreras.')
                 return redirect('quizzes:settings')
-            if 'anio_concurso' in request.POST:
-                anio_val = int(request.POST.get('anio_concurso'))
-                current_year = timezone.now().year
-                if anio_val > current_year:
-                    messages.error(request, 'El año no puede ser superior al año actual.')
-                    return redirect('quizzes:settings')
-                obj = SystemConfig.objects.first()
-                if obj is None:
-                    obj = SystemConfig(active_year=anio_val)
+
+            if action == 'crear_facultad':
+                nombre = request.POST.get('nombre', '').strip()
+                siglas = request.POST.get('siglas', '').strip()
+                if nombre:
+                    facultad, created = Facultad.objects.get_or_create(nombre=nombre, defaults={'siglas': siglas})
+                    if not created:
+                        facultad.siglas = siglas
+                        facultad.save()
+                    messages.success(request, f'Facultad "{nombre}" guardada correctamente.')
+                return redirect('/configuracion/?tab=facultades')
+                
+            elif action == 'crear_carrera':
+                facultad_id = request.POST.get('facultad_id')
+                nombre = request.POST.get('nombre', '').strip()
+                codigo = request.POST.get('codigo', '').strip()
+                if facultad_id and nombre:
+                    facultad = Facultad.objects.get(id=facultad_id)
+                    Carrera.objects.create(facultad=facultad, nombre=nombre, codigo=codigo)
+                    messages.success(request, f'Carrera "{nombre}" creada correctamente.')
+                return redirect('/configuracion/?tab=carreras')
+                
+            elif action == 'crear_concurso':
+                carrera_id = request.POST.get('carrera_id')
+                nombre = request.POST.get('nombre', '').strip()
+                num_etapas = int(request.POST.get('num_etapas', 2))
+                fecha_inicio = request.POST.get('fecha_inicio')
+                fecha_fin = request.POST.get('fecha_fin')
+                estado = request.POST.get('estado', 'BORRADOR')
+                if carrera_id and nombre and fecha_inicio and fecha_fin:
+                    carrera = Carrera.objects.get(id=carrera_id)
+                    concurso = Concurso.objects.create(
+                        carrera=carrera, nombre=nombre, num_etapas=num_etapas,
+                        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, estado=estado
+                    )
+                    request.session['active_concurso_id'] = concurso.id
+                    messages.success(request, f'Concurso "{nombre}" creado exitosamente.')
+                return redirect('/configuracion/?tab=concursos')
+                
+            elif action == 'crear_unidad':
+                numero = int(request.POST.get('numero', 1))
+                nombre = request.POST.get('nombre', '').strip()
+                desc = request.POST.get('descripcion', '').strip()
+                
+                carrera = None
+                if request.user.is_superuser:
+                    carrera_id = request.POST.get('carrera_id')
+                    if carrera_id:
+                        carrera = Carrera.objects.filter(id=carrera_id).first()
                 else:
-                    obj.active_year = anio_val
-                obj.save()
-                messages.success(request, f'Año activo actualizado a {anio_val}.')
-                return redirect('quizzes:settings')
+                    admin_profile = getattr(request.user, 'adminprofile', None)
+                    carrera = admin_profile.carrera if admin_profile else None
+
+                if nombre and carrera:
+                    u_obj, created = UnidadTematica.objects.get_or_create(
+                        carrera=carrera, numero=numero, defaults={'nombre': nombre, 'descripcion': desc}
+                    )
+                    if not created:
+                        u_obj.nombre = nombre
+                        u_obj.descripcion = desc
+                        u_obj.save()
+                    messages.success(request, f'Unidad Temática {numero} guardada para la carrera {carrera.nombre}.')
+                elif not carrera:
+                    messages.error(request, 'Debes seleccionar una carrera para asociar la Unidad Temática.')
+                return redirect('/configuracion/?tab=unidades')
+                
+            elif action == 'crear_tema':
+                unidad_id = request.POST.get('unidad_id')
+                nombre = request.POST.get('nombre', '').strip()
+                desc = request.POST.get('descripcion', '').strip()
+                if unidad_id and nombre:
+                    u_obj = UnidadTematica.objects.get(id=unidad_id)
+                    Tema.objects.get_or_create(unidad=u_obj, nombre=nombre, defaults={'descripcion': desc})
+                    messages.success(request, f'Tema "{nombre}" guardado en Unidad {u_obj.numero}.')
+                return redirect('/configuracion/?tab=unidades')
+
         except Exception as e:
-            messages.error(request, f'No se pudo guardar la configuración: {str(e)}')
+            messages.error(request, f'Error al guardar: {str(e)}')
             return redirect('quizzes:settings')
+
     # GET
-    categorias = Categoria.objects.all().order_by('-fecha_creacion')
+    facultades = Facultad.objects.prefetch_related('carreras').all()
+    carreras = Carrera.objects.select_related('facultad').filter(activa=True)
+    admin_profile = getattr(request.user, 'adminprofile', None)
+    admin_carrera = admin_profile.carrera if admin_profile else None
+    
+    if request.user.is_superuser:
+        unidades = UnidadTematica.objects.select_related('carrera').prefetch_related('temas').all()
+        concursos = Concurso.objects.select_related('carrera', 'carrera__facultad').all()
+    elif admin_carrera:
+        unidades = UnidadTematica.objects.filter(carrera=admin_carrera).select_related('carrera').prefetch_related('temas')
+        concursos = Concurso.objects.filter(carrera=admin_carrera).select_related('carrera', 'carrera__facultad')
+    else:
+        unidades = UnidadTematica.objects.none()
+        concursos = Concurso.objects.none()
+
+    concurso_activo_id = request.session.get('active_concurso_id')
+    default_tab = 'facultades' if request.user.is_superuser else 'concursos'
+    tab_activa = request.GET.get('tab', default_tab)
+
     context = {
-        'num_etapas': SystemConfig.get_num_etapas(),
-        'active_year': SystemConfig.get_active_year(),
         'now': timezone.now(),
-        'categorias': categorias,
+        'facultades': facultades,
+        'carreras': carreras,
+        'concursos': concursos,
+        'unidades': unidades,
+        'concurso_activo_id': concurso_activo_id,
+        'tab_activa': tab_activa,
     }
     return render(request, 'quizzes/settings.html', context)
 
@@ -5667,19 +6052,6 @@ def dar_nuevo_intento_evaluacion(request, pk):
         if participante not in participantes_autorizados:
             return JsonResponse({'success': False, 'error': 'Participante no autorizado para esta evaluación'})
         
-        # Obtener el monitoreo actual del participante
-        monitoreo = MonitoreoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante=participante
-        ).first()
-        
-        if not monitoreo:
-            return JsonResponse({'success': False, 'error': 'No se encontró monitoreo para este participante'})
-        
-        # Verificar los intentos actuales del participante
-        intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
-        intentos_usados = participante.get_intentos_usados(evaluacion)
-        
         # Crear o actualizar el registro de intentos para otorgar uno adicional
         intento_config, created = IntentosParticipante.objects.get_or_create(
             participante=participante,
@@ -5698,11 +6070,6 @@ def dar_nuevo_intento_evaluacion(request, pk):
         
         # Recalcular los intentos disponibles después del otorgamiento
         nuevos_intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
-        
-        # Si el participante está finalizado pero ahora tiene intentos, reactivarlo
-        if monitoreo.estado == 'finalizado' and nuevos_intentos_disponibles > 0:
-            monitoreo.estado = 'inactivo'  # Lo ponemos en inactivo para que pueda reiniciar
-            monitoreo.save()
         
         return JsonResponse({
             'success': True,
@@ -5771,32 +6138,12 @@ def reducir_cambios_pestana(request, pk):
         
         # Actualizar el resultado
         resultado_activo.cambios_pestana = nuevos_cambios
+        resultado_activo.agregar_alerta(
+            'admin_reduccion_pestanas',
+            f'Cambios de pestaña reducidos por administrador ({request.user.username}): {cambios_actuales} → {nuevos_cambios}',
+            severidad='baja'
+        )
         resultado_activo.save()
-        
-        # También actualizar el monitoreo si existe
-        monitoreo = MonitoreoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante=participante
-        ).first()
-        
-        if monitoreo:
-            monitoreo.cambios_pestana = nuevos_cambios
-            
-            # Agregar una alerta administrativa del cambio
-            from datetime import datetime
-            alerta = {
-                'tipo': 'admin_reduccion_pestanas',
-                'mensaje': f'Cambios de pestaña reducidos por administrador: {cambios_actuales} → {nuevos_cambios}',
-                'timestamp': datetime.now().isoformat(),
-                'admin_usuario': request.user.username,
-                'cantidad_reducida': cantidad_reduccion
-            }
-            
-            if monitoreo.alertas is None:
-                monitoreo.alertas = []
-            
-            monitoreo.alertas.append(alerta)
-            monitoreo.save()
         
         return JsonResponse({
             'success': True,
@@ -6832,3 +7179,231 @@ def descargar_retroalimentacion_pdf(request, pk):
             'success': False,
             'error': f'Error al generar PDF: {str(e)}'
         }, status=500)
+
+
+# ==============================================================================
+# VISTAS DE GESTIÓN ORGANIZACIONAL (FACULTADES, CARRERAS, CONCURSOS Y TEMAS)
+# ==============================================================================
+
+@login_required
+@superuser_required
+def gestionar_facultades(request):
+    """Permite registrar y gestionar Facultades"""
+    from .models import Facultad
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre', '').strip()
+        siglas = request.POST.get('siglas', '').strip()
+        if nombre:
+            facultad, created = Facultad.objects.get_or_create(nombre=nombre, defaults={'siglas': siglas})
+            if not created:
+                facultad.siglas = siglas
+                facultad.save()
+            messages.success(request, f'Facultad "{nombre}" guardada correctamente.')
+        else:
+            messages.error(request, 'El nombre de la facultad es obligatorio.')
+        return redirect('quizzes:gestionar_facultades')
+    
+    facultades = Facultad.objects.prefetch_related('carreras').all()
+    return render(request, 'quizzes/gestionar_facultades.html', {'facultades': facultades})
+
+
+@login_required
+@superuser_required
+def gestionar_carreras(request):
+    """Permite registrar y gestionar Carreras vinculadas a Facultades"""
+    from .models import Facultad, Carrera
+    if request.method == 'POST':
+        facultad_id = request.POST.get('facultad_id')
+        nombre = request.POST.get('nombre', '').strip()
+        codigo = request.POST.get('codigo', '').strip()
+        if facultad_id and nombre:
+            try:
+                facultad = Facultad.objects.get(id=facultad_id)
+                Carrera.objects.create(facultad=facultad, nombre=nombre, codigo=codigo)
+                messages.success(request, f'Carrera "{nombre}" creada correctamente.')
+            except Exception as e:
+                messages.error(request, f'Error al crear carrera: {str(e)}')
+        else:
+            messages.error(request, 'Debe seleccionar una facultad e ingresar el nombre de la carrera.')
+        return redirect('quizzes:gestionar_carreras')
+    
+    facultades = Facultad.objects.filter(activa=True)
+    carreras = Carrera.objects.select_related('facultad').all()
+    return render(request, 'quizzes/gestionar_carreras.html', {'facultades': facultades, 'carreras': carreras})
+
+
+@login_required
+@full_access_required
+def gestionar_concursos(request):
+    """Permite crear y gestionar Concursos u Olimpiadas por Carrera"""
+    from .models import Concurso, Carrera
+    user = request.user
+    
+    admin_profile = getattr(user, 'adminprofile', None)
+    if not user.is_superuser and admin_profile and admin_profile.carrera:
+        carreras = Carrera.objects.filter(id=admin_profile.carrera.id)
+    else:
+        carreras = Carrera.objects.filter(activa=True)
+        
+    if request.method == 'POST':
+        carrera_id = request.POST.get('carrera_id')
+        nombre = request.POST.get('nombre', '').strip()
+        num_etapas = int(request.POST.get('num_etapas', 2))
+        fecha_inicio = request.POST.get('fecha_inicio')
+        fecha_fin = request.POST.get('fecha_fin')
+        estado = request.POST.get('estado', 'BORRADOR')
+        
+        if carrera_id and nombre and fecha_inicio and fecha_fin:
+            try:
+                carrera = Carrera.objects.get(id=carrera_id)
+                concurso = Concurso.objects.create(
+                    carrera=carrera,
+                    nombre=nombre,
+                    num_etapas=num_etapas,
+                    fecha_inicio=fecha_inicio,
+                    fecha_fin=fecha_fin,
+                    estado=estado
+                )
+                request.session['active_concurso_id'] = concurso.id
+                messages.success(request, f'Concurso "{nombre}" creado exitosamente.')
+            except ValidationError as e:
+                error_msg = extract_validation_error_message(e)
+                messages.error(request, f'Error al crear concurso: {error_msg}')
+            except Exception as e:
+                messages.error(request, f'Error al crear concurso: {str(e)}')
+        else:
+            messages.error(request, 'Faltan campos obligatorios para el concurso.')
+        return redirect('quizzes:gestionar_concursos')
+        
+    concursos = Concurso.objects.select_related('carrera', 'carrera__facultad').all()
+    
+    # Agregar contador de registros vinculados a cada concurso para deshabilitar campos en la plantilla
+    for conc in concursos:
+        conc.tiene_registros = (
+            conc.participantes.exists() or
+            conc.representantes.exists() or
+            conc.grupos.exists() or
+            conc.evaluaciones.exists()
+        )
+        
+    return render(request, 'quizzes/gestionar_concursos.html', {
+        'concursos': concursos, 
+        'carreras': carreras,
+    })
+
+
+@login_required
+@full_access_required
+def editar_concurso(request, concurso_id):
+    """Permite editar los datos de un concurso existente aplicando reglas de integridad"""
+    from .models import Concurso, Carrera, Evaluacion
+    from django.utils import timezone
+
+    concurso = get_object_or_404(Concurso, id=concurso_id)
+
+    if request.method == 'POST':
+        # 1. Restricción de Evaluación Activa en Ejecución
+        now = timezone.now()
+        evaluaciones_activas = Evaluacion.objects.filter(
+            concurso=concurso,
+            start_time__lte=now,
+            end_time__gte=now
+        )
+        if evaluaciones_activas.exists():
+            messages.error(request, '⚠️ No se puede editar el concurso porque tiene una evaluación en curso activa en este momento.')
+            return redirect(request.META.get('HTTP_REFERER', 'quizzes:gestionar_concursos'))
+
+        nombre = request.POST.get('nombre', '').strip()
+        carrera_id = request.POST.get('carrera_id')
+        num_etapas = request.POST.get('num_etapas')
+        fecha_inicio = request.POST.get('fecha_inicio')
+        fecha_fin = request.POST.get('fecha_fin')
+        estado = request.POST.get('estado')
+
+        if not (nombre and fecha_inicio and fecha_fin):
+            messages.error(request, 'Faltan campos obligatorios para actualizar el concurso.')
+            return redirect(request.META.get('HTTP_REFERER', 'quizzes:gestionar_concursos'))
+
+        try:
+            if carrera_id:
+                nueva_carrera = get_object_or_404(Carrera, id=carrera_id)
+                concurso.carrera = nueva_carrera
+
+            concurso.nombre = nombre
+            if num_etapas:
+                concurso.num_etapas = int(num_etapas)
+            concurso.fecha_inicio = fecha_inicio
+            concurso.fecha_fin = fecha_fin
+            if estado:
+                concurso.estado = estado
+
+            concurso.save()
+            messages.success(request, f'Concurso "{concurso.nombre}" actualizado exitosamente.')
+        except ValidationError as e:
+            error_msg = extract_validation_error_message(e)
+            messages.error(request, f'Error al actualizar concurso: {error_msg}')
+        except Exception as e:
+            messages.error(request, f'Error al actualizar concurso: {str(e)}')
+
+    return redirect(request.META.get('HTTP_REFERER', 'quizzes:gestionar_concursos'))
+
+
+@login_required
+def cambiar_contexto_activo(request):
+    """
+    Vista para cambiar el Concurso y/o Carrera activos en la sesión del usuario (Selector Navbar).
+    """
+    if request.method in ['POST', 'GET']:
+        concurso_id = request.POST.get('concurso_id') or request.GET.get('concurso_id')
+        carrera_id = request.POST.get('carrera_id') or request.GET.get('carrera_id')
+        
+        if carrera_id is not None and request.user.is_superuser:
+            if str(carrera_id) == 'ALL':
+                request.session['active_carrera_id'] = 'ALL'
+                request.session['active_concurso_id'] = 'ALL'
+            else:
+                try:
+                    request.session['active_carrera_id'] = int(carrera_id)
+                    request.session['active_concurso_id'] = 'ALL'
+                except ValueError:
+                    pass
+
+        if concurso_id is not None:
+            if str(concurso_id) == 'ALL':
+                request.session['active_concurso_id'] = 'ALL'
+            else:
+                try:
+                    request.session['active_concurso_id'] = int(concurso_id)
+                except ValueError:
+                    pass
+                    
+        next_url = request.META.get('HTTP_REFERER') or reverse('quizzes:dashboard')
+        return redirect(next_url)
+
+
+@login_required
+@full_access_required
+def gestionar_unidades_temas(request):
+    """Gestión de Unidades Temáticas y Temas académicos"""
+    from .models import UnidadTematica, Tema
+    if request.method == 'POST':
+        tipo = request.POST.get('tipo')
+        if tipo == 'unidad':
+            numero = int(request.POST.get('numero', 1))
+            nombre = request.POST.get('nombre', '').strip()
+            desc = request.POST.get('descripcion', '').strip()
+            if nombre:
+                UnidadTematica.objects.get_or_create(numero=numero, defaults={'nombre': nombre, 'descripcion': desc})
+                messages.success(request, f'Unidad Temática {numero} guardada.')
+        elif tipo == 'tema':
+            unidad_id = request.POST.get('unidad_id')
+            nombre = request.POST.get('nombre', '').strip()
+            desc = request.POST.get('descripcion', '').strip()
+            if unidad_id and nombre:
+                u_obj = UnidadTematica.objects.get(id=unidad_id)
+                Tema.objects.get_or_create(unidad=u_obj, nombre=nombre, defaults={'descripcion': desc})
+                messages.success(request, f'Tema "{nombre}" guardado en la Unidad {u_obj.numero}.')
+        return redirect('quizzes:gestionar_unidades_temas')
+        
+    unidades = UnidadTematica.objects.prefetch_related('temas').all()
+    return render(request, 'quizzes/gestionar_unidades_temas.html', {'unidades': unidades})

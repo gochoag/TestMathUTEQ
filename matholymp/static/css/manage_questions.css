@@ -394,7 +394,6 @@
 
 .actions-section .btn {
     white-space: nowrap; /* Evita que el texto de los botones se rompa */
-    min-width: fit-content;
 }
 
 /* Responsive para el header */

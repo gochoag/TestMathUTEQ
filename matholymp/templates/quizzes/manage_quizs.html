@@ -29,10 +29,19 @@
                         </small>
                     </div>
                     <div class="actions-section">
+                        {% if active_concurso %}
                         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
                             <i class="bi bi-plus-circle me-2"></i>
                             Crear Evaluación
                         </button>
+                        {% else %}
+                        <div class="btn-locked-wrapper" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true" title="<i class='bi bi-info-circle me-1'></i> Selecciona un <strong>Concurso activo</strong> en la barra superior para habilitar esta acción">
+                            <button class="btn btn-secondary btn-locked" type="button" onclick="shakeLockedBtn(this)">
+                                <i class="bi bi-lock-fill me-2 lock-icon"></i>
+                                Crear Evaluación
+                            </button>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -114,7 +123,7 @@
                                                     <strong>Preguntas:</strong>
                                                 </small>
                                                 <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
-                                                <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                                <p class="mb-1"><small class="{% if evaluacion.preguntas_a_mostrar %}text-info{% else %}text-warning{% endif %}">Mostrará al estudiante: <strong>{% if evaluacion.preguntas_a_mostrar %}{{ evaluacion.preguntas_a_mostrar }} preguntas{% else %}Sin configurar{% endif %}</strong></small></p>
                                                 {% if evaluacion.preguntas.count == 0 %}
                                                     <div class="mt-2">
                                                         <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
@@ -161,6 +170,7 @@
                 </div>
             </div>
 
+            {% if num_etapas == 3 %}
             <!-- Etapa 2 - Semifinal -->
             <div class="row mb-2">
                 <div class="col-12">
@@ -170,7 +180,7 @@
                         </div>
                         <div>
                             <h3 class="mb-1">Etapa 2 - Semifinal</h3>
-                            <p class="text-muted mb-0">Solo los {% if num_etapas == 3 %}15{% else %}5{% endif %} mejores de la Etapa 1</p>
+                            <p class="text-muted mb-0">Solo los 15 mejores de la Etapa 1</p>
                         </div>
                     </div>
                 </div>
@@ -227,7 +237,7 @@
                                                 <strong>Preguntas:</strong>
                                             </small>
                                             <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
-                                            <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                            <p class="mb-1"><small class="{% if evaluacion.preguntas_a_mostrar %}text-info{% else %}text-warning{% endif %}">Mostrará al estudiante: <strong>{% if evaluacion.preguntas_a_mostrar %}{{ evaluacion.preguntas_a_mostrar }} preguntas{% else %}Sin configurar{% endif %}</strong></small></p>
                                             {% if evaluacion.preguntas.count == 0 %}
                                                 <div class="mt-2">
                                                     <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
@@ -276,16 +286,17 @@
                     <hr class="etapa-separator">
                 </div>
             </div>
+            {% endif %}
 
             <!-- Etapa 3 - Final -->
             <div class="row mb-2">
                 <div class="col-12">
                     <div class="d-flex align-items-center mb-2">
                         <div class="etapa-badge etapa-3 me-3">
-                            <span class="etapa-number">3</span>
+                            <span class="etapa-number">{% if num_etapas == 3 %}3{% else %}2{% endif %}</span>
                         </div>
                         <div>
-                            <h3 class="mb-1">Etapa 3 - Final</h3>
+                            <h3 class="mb-1">Etapa {% if num_etapas == 3 %}3{% else %}2{% endif %} - Final</h3>
                             <p class="text-muted mb-0">Solo los 5 mejores de la Etapa {% if num_etapas == 3 %}2{% else %}1{% endif %}</p>
                         </div>
                     </div>
@@ -294,14 +305,14 @@
             
             <div class="row mb-2">
                 {% for evaluacion in evaluaciones %}
-                    {% if evaluacion.etapa == 3 %}
+                    {% if evaluacion.etapa == 3 or evaluacion.etapa == 2 and num_etapas == 2 %}
                         <div class="col-12 col-md-6 col-lg-4 mb-2">
                                 <div class="card h-100 shadow-sm evaluacion-card etapa-3-card">
                                     <div class="card-header bg-success text-white">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
                                                 <h5 class="card-title mb-0">{{ evaluacion.title }}</h5>
-                                                <small class="text-light">Etapa 3 - Final</small>
+                                                <small class="text-light">Etapa {% if num_etapas == 3 %}3{% else %}2{% endif %} - Final</small>
                                             </div>
                                             <div class="dropdown">
                                                 <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -343,7 +354,7 @@
                                                 <strong>Preguntas:</strong>
                                             </small>
                                             <p class="mb-1">{{ evaluacion.preguntas.count }} preguntas</p>
-                                            <p class="mb-1"><small class="text-info">Se mostrarán {{ evaluacion.preguntas_a_mostrar }} al estudiante</small></p>
+                                            <p class="mb-1"><small class="{% if evaluacion.preguntas_a_mostrar %}text-info{% else %}text-warning{% endif %}">Mostrará al estudiante: <strong>{% if evaluacion.preguntas_a_mostrar %}{{ evaluacion.preguntas_a_mostrar }} preguntas{% else %}Sin configurar{% endif %}</strong></small></p>
                                             {% if evaluacion.preguntas.count == 0 %}
                                                 <div class="mt-2">
                                                     <a href="{% url 'quizzes:manage_questions' eval_id=evaluacion.id %}" class="btn btn-sm btn-success">
@@ -367,7 +378,7 @@
                                         </div>
                                         <div class="alert alert-success">
                                             <i class="bi bi-trophy me-2"></i>
-                                            <small>Los participantes se seleccionan automáticamente de la Etapa 2</small>
+                                            <small>Los participantes se seleccionan automáticamente de la Etapa {% if num_etapas == 3 %}2{% else %}1{% endif %}</small>
                                         </div>
                                     </div>
                                     <div class="card-footer bg-light">
@@ -391,10 +402,19 @@
                             <i class="bi bi-clipboard-x display-1 text-muted"></i>
                             <h4 class="mt-3 text-muted">No hay evaluaciones creadas</h4>
                             <p class="text-muted">Comienza creando tu primera evaluación</p>
+                            {% if active_concurso %}
                             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createQuizModal">
                                 <i class="bi bi-plus-circle me-2"></i>
                                 Crear Evaluación
                             </button>
+                            {% else %}
+                            <div class="btn-locked-wrapper d-inline-block" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="<i class='bi bi-info-circle me-1'></i> Selecciona un <strong>Concurso activo</strong> en la barra superior para habilitar esta acción">
+                                <button class="btn btn-secondary btn-locked" type="button" onclick="shakeLockedBtn(this)">
+                                    <i class="bi bi-lock-fill me-2 lock-icon"></i>
+                                    Crear Evaluación
+                                </button>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 {% endif %}
@@ -544,9 +564,11 @@
                                             <option value="">Seleccionar etapa</option>
                                             <option value="1">Etapa 1 - Clasificatoria</option>
                                             {% if num_etapas == 3 %}
-                                            <option value="2">Etapa 2 - Semifinal</option>
+                                                <option value="2">Etapa 2 - Semifinal</option>
+                                                <option value="3">Etapa 3 - Final</option>
+                                            {% else %}
+                                                <option value="2">Etapa 2 - Final</option>
                                             {% endif %}
-                                            <option value="3">Etapa 3 - Final</option>
                                         </select>
                                          <div class="form-text">Etapa de la olimpiada</div>
                                     </div>
@@ -601,12 +623,6 @@
                                 <div class="form-text">Información adicional sobre la evaluación</div>
                             </div>
 
-                            <div class="mb-3">
-                                <label for="preguntas_a_mostrar" class="form-label">Preguntas a mostrar <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="preguntas_a_mostrar" name="preguntas_a_mostrar" min="1" max="100" value="10" required>
-                                <div class="form-text">Número de preguntas que se mostrarán al estudiante (selección aleatoria)</div>
-                            </div>
-
                             <hr>
 
                             <!-- Información de Ayuda -->
@@ -646,6 +662,25 @@ window.createEvaluacionUrl    = "{% url 'quizzes:create_evaluacion' %}";
 window.deleteEvaluacionUrl    = "{% url 'quizzes:delete_evaluacion' pk=0 %}";
 window.participantesUrl       = "{% url 'quizzes:gestionar_participantes_evaluacion' pk=0 %}";
 window.isSuperUser            = {{ has_full_access|yesno:"true,false" }};
+
+// ── Locked button: shake animation on click ──
+function shakeLockedBtn(btn) {
+    btn.classList.remove('shaking');
+    // Force reflow so the animation restarts even on rapid clicks
+    void btn.offsetWidth;
+    btn.classList.add('shaking');
+    btn.addEventListener('animationend', function handler() {
+        btn.classList.remove('shaking');
+        btn.removeEventListener('animationend', handler);
+    });
+}
+
+// Init Bootstrap tooltips for locked wrappers
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+        new bootstrap.Tooltip(el, { trigger: 'hover focus' });
+    });
+});
 </script>
 <script src="{% static 'js/manage_quizs.js' %}"></script>
 {% endblock %}

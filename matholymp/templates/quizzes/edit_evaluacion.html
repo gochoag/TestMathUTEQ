@@ -70,29 +70,14 @@
                                     </div>
                                 </div>
 
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="evaluacionPreguntasMostrar" class="form-label">
-                                                <i class="bi bi-question-circle me-1"></i>
-                                                Preguntas a mostrar <span class="text-danger">*</span>
-                                            </label>
-                                            <input type="number" class="form-control" id="evaluacionPreguntasMostrar" 
-                                                   value="{{ evaluacion.preguntas_a_mostrar }}" min="1" max="100" required>
-                                            <div class="form-text">Numero de preguntas que se mostraran al estudiante (seleccion aleatoria)</div>
-                                        </div>
+                                <div class="alert alert-info py-2 mb-3 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        La distribución de preguntas por Unidad Temática se gestiona en <strong>Gestionar Preguntas</strong>.
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                <i class="bi bi-info-circle me-1"></i>
-                                                Total de preguntas registradas
-                                            </label>
-                                            <div class="form-control-plaintext">
-                                                <span class="badge bg-primary fs-6">{{ evaluacion.preguntas.count }}</span>
-                                            </div>
-                                            <div class="form-text">Preguntas disponibles en el banco</div>
-                                        </div>
+                                    <div>
+                                        <strong>Total configurado:</strong>
+                                        <span class="badge {% if evaluacion.preguntas_a_mostrar %}bg-primary{% else %}bg-warning text-dark{% endif %} fs-6 ms-1">{% if evaluacion.preguntas_a_mostrar %}{{ evaluacion.preguntas_a_mostrar }} preguntas{% else %}Sin configurar{% endif %}</span>
                                     </div>
                                 </div>
 

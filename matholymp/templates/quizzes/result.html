@@ -21,9 +21,9 @@
                     <div class="mb-4">
                         <div class="score-badge d-inline-block text-center" 
                              style="min-width: 200px; height: 80px; 
-                                    background: {% if resultado.get_puntaje_porcentaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.get_puntaje_porcentaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                    background: {% if resultado.puntos_obtenidos >= 8.0 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntos_obtenidos >= 6.0 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
                                     border-radius: 16px; 
-                                    border: 3px solid {% if resultado.get_puntaje_porcentaje >= 80 %}#28a745{% elif resultado.get_puntaje_porcentaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                    border: 3px solid {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#ffc107{% else %}#dc3545{% endif %}; 
                                     box-shadow: 0 6px 20px rgba(0,0,0,0.1);
                                     display: flex;
                                     align-items: center;
@@ -32,7 +32,7 @@
                             <div class="score-content">
                                 <span class="score-number fw-bold" 
                                       style="font-size: 2rem; 
-                                             color: {% if resultado.get_puntaje_porcentaje >= 80 %}#28a745{% elif resultado.get_puntaje_porcentaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                             color: {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#e0a800{% else %}#dc3545{% endif %}; 
                                              font-family: 'Segoe UI', system-ui, sans-serif;
                                              letter-spacing: -1px;
                                              display: block;
@@ -67,25 +67,19 @@
                                 <div class="stat-icon mb-3">
                                     <i class="bi bi-list-check text-secondary" style="font-size: 2rem;"></i>
                                 </div>
-                                <h3 class="text-secondary mb-2 fw-bold" style="font-size: 1.5rem;">{{ total_questions }}</h3>
-                                <p class="text-muted mb-0 fw-medium" style="font-size: 0.85rem; letter-spacing: 0.5px;">PREGUNTAS</p>
+                                <h3 class="text-secondary mb-2 fw-bold" style="font-size: 1.5rem;">{{ resultado.numero_intento }}</h3>
+                                <p class="text-muted mb-0 fw-medium" style="font-size: 0.85rem; letter-spacing: 0.5px;">NÚMERO INTENTO</p>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="row g-2">
-                        <div class="col-12 col-md-6">
-                            <a href="{% url 'quizzes:quiz' %}" class="btn btn-primary btn-lg w-100 shadow-sm" style="background: linear-gradient(135deg, #007bff, #0056b3); border: none; border-radius: 12px; padding: 14px 24px;">
-                                <i class="bi bi-arrow-left me-2"></i>
-                                Volver a Evaluaciones
-                            </a>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <a href="{% url 'quizzes:dashboard' %}" class="btn btn-outline-primary btn-lg w-100 shadow-sm" style="border-radius: 12px; padding: 14px 24px; border: 2px solid #007bff;">
-                                <i class="bi bi-house me-2"></i>
-                                Ir al Dashboard
-                            </a>
-                        </div>
+                    <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
+                        <a href="{% url 'quizzes:revisar_intento' resultado.pk %}" class="btn btn-outline-primary btn-lg px-4 rounded-pill fw-semibold">
+                            <i class="bi bi-journal-check me-2"></i>Revisar Examen
+                        </a>
+                        <a href="{% url 'quizzes:student_quizs' %}" class="btn btn-primary btn-lg px-4 rounded-pill fw-semibold">
+                            <i class="bi bi-house me-2"></i>Volver a Mis Evaluaciones
+                        </a>
                     </div>
                 </div>
             </div>

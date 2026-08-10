@@ -830,4 +830,97 @@ function corregirAlineacionImagenesMejorada() {
         });
     });
 }
+
+// Funciones para la gestión de cuotas de preguntas por Unidad Temática
+function actualizarTotalCuotasVisual() {
+    let total = 0;
+    document.querySelectorAll('.cuota-unidad-input').forEach(input => {
+        total += parseInt(input.value || 0);
+    });
+    const badge = document.getElementById('badgeTotalCuotas');
+    const notice = document.getElementById('recommendedQuotaNotice');
+    if (badge) {
+        badge.textContent = total;
+    }
+    if (notice) {
+        if (total === 10) {
+            notice.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Estándar de 10 preguntas alcanzado</span>';
+        } else {
+            notice.innerHTML = '<span class="text-primary">(Recomendado: 10 preguntas)</span>';
+        }
+    }
+}
+
+async function guardarCuotasUnidad() {
+    if (!window.canModifyQuestions) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Acción no permitida',
+            text: window.restrictionMessage || 'No se pueden modificar las cuotas de esta evaluación.'
+        });
+        return;
+    }
+
+    const cuotas_unidades = [];
+    let total = 0;
+    document.querySelectorAll('.cuota-unidad-input').forEach(input => {
+        const uId = input.getAttribute('data-unidad-id');
+        const cant = parseInt(input.value || 0);
+        if (uId) {
+            cuotas_unidades.push({ unidad_id: parseInt(uId), cantidad: cant });
+            total += cant;
+        }
+    });
+
+    if (total <= 0) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Total de preguntas inválido',
+            text: 'La suma total de preguntas a mostrar debe ser mayor a 0.'
+        });
+        return;
+    }
+
+    Swal.fire({
+        title: 'Guardando distribución...',
+        text: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+
+    try {
+        const response = await fetch(window.updateCuotasUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ cuotas_unidades })
+        });
+        const data = await response.json();
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: '¡Guardado!',
+                text: data.message || 'Distribución de preguntas actualizada exitosamente.',
+                timer: 1500,
+                showConfirmButton: false
+            });
+            actualizarTotalCuotasVisual();
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'No se pudo guardar la distribución.'
+            });
+        }
+    } catch (error) {
+        console.error('Error al guardar cuotas:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de red',
+            text: 'Ocurrió un error al guardar la distribución de preguntas.'
+        });
+    }
+}
 

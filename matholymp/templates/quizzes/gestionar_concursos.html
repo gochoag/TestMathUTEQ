@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h1 class="h3 mb-0">
+        <i class="bi bi-award me-2"></i>
+        Gestión de Concursos u Olimpiadas
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><a href="{% url 'quizzes:dashboard' %}">Dashboard</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Concursos</li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2.5">
+          <h5 class="card-title mb-0">
+            <i class="bi bi-trophy me-2"></i>Concursos Registrados
+          </h5>
+          <button type="button" class="btn btn-success btn-sm fw-bold px-3" data-bs-toggle="modal" data-bs-target="#modalCrearConcurso">
+            <i class="bi bi-plus-circle me-1"></i> Nuevo Concurso
+          </button>
+        </div>
+        <div class="card-body">
+          {% if concursos %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Nombre del Concurso</th>
+                    <th>Carrera</th>
+                    <th>Fases</th>
+                    <th>Estado</th>
+                    <th class="text-end">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for conc in concursos %}
+                    <tr {% if active_concurso and active_concurso.id == conc.id %}class="table-warning"{% endif %}>
+                      <td>
+                        <strong>{{ conc.nombre }}</strong>
+                        <br>
+                        <small class="text-muted"><i class="bi bi-calendar me-1"></i>{{ conc.fecha_inicio|date:"d/m/Y" }} al {{ conc.fecha_fin|date:"d/m/Y" }}</small>
+                      </td>
+                      <td><small class="fw-semibold">{{ conc.carrera.nombre }}</small></td>
+                      <td><span class="badge bg-info">{{ conc.num_etapas }} Etapas</span></td>
+                      <td>
+                        {% if conc.estado == 'EN_CURSO' %}
+                          <span class="badge bg-success">En Curso</span>
+                        {% elif conc.estado == 'BORRADOR' %}
+                          <span class="badge bg-secondary">Borrador</span>
+                        {% else %}
+                          <span class="badge bg-dark">{{ conc.get_estado_display }}</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-primary fw-semibold" data-bs-toggle="modal" data-bs-target="#modalEditarConcurso{{ conc.id }}">
+                          <i class="bi bi-pencil-square me-1"></i> Editar
+                        </button>
+                      </td>
+                    </tr>
+
+                    <!-- Modal Editar Concurso -->
+                    <div class="modal fade" id="modalEditarConcurso{{ conc.id }}" tabindex="-1" aria-labelledby="modalEditarConcursoLabel{{ conc.id }}" aria-hidden="true">
+                      <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                          <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold" id="modalEditarConcursoLabel{{ conc.id }}">
+                              <i class="bi bi-pencil-square me-2"></i>Editar Concurso
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                          </div>
+                          <form method="post" action="{% url 'quizzes:editar_concurso' conc.id %}">
+                            {% csrf_token %}
+                            <div class="modal-body text-start">
+                              <div class="mb-3">
+                                <label class="form-label fw-bold">Carrera Organizadora</label>
+                                {% if conc.tiene_registros %}
+                                  <input type="hidden" name="carrera_id" value="{{ conc.carrera.id }}">
+                                  <select class="form-select bg-light text-muted" disabled>
+                                    <option selected>{{ conc.carrera.nombre }} ({{ conc.carrera.facultad.siglas|default:conc.carrera.facultad.nombre }})</option>
+                                  </select>
+                                  <small class="text-danger d-block mt-1" style="font-size: 0.78rem;">
+                                    <i class="bi bi-lock-fill me-1"></i> La carrera no puede modificarse porque el concurso ya posee participantes, representantes, grupos o evaluaciones registradas.
+                                  </small>
+                                {% else %}
+                                  <select name="carrera_id" class="form-select" required>
+                                    {% for c in carreras %}
+                                      <option value="{{ c.id }}" {% if conc.carrera.id == c.id %}selected{% endif %}>
+                                        {{ c.nombre }} ({{ c.facultad.siglas|default:c.facultad.nombre }})
+                                      </option>
+                                    {% endfor %}
+                                  </select>
+                                {% endif %}
+                              </div>
+
+                              <div class="mb-3">
+                                <label class="form-label fw-bold">Nombre del Concurso <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="nombre" value="{{ conc.nombre }}" required>
+                              </div>
+
+                              <div class="mb-3">
+                                <label class="form-label fw-bold">Fases / Etapas</label>
+                                <select name="num_etapas" class="form-select">
+                                  <option value="2" {% if conc.num_etapas == 2 %}selected{% endif %}>2 Etapas (Eliminatoria y Final)</option>
+                                  <option value="3" {% if conc.num_etapas == 3 %}selected{% endif %}>3 Etapas (Clasificatoria, Semifinal y Final)</option>
+                                </select>
+                              </div>
+
+                              <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                  <label class="form-label fw-bold">Fecha Inicio <span class="text-danger">*</span></label>
+                                  <input type="date" class="form-control" name="fecha_inicio" value="{{ conc.fecha_inicio|date:'Y-m-d' }}" required>
+                                </div>
+                                <div class="col-6">
+                                  <label class="form-label fw-bold">Fecha Fin <span class="text-danger">*</span></label>
+                                  <input type="date" class="form-control" name="fecha_fin" value="{{ conc.fecha_fin|date:'Y-m-d' }}" required>
+                                </div>
+                              </div>
+
+                              <div class="mb-3">
+                                <label class="form-label fw-bold">Estado</label>
+                                <select name="estado" class="form-select">
+                                  <option value="BORRADOR" {% if conc.estado == 'BORRADOR' %}selected{% endif %}>Borrador / Inscripción</option>
+                                  <option value="EN_CURSO" {% if conc.estado == 'EN_CURSO' %}selected{% endif %}>En Curso</option>
+                                  <option value="FINALIZADO" {% if conc.estado == 'FINALIZADO' %}selected{% endif %}>Finalizado</option>
+                                  <option value="ARCHIVADO" {% if conc.estado == 'ARCHIVADO' %}selected{% endif %}>Archivado</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div class="modal-footer bg-light">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                              <button type="submit" class="btn btn-primary fw-bold">
+                                <i class="bi bi-save me-1"></i> Guardar Cambios
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-center py-4 text-muted">
+              <i class="bi bi-trophy display-4"></i>
+              <p class="mt-2 mb-0">No hay concursos registrados. Haz clic en "Nuevo Concurso" para comenzar.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear Concurso -->
+<div class="modal fade" id="modalCrearConcurso" tabindex="-1" aria-labelledby="modalCrearConcursoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title fw-bold" id="modalCrearConcursoLabel">
+          <i class="bi bi-plus-circle me-2"></i>Crear Nuevo Concurso
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <div class="modal-body text-start">
+          <div class="mb-3">
+            <label for="carrera_id" class="form-label fw-bold">Carrera Organizadora <span class="text-danger">*</span></label>
+            <select name="carrera_id" id="carrera_id" class="form-select" required>
+              <option value="">-- Seleccionar Carrera --</option>
+              {% for c in carreras %}
+                <option value="{{ c.id }}">{{ c.nombre }} ({{ c.facultad.siglas|default:c.facultad.nombre }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="nombre" class="form-label fw-bold">Nombre del Concurso <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="nombre" name="nombre" placeholder="Ej: I Olimpiada de Física FIC" required>
+          </div>
+          <div class="mb-3">
+            <label for="num_etapas" class="form-label fw-bold">Fases / Etapas</label>
+            <select name="num_etapas" id="num_etapas" class="form-select">
+              <option value="2">2 Etapas (Eliminatoria y Final)</option>
+              <option value="3">3 Etapas (Clasificatoria, Semifinal y Final)</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label for="fecha_inicio" class="form-label fw-bold">Fecha Inicio <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" required>
+            </div>
+            <div class="col-6">
+              <label for="fecha_fin" class="form-label fw-bold">Fecha Fin <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="estado" class="form-label fw-bold">Estado Inicial</label>
+            <select name="estado" id="estado" class="form-select">
+              <option value="BORRADOR">Borrador / Inscripción</option>
+              <option value="EN_CURSO">En Curso</option>
+              <option value="FINALIZADO">Finalizado</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success fw-bold">
+            <i class="bi bi-save me-1"></i> Guardar Concurso
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

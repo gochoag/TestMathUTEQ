@@ -40,6 +40,60 @@
             </div>
             {% endif %}
             
+            <!-- Panel de Configuración de Distribución del Examen por Unidades Temáticas -->
+            <div class="card mb-4 shadow-sm border-primary">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-sliders me-2"></i>
+                        <strong>Configuración de Distribución del Examen (Cuotas por Unidad Temática)</strong>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-light text-dark me-2 fs-6">Total a mostrar: <strong id="badgeTotalCuotas">{{ evaluacion.preguntas_a_mostrar|default:"0" }}</strong> preguntas</span>
+                        <button class="btn btn-success btn-sm font-weight-bold" id="btnGuardarCuotas" onclick="guardarCuotasUnidad()" {% if not can_modify_questions %}disabled{% endif %}>
+                            <i class="bi bi-check-circle me-1"></i> Guardar Distribución
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body bg-light">
+                    {% if unidades_info %}
+                    <div class="row g-3">
+                        {% for item in unidades_info %}
+                        <div class="col-md-6 col-lg-3">
+                            <div class="p-3 bg-white rounded border h-100 d-flex flex-column justify-content-between">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-dark">Unidad {{ item.unidad.numero }}</span>
+                                        <span class="badge bg-secondary" title="Preguntas creadas en el banco para esta unidad">
+                                            Banco: {{ item.disponibles }}
+                                        </span>
+                                    </div>
+                                    <small class="text-muted d-block text-truncate mb-2" title="{{ item.unidad.nombre }}">{{ item.unidad.nombre }}</small>
+                                </div>
+                                <div>
+                                    <label for="input_cuota_unidad_{{ item.unidad.id }}" class="form-label small text-muted mb-1">Preguntas a mostrar:</label>
+                                    <input type="number" class="form-control form-control-sm cuota-unidad-input" 
+                                           id="input_cuota_unidad_{{ item.unidad.id }}"
+                                           data-unidad-id="{{ item.unidad.id }}"
+                                           value="{{ item.cantidad }}" min="0" max="100" 
+                                           oninput="actualizarTotalCuotasVisual()"
+                                           {% if not can_modify_questions %}disabled{% endif %}>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-3 alert alert-info py-2 mb-0 d-flex justify-content-between align-items-center">
+                        <small><i class="bi bi-info-circle me-1"></i> Configura cuántas preguntas de cada Unidad Temática se mostrarán de forma aleatoria a los estudiantes durante la evaluación.</small>
+                        <small id="recommendedQuotaNotice" class="fw-bold text-primary">(Recomendado: 10 preguntas)</small>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning py-2 mb-0">
+                        <i class="bi bi-exclamation-triangle me-1"></i> No se encontraron Unidades Temáticas registradas para esta carrera.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
             <div class="card mb-4 shadow-sm">
                 <div class="card-header bg-primary text-white">
                     <div class="d-flex justify-content-between align-items-center">
@@ -58,9 +112,9 @@
                                         </div>
                                         <div class="pregunta-info">
                                             <div class="pregunta-categoria mb-2">
-                                                <label class="form-label small mb-1">Categoría:</label>
+                                                <label class="form-label small mb-1">Categoría/Tema:</label>
                                                 {% if pregunta.categoria %}
-                                                    <span class="badge bg-info">{{ pregunta.categoria.nombre }}</span>
+                                                    <span class="badge bg-info">{% if pregunta.categoria.unidad %}[Unidad {{ pregunta.categoria.unidad.numero }}] {% endif %}{{ pregunta.categoria.nombre }}</span>
                                                 {% else %}
                                                     <span class="badge bg-secondary">Sin categoría</span>
                                                 {% endif %}
@@ -159,12 +213,12 @@
                                         <div class="col-md-6">
                                             <label for="categoriaPregunta" class="form-label">
                                                 <i class="bi bi-tag me-1"></i>
-                                                Categoría <span class="text-danger">*</span>
+                                                Categoría / Tema <span class="text-danger">*</span>
                                             </label>
                                             <select class="form-select" id="categoriaPregunta" name="categoria" required>
-                                                <option value="">Seleccionar categoría...</option>
+                                                <option value="">Seleccionar categoría (Tema)...</option>
                                                 {% for categoria in categorias %}
-                                                    <option value="{{ categoria.id }}">{{ categoria.nombre }}</option>
+                                                    <option value="{{ categoria.id }}">{% if categoria.unidad %}[Unidad {{ categoria.unidad.numero }}] {% endif %}{{ categoria.nombre }}</option>
                                                 {% empty %}
                                                     <option value="" disabled>No hay categorías disponibles</option>
                                                 {% endfor %}
@@ -174,7 +228,7 @@
                                                     <small>⚠️ No hay categorías activas. Ve a Configuración → Gestión de Categorías para crear algunas.</small>
                                                 </div>
                                             {% endif %}
-                                            <div class="form-text">Categoría temática de la pregunta</div>
+                                            <div class="form-text">Categoría temática</div>
                                         </div>
                                         <div class="col-md-6">
                                             <label for="puntosPregunta" class="form-label">
@@ -183,7 +237,6 @@
                                             </label>
                                             <input type="number" class="form-control" id="puntosPregunta" name="puntos" 
                                                    min="1" max="10" value="1" required>
-                                            <div class="form-text">Puntos que vale esta pregunta</div>
                                         </div>
                                     </div>
                                 </div>
@@ -235,6 +288,7 @@ window.deleteQuestionUrl = "{% url 'quizzes:delete_question' pk=0 %}";
 window.getQuestionDataUrl = "{% url 'quizzes:get_question_data' pk=0 %}";
 window.updateQuestionUrl = "{% url 'quizzes:update_question' pk=0 %}";
 window.updatePuntosUrl = "{% url 'quizzes:actualizar_puntos_pregunta' pk=0 %}";
+window.updateCuotasUrl = "{% url 'quizzes:update_evaluacion_cuotas' eval_id=evaluacion.id %}";
 window.canModifyQuestions = {% if can_modify_questions %}true{% else %}false{% endif %};
 window.restrictionMessage = "{{ restriction_message|escapejs }}";
 </script>

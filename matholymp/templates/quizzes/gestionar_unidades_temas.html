@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h1 class="h3 mb-0">
+        <i class="bi bi-journal-bookmark me-2"></i>
+        Gestión de Unidades Temáticas y Temas
+      </h1>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><a href="{% url 'quizzes:dashboard' %}">Dashboard</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Unidades y Temas</li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <!-- Formulario Agregar Unidad Temática -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0"><i class="bi bi-plus-square me-2"></i>Nueva Unidad Temática</h5>
+        </div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="tipo" value="unidad">
+            <div class="row g-2 mb-3">
+              <div class="col-4">
+                <label for="numero" class="form-label">Número <span class="text-danger">*</span></label>
+                <input type="number" min="1" max="20" class="form-control" id="numero" name="numero" value="1" required>
+              </div>
+              <div class="col-8">
+                <label for="nombre_u" class="form-label">Nombre de Unidad <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="nombre_u" name="nombre" placeholder="Ej: Unidad 1: Cinemática y Vectores" required>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="desc_u" class="form-label">Descripción</label>
+              <textarea class="form-control" id="desc_u" name="descripcion" rows="2" placeholder="Descripción de los contenidos de la unidad"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">
+              <i class="bi bi-save me-1"></i> Guardar Unidad
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Formulario Agregar Tema -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-success text-white">
+          <h5 class="card-title mb-0"><i class="bi bi-tag me-2"></i>Nuevo Tema Académico</h5>
+        </div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="tipo" value="tema">
+            <div class="mb-3">
+              <label for="unidad_id" class="form-label">Unidad Temática a la que Pertenece <span class="text-danger">*</span></label>
+              <select name="unidad_id" id="unidad_id" class="form-select" required>
+                <option value="">-- Seleccionar Unidad --</option>
+                {% for u in unidades %}
+                  <option value="{{ u.id }}">Unidad {{ u.numero }}: {{ u.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="nombre_t" class="form-label">Nombre del Tema <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="nombre_t" name="nombre" placeholder="Ej: Vectores, Caída libre, Leyes de Newton" required>
+            </div>
+            <div class="mb-3">
+              <label for="desc_t" class="form-label">Descripción</label>
+              <input type="text" class="form-control" id="desc_t" name="descripcion" placeholder="Descripción breve del tema">
+            </div>
+            <button type="submit" class="btn btn-success w-100">
+              <i class="bi bi-save me-1"></i> Guardar Tema
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Despliegue de Unidades y Temas -->
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white">
+          <h5 class="card-title mb-0"><i class="bi bi-diagram-3 me-2"></i>Estructura Curricular Registrada</h5>
+        </div>
+        <div class="card-body">
+          {% if unidades %}
+            <div class="accordion" id="accordionUnidades">
+              {% for u in unidades %}
+                <div class="accordion-item mb-2">
+                  <h2 class="accordion-header" id="heading{{ u.id }}">
+                    <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ u.id }}" aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}" aria-controls="collapse{{ u.id }}">
+                      <span class="badge bg-primary me-2">Unidad {{ u.numero }}</span>
+                      <strong>{{ u.nombre }}</strong>
+                      <span class="badge bg-info ms-3">{{ u.temas.count }} temas</span>
+                    </button>
+                  </h2>
+                  <div id="collapse{{ u.id }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="heading{{ u.id }}" data-bs-parent="#accordionUnidades">
+                    <div class="accordion-body">
+                      {% if u.descripcion %}
+                        <p class="text-muted small mb-3">{{ u.descripcion }}</p>
+                      {% endif %}
+                      
+                      {% if u.temas.all %}
+                        <div class="list-group">
+                          {% for t in u.temas.all %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                              <div>
+                                <i class="bi bi-tag-fill text-success me-2"></i>
+                                <strong>{{ t.nombre }}</strong>
+                                {% if t.descripcion %}
+                                  <small class="text-muted ms-2">({{ t.descripcion }})</small>
+                                {% endif %}
+                              </div>
+                              <span class="badge bg-secondary">{{ t.preguntas.count }} preguntas</span>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <p class="text-muted mb-0 small">No hay temas registrados en esta unidad. Agrega uno en el formulario de arriba.</p>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-center py-4 text-muted">
+              <i class="bi bi-journal-x display-4"></i>
+              <p class="mt-2 mb-0">No hay Unidades Temáticas registradas.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

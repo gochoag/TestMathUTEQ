@@ -1,12 +1,36 @@
-function confirmDeleteAdmin(id, nombre) {
+function confirmDeleteAdmin(id, username) {
+    const requiredText = `ELIMINAR ${username}`;
     Swal.fire({
-        title: '\u00bfEliminar administrador?',
-        html: `\u00bfEst\u00e1s seguro de que quieres eliminar al administrador <strong>${nombre}</strong>?`,
+        title: '⚠️ Confirmaci\u00f3n Cr\u00edtica de Borrado',
+        html: `
+            <div class="text-start">
+                <p class="mb-2">Est\u00e1s a punto de eliminar de forma permanente al administrador <strong class="text-dark">${username}</strong>.</p>
+                <p class="text-danger small mb-2">Para confirmar esta acci\u00f3n imborrable, escribe exactamente la siguiente frase en la caja de texto:</p>
+                <div class="p-2 bg-light rounded text-center font-monospace fw-bold user-select-all mb-3 text-danger border border-danger">
+                    ${requiredText}
+                </div>
+            </div>
+        `,
+        input: 'text',
+        inputPlaceholder: `Escribe "${requiredText}"`,
+        inputAttributes: {
+            autocapitalize: 'off',
+            autocorrect: 'off',
+            autocomplete: 'off'
+        },
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'S\u00ed, eliminar',
+        confirmButtonText: 'S\u00ed, eliminar de forma permanente',
+        confirmButtonColor: '#dc3545',
         cancelButtonText: 'Cancelar',
-        reverseButtons: false
+        reverseButtons: false,
+        preConfirm: (inputValue) => {
+            if (inputValue.trim() !== requiredText) {
+                Swal.showValidationMessage(`Debes escribir exactamente "${requiredText}" para proceder.`);
+                return false;
+            }
+            return true;
+        }
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = '?delete_id=' + id;

@@ -7,13 +7,12 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
 
     const title = document.getElementById('evaluacionTitle').value.trim();
     const duration = document.getElementById('evaluacionDuration').value;
-    const preguntasMostrar = document.getElementById('evaluacionPreguntasMostrar').value;
     const startDate = document.getElementById('evaluacionStartDate').value;
     const startTime = document.getElementById('evaluacionStartTime').value;
     const endDate = document.getElementById('evaluacionEndDate').value;
     const endTime = document.getElementById('evaluacionEndTime').value;
 
-    if (!title || !duration || !preguntasMostrar || !startDate || !startTime || !endDate || !endTime) {
+    if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
         Swal.fire({
             icon: 'error',
             title: 'Campos requeridos',
@@ -27,15 +26,6 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
             icon: 'error',
             title: 'Duracion invalida',
             text: 'La duracion debe estar entre 1 y 480 minutos.'
-        });
-        return;
-    }
-
-    if (preguntasMostrar < 1 || preguntasMostrar > 100) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Numero de preguntas invalido',
-            text: 'El numero de preguntas a mostrar debe estar entre 1 y 100.'
         });
         return;
     }
@@ -70,7 +60,6 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
         body: JSON.stringify({
             title: title,
             duration: duration,
-            preguntas_a_mostrar: preguntasMostrar,
             start_date: startDate,
             start_time: startTime,
             end_date: endDate,

@@ -11,7 +11,7 @@ import random
 from django.core.management.base import BaseCommand
 
 from django.contrib.auth.models import User
-from quizzes.models import Participantes, Representante, GrupoParticipantes, SystemConfig
+from quizzes.models import Participantes, Representante, GrupoParticipantes
 
 class Command(BaseCommand):
     help = 'Genera 30 participantes de prueba con datos aleatorios'
@@ -215,7 +215,7 @@ class Command(BaseCommand):
             NombresRepresentante=random.choice(nombres_representantes),
             TelefonoRepresentante=self.generar_telefono(),
             CorreoRepresentante=correo_representante,
-            anio=SystemConfig.get_active_year()  # Usar el año activo del sistema
+            anio=timezone.now().year
         )
         return representante
 
@@ -224,6 +224,6 @@ class Command(BaseCommand):
         grupo = GrupoParticipantes.objects.create(
             name=f"Grupo {numero_grupo} - {representante.NombreColegio}",
             representante=representante,
-            anio=SystemConfig.get_active_year()  # Usar el año activo del sistema
+            anio=timezone.now().year
         )
-        return grupo 
+        return grupo

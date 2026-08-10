@@ -29,16 +29,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const startTime = document.getElementById('start_time');
             const endTime = document.getElementById('end_time');
             const duration = document.getElementById('duration');
-            const preguntas = document.getElementById('preguntas_a_mostrar');
 
             if (startDate) startDate.value = today;
             if (endDate) endDate.value = today;
             if (startTime) startTime.value = '';
             if (endTime) endTime.value = '';
             if (duration) duration.value = '60';
-            if (preguntas) preguntas.value = '10';
         });
     }
+
 });
 
 // Función para crear evaluación
@@ -46,7 +45,6 @@ async function createQuiz() {
     const titleEl = document.getElementById('quizTitle');
     const etapaEl = document.getElementById('etapa');
     const durationEl = document.getElementById('duration');
-    const preguntasEl = document.getElementById('preguntas_a_mostrar');
     const startDateEl = document.getElementById('start_date');
     const startTimeEl = document.getElementById('start_time');
     const endDateEl = document.getElementById('end_date');
@@ -57,7 +55,6 @@ async function createQuiz() {
     const etapa = etapaEl ? etapaEl.value : '';
     const durationVal = durationEl ? durationEl.value : '';
     const duration = parseInt(durationVal, 10);
-    const preguntas_a_mostrar = preguntasEl ? preguntasEl.value : '10';
     const startDate = startDateEl ? startDateEl.value : '';
     const startTime = startTimeEl ? startTimeEl.value : '';
     const endDate = endDateEl ? endDateEl.value : '';
@@ -119,7 +116,6 @@ async function createQuiz() {
                 title,
                 etapa,
                 duration,
-                preguntas_a_mostrar,
                 start_date: startDate,
                 start_time: startTime,
                 end_date: endDate,
