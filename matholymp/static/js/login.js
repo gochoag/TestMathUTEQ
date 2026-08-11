@@ -19,3 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
         usernameInput.focus();
     }
 });
+
+
+
+document.getElementById("anio-actual").textContent = new Date().getFullYear();
