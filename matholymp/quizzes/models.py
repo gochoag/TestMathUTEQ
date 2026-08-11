@@ -979,7 +979,8 @@ class ResultadoEvaluacion(models.Model):
         if self.alertas_detectadas is None:
             self.alertas_detectadas = []
         self.alertas_detectadas.append(alerta)
-        self.save()
+        # Una acción administrativa no representa actividad del estudiante.
+        self.save(update_fields=['alertas_detectadas'])
 
     def finalizar_por_admin(self, admin_user, motivo):
         """Finaliza la evaluación por decisión administrativa"""

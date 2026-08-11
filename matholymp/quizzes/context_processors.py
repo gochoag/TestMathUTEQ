@@ -1,4 +1,4 @@
-from .models import Concurso, Carrera, AdminProfile
+from .models import Concurso, Carrera, AdminProfile, Participantes
 
 def concurso_context_processor(request):
     """
@@ -18,6 +18,12 @@ def concurso_context_processor(request):
     available_concursos = []
     available_carreras = []
     active_carrera = None
+    student_concurso = None
+
+    try:
+        student_concurso = Participantes.objects.select_related('concurso').get(user=user).concurso
+    except Participantes.DoesNotExist:
+        pass
 
     if user.is_superuser:
         available_carreras = Carrera.objects.select_related('facultad').all().order_by('nombre')
@@ -64,4 +70,5 @@ def concurso_context_processor(request):
         'available_carreras': available_carreras,
         'active_carrera_filter': active_carrera,
         'active_carrera_filter_id': session_carrera_id if session_carrera_id else (active_carrera.id if active_carrera else 'ALL'),
+        'student_concurso': student_concurso,
     }

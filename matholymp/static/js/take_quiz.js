@@ -12,12 +12,47 @@ let cambiosPestana = window.cambiosPestana;
 const maxCambiosPestana = 4;
 let documentoVisible = true;
 let advertenciasMostradas = false;
+let evaluacionIniciada = false;
+let ultimoBlurRegistrado = 0;
 
 // Inicialización cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', function() {
-    // Activar modo evaluación (ocultar sidebar)
+    const modalInicio = new bootstrap.Modal(document.getElementById('startEvaluationModal'), {
+        backdrop: 'static',
+        keyboard: false,
+    });
+    document.getElementById('btn-start-evaluation').addEventListener('click', async function() {
+        this.disabled = true;
+        await solicitarPantallaCompleta();
+        modalInicio.hide();
+        iniciarEvaluacion();
+    });
+    modalInicio.show();
+});
+
+async function solicitarPantallaCompleta() {
+    if (!document.documentElement.requestFullscreen) return;
+    try {
+        await document.documentElement.requestFullscreen();
+    } catch (error) {
+        // La evaluación continúa si el navegador o el equipo no permiten fullscreen.
+        console.warn('No fue posible activar pantalla completa:', error);
+    }
+}
+
+async function salirPantallaCompleta() {
+    if (!document.fullscreenElement || !document.exitFullscreen) return;
+    try {
+        await document.exitFullscreen();
+    } catch (error) {
+        console.warn('No fue posible salir de pantalla completa:', error);
+    }
+}
+
+function iniciarEvaluacion() {
+    if (evaluacionIniciada) return;
+    evaluacionIniciada = true;
     activarModoEvaluacion();
-    
     inicializarEvaluacion();
     configurarEventos();
     configurarControlPestanas();
@@ -60,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
     iniciarTimer();
     iniciarGuardadoAutomatico();
     cargarProgresoGuardado();
-});
+}
 
 // Función para limpiar todos los intervalos y timers
 function limpiarIntervalos() {
@@ -101,7 +136,7 @@ function iniciarVerificacionEstado() {
         if (!evaluacionFinalizadaAdmin) {
             verificarEstadoEvaluacion();
         }
-    }, 5000);
+    }, 15000);
 }
 
 // Verificar estado de la evaluación
@@ -129,7 +164,9 @@ function verificarEstadoEvaluacion() {
                     allowOutsideClick: false,
                     allowEscapeKey: false
                 }).then(() => {
-                    window.location.href = window.quizUrl;
+                    salirPantallaCompleta().finally(() => {
+                        window.location.href = window.quizUrl;
+                    });
                 });
             } else {
                 if (data.cambios_pestana_actuales !== undefined && data.cambios_pestana_actuales !== cambiosPestana) {
@@ -199,30 +236,19 @@ function configurarControlPestanas() {
         }
     });
     
+    // Perder foco no descuenta intentos: queda como evidencia para el administrador.
     window.addEventListener('blur', function() {
-        if (documentoVisible && !evaluacionEnviandose && !evaluacionFinalizadaAdmin) {
-            setTimeout(function() {
-                if (!document.hasFocus() && documentoVisible) {
-                    documentoVisible = false;
-                    cambiosPestana++;
-                    
-                    console.log(`DEBUG - Cambio de ventana detectado. Total: ${cambiosPestana}/${maxCambiosPestana}`);
-                    
-                    registrarCambioPestana();
-                    
-                    if (cambiosPestana >= maxCambiosPestana) {
-                        finalizarPorCambiosPestana();
-                    } else {
-                        mostrarAdvertenciaCambioPestana();
-                    }
-                }
-            }, 100);
+        const ahora = Date.now();
+        if (!document.hidden && !evaluacionEnviandose && !evaluacionFinalizadaAdmin && ahora - ultimoBlurRegistrado >= 30000) {
+            ultimoBlurRegistrado = ahora;
+            registrarEventoAuditoria('perdida_foco');
         }
     });
-    
-    window.addEventListener('focus', function() {
-        if (!documentoVisible) {
-            documentoVisible = true;
+
+    // Salir con Esc no se penaliza, pero queda trazado en la auditoría.
+    document.addEventListener('fullscreenchange', function() {
+        if (evaluacionIniciada && !document.fullscreenElement && !evaluacionEnviandose && !evaluacionFinalizadaAdmin) {
+            registrarEventoAuditoria('salida_pantalla_completa');
         }
     });
 }
@@ -238,14 +264,15 @@ function registrarCambioPestana() {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCookie('csrftoken')
         },
-        body: JSON.stringify({
-            cambios_pestana: cambiosPestana,
-            tiempo_restante: tiempoRestante
-        })
+        body: JSON.stringify({})
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            if (data.cambios_pestana !== undefined) {
+                cambiosPestana = data.cambios_pestana;
+                actualizarContadorCambiosPestana();
+            }
             console.log('Cambio de pestaña registrado exitosamente');
         } else {
             console.error('Error al registrar cambio de pestaña:', data.error);
@@ -254,6 +281,23 @@ function registrarCambioPestana() {
     .catch(error => {
         console.error('Error registrando cambio de pestaña:', error);
     });
+}
+
+function registrarEventoAuditoria(tipoEvento) {
+    fetch(window.registrarAuditoriaUrl, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ tipo_evento: tipoEvento })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) console.error('Error registrando auditoría:', data.error);
+    })
+    .catch(error => console.error('Error registrando auditoría:', error));
 }
 
 // Actualizar contador visual de cambios de pestaña
@@ -352,16 +396,13 @@ function enviarEvaluacionPorCambiosPestana() {
             popup: 'swal-wide'
         }
     }).then(() => {
-        desactivarModoEvaluacion();
-        
         const form = document.getElementById('quizForm');
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'finalizada_por_cambios_pestana';
         input.value = 'true';
         form.appendChild(input);
-        
-        form.submit();
+        enviarFormularioFinal();
     });
 }
 
@@ -439,7 +480,6 @@ function actualizarTimer() {
 function cargarProgresoGuardado() {
     if (window.continuarEvaluacion && window.resultadoExiste && window.respuestasGuardadas) {
         const respuestasGuardadas = window.respuestasGuardadas;
-        console.log('DEBUG - Cargando respuestas guardadas:', respuestasGuardadas);
         
         Object.keys(respuestasGuardadas).forEach(preguntaKey => {
             const opcionId = respuestasGuardadas[preguntaKey];
@@ -447,9 +487,6 @@ function cargarProgresoGuardado() {
                 const radio = document.getElementById(`opcion_${opcionId}`);
                 if (radio) {
                     radio.checked = true;
-                    console.log(`DEBUG - Respuesta cargada: ${preguntaKey} = ${opcionId}`);
-                } else {
-                    console.log(`DEBUG - No se encontró radio para opción: ${opcionId}`);
                 }
             }
         });
@@ -458,8 +495,6 @@ function cargarProgresoGuardado() {
             actualizarProgreso();
             actualizarNavegacion();
         }, 100);
-    } else {
-        console.log('DEBUG - No se puede continuar evaluación o no hay respuestas guardadas');
     }
 }
 
@@ -476,9 +511,6 @@ function guardarRespuestaAutomatica() {
     document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
         respuestas[radio.name] = radio.value;
     });
-    
-    console.log('DEBUG - Guardando respuestas automáticamente:', respuestas);
-    console.log('DEBUG - Tiempo restante:', tiempoRestante);
     
     fetch(window.guardarRespuestaAutomaticaUrl, {
         method: 'POST',
@@ -513,7 +545,9 @@ function guardarRespuestaAutomatica() {
                     allowOutsideClick: false,
                     allowEscapeKey: false
                 }).then(() => {
-                    window.location.href = window.quizUrl;
+                    salirPantallaCompleta().finally(() => {
+                        window.location.href = window.quizUrl;
+                    });
                 });
             }
         }
@@ -596,8 +630,7 @@ function enviarEvaluacion() {
     }
     
     evaluacionEnviandose = true;
-    desactivarModoEvaluacion();
-    document.getElementById('quizForm').submit();
+    enviarFormularioFinal();
 }
 
 // Envío automático cuando se acaba el tiempo
@@ -610,9 +643,14 @@ function enviarEvaluacionAutomaticamente() {
         timer: 2000
     }).then(() => {
         evaluacionEnviandose = true;
-        desactivarModoEvaluacion();
-        document.getElementById('quizForm').submit();
+        enviarFormularioFinal();
     });
+}
+
+function enviarFormularioFinal() {
+    limpiarIntervalos();
+    desactivarModoEvaluacion();
+    salirPantallaCompleta().finally(() => document.getElementById('quizForm').submit());
 }
 
 // Función para obtener CSRF token

@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.urls import reverse
 from django.core.mail import send_mail
 from django.conf import settings
 from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, IntentosParticipante, AuditLog
@@ -19,7 +20,7 @@ from django.db.models import Q
 from django.db import models
 import re
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from openpyxl import load_workbook
 import json
 from django.http import JsonResponse
@@ -70,6 +71,41 @@ def check_question_modification_allowed(evaluacion):
         message = evaluacion.get_question_modification_restriction_message()
         return False, message
     return True, ""
+
+
+def get_evaluacion_monitoreable_or_404(request, pk):
+    """Obtiene una evaluación respetando el alcance del administrador actual."""
+    evaluaciones = filter_queryset_by_scope(
+        Evaluacion.objects.all(), request, model_name='Evaluacion'
+    )
+    return get_object_or_404(evaluaciones, pk=pk)
+
+
+def get_resultado_monitoreable_or_404(request, resultado_id, evaluacion=None):
+    """Obtiene un resultado de auditoría dentro de la carrera autorizada."""
+    resultados = ResultadoEvaluacion.objects.select_related('evaluacion', 'participante')
+    if evaluacion is not None:
+        resultados = resultados.filter(evaluacion=evaluacion)
+    else:
+        # Un detalle identifica un resultado histórico; no debe fallar sólo porque
+        # el administrador cambió luego el concurso activo en su sesión. El límite
+        # de seguridad se conserva por carrera (o por carrera seleccionada por un
+        # superusuario).
+        is_global, carrera, _ = get_user_scope(request)
+        if carrera:
+            resultados = resultados.filter(evaluacion__concurso__carrera=carrera)
+        elif not is_global:
+            resultados = resultados.none()
+    return get_object_or_404(resultados, pk=resultado_id)
+
+
+def calcular_tiempo_restante_servidor(resultado, evaluacion):
+    """Calcula el tiempo restante desde el inicio; nunca confía en el navegador."""
+    if not resultado.fecha_inicio:
+        return evaluacion.duration_minutes * 60
+    tiempo_total = evaluacion.duration_minutes * 60
+    transcurrido = int((timezone.now() - resultado.fecha_inicio).total_seconds())
+    return max(0, tiempo_total - transcurrido)
 
 
 # Función para validar contraseñas de forma robusta
@@ -190,6 +226,16 @@ def obtener_diccionario_respuestas(resultado):
     return {}
 
 
+def obtener_progreso_respuestas(resultado, preguntas_mostradas):
+    """Cuenta respuestas válidas del intento sin depender del modelo de monitoreo eliminado."""
+    respuestas = obtener_diccionario_respuestas(resultado)
+    respondidas = sum(
+        bool(respuestas.get(f'pregunta_{pregunta.id}') or respuestas.get(str(pregunta.id)))
+        for pregunta in preguntas_mostradas
+    )
+    return respondidas, len(preguntas_mostradas)
+
+
 def generar_snapshot_respuestas(preguntas_mostradas, respuestas_diccionario):
     """
     Genera un snapshot JSON congelado e inmutable al entregar un examen.
@@ -287,129 +333,45 @@ def take_quiz(request, pk):
         completada=False
     ).first()
     
-    # Logging para debugging
-    if resultado_activo:
-        print(f"DEBUG - Resultado activo encontrado para {participante.NombresCompletos}")
-        print(f"DEBUG - Respuestas guardadas: {resultado_activo.respuestas_guardadas}")
-        print(f"DEBUG - Tiempo restante: {resultado_activo.tiempo_restante}")
-    else:
-        print(f"DEBUG - No hay resultado activo para {participante.NombresCompletos}")
-    
-    # Si hay un intento activo, verificar si puede continuarlo
+    # Si hay un intento activo, el servidor es la única fuente de verdad del tiempo.
     continuar_evaluacion = False
     if resultado_activo:
-        # Usar el tiempo_restante guardado en lugar de recalcular
-        tiempo_restante_guardado = resultado_activo.tiempo_restante or 0
-        
-        # Si hay tiempo restante guardado, usar ese valor
-        if tiempo_restante_guardado > 0:
+        tiempo_restante = calcular_tiempo_restante_servidor(resultado_activo, evaluacion)
+        if tiempo_restante > 0:
             continuar_evaluacion = True
-            # Actualizar última actividad
+            resultado_activo.tiempo_restante = tiempo_restante
             resultado_activo.ultima_actividad = timezone.now()
-            resultado_activo.save()
-            
-            # Actualizar monitoreo al continuar evaluación
-            try:
-                monitoreo = MonitoreoEvaluacion.objects.filter(
-                    evaluacion=evaluacion,
-                    participante=participante
-                ).first()
-                
-                if monitoreo:
-                    # Obtener preguntas para calcular progreso actual
-                    preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
-                    respuestas_actuales = resultado_activo.respuestas_guardadas or {}
-                    preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
-                    
-                    monitoreo.preguntas_respondidas = preguntas_respondidas
-                    monitoreo.preguntas_revisadas = len(preguntas_mostradas)
-                    monitoreo.ultima_actividad = timezone.now()
-                    monitoreo.save()
-                    
-                    print(f"DEBUG - Monitoreo actualizado al continuar: {preguntas_respondidas}/{len(preguntas_mostradas)} preguntas")
-            except Exception as e:
-                print(f"Error al actualizar monitoreo al continuar: {e}")
-                pass
+            resultado_activo.save(update_fields=['tiempo_restante', 'ultima_actividad'])
         else:
-            # Si no hay tiempo restante guardado, calcular basado en fecha_inicio
-            tiempo_transcurrido = (timezone.now() - resultado_activo.fecha_inicio).total_seconds()
-            tiempo_total = evaluacion.duration_minutes * 60  # en segundos
-            tiempo_restante = max(0, tiempo_total - tiempo_transcurrido)
-            
-            if tiempo_restante > 0:
-                continuar_evaluacion = True
-                resultado_activo.tiempo_restante = int(tiempo_restante)
-                resultado_activo.ultima_actividad = timezone.now()
-                resultado_activo.save()
-                
-                # Actualizar monitoreo al continuar evaluación con tiempo calculado
-                try:
-                    monitoreo = MonitoreoEvaluacion.objects.filter(
-                        evaluacion=evaluacion,
-                        participante=participante
-                    ).first()
-                    
-                    if monitoreo:
-                        # Obtener preguntas para calcular progreso actual
-                        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
-                        respuestas_actuales = resultado_activo.respuestas_guardadas or {}
-                        preguntas_respondidas = len([r for r in respuestas_actuales.values() if r])
-                        
-                        monitoreo.preguntas_respondidas = preguntas_respondidas
-                        monitoreo.preguntas_revisadas = len(preguntas_mostradas)
-                        monitoreo.ultima_actividad = timezone.now()
-                        monitoreo.save()
-                        
-                        print(f"DEBUG - Monitoreo actualizado al continuar (tiempo calculado): {preguntas_respondidas}/{len(preguntas_mostradas)} preguntas")
-                except Exception as e:
-                    print(f"Error al actualizar monitoreo al continuar (tiempo calculado): {e}")
-                    pass
-                # Si se acabó el tiempo, finalizar este intento
-                respuestas_guardadas = resultado_activo.respuestas_guardadas or {}
-                preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado_activo.numero_intento)
-                
-                puntos_ganados = 0
-                puntos_posibles_totales = 0
-                
-                for pregunta in preguntas_mostradas:
-                    peso = getattr(pregunta, 'puntos', 1) or 1
-                    puntos_posibles_totales += peso
-                    pregunta_key = f'pregunta_{pregunta.id}'
-                    if pregunta_key in respuestas_guardadas and respuestas_guardadas[pregunta_key]:
-                        if pregunta.opciones.filter(id=respuestas_guardadas[pregunta_key], is_correct=True).exists():
-                            puntos_ganados += peso
-                        
-                puntaje_ponderado = (puntos_ganados / puntos_posibles_totales) * 10 if puntos_posibles_totales > 0 else 0
-                puntaje_ponderado = round(max(0, puntaje_ponderado), 3)
-                
-                if resultado_activo.fecha_inicio:
-                    tiempo_utilizado_seg = int((timezone.now() - resultado_activo.fecha_inicio).total_seconds())
-                else:
-                    tiempo_utilizado_seg = evaluacion.duration_minutes * 60
-                
-                snapshot_data = generar_snapshot_respuestas(preguntas_mostradas, respuestas_guardadas)
-                
-                resultado_activo.puntos_obtenidos = puntaje_ponderado
-                resultado_activo.puntos_totales = 10
-                resultado_activo.tiempo_utilizado = tiempo_utilizado_seg
-                resultado_activo.fecha_fin = timezone.now()
-                resultado_activo.completada = True
-                resultado_activo.respuestas_guardadas = snapshot_data
-                resultado_activo.tiempo_restante = 0
-                resultado_activo.save()
-                
-                # Actualizar el monitoreo (el intento ya se registra con el resultado completado)
-                monitoreo = MonitoreoEvaluacion.objects.filter(
-                    evaluacion=evaluacion,
-                    participante=participante
-                ).first()
-                if monitoreo:
-                    monitoreo.estado = 'finalizado'
-                    monitoreo.resultado = resultado_activo
-                    monitoreo.save()
-                
-                messages.warning(request, f'Se acabó el tiempo para esta evaluación. Puntuación: {resultado_activo.get_puntaje_numerico()}')
-                return redirect('quizzes:quiz')
+            # El intento caducado se cierra antes de permitir cualquier nuevo ingreso.
+            respuestas_guardadas = resultado_activo.respuestas_guardadas or {}
+            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(
+                participante.id, resultado_activo.numero_intento
+            )
+            puntos_ganados = 0
+            puntos_posibles_totales = 0
+            for pregunta in preguntas_mostradas:
+                peso = getattr(pregunta, 'puntos', 1) or 1
+                puntos_posibles_totales += peso
+                pregunta_key = f'pregunta_{pregunta.id}'
+                respuesta_id = respuestas_guardadas.get(pregunta_key)
+                if respuesta_id and pregunta.opciones.filter(id=respuesta_id, is_correct=True).exists():
+                    puntos_ganados += peso
+
+            puntaje_ponderado = round(
+                (puntos_ganados / puntos_posibles_totales) * 10, 3
+            ) if puntos_posibles_totales else 0
+            snapshot_data = generar_snapshot_respuestas(preguntas_mostradas, respuestas_guardadas)
+            resultado_activo.puntos_obtenidos = puntaje_ponderado
+            resultado_activo.puntos_totales = 10
+            resultado_activo.tiempo_utilizado = evaluacion.duration_minutes * 60
+            resultado_activo.fecha_fin = timezone.now()
+            resultado_activo.completada = True
+            resultado_activo.respuestas_guardadas = snapshot_data
+            resultado_activo.tiempo_restante = 0
+            resultado_activo.save()
+            messages.warning(request, 'Se acabó el tiempo para esta evaluación.')
+            return redirect('quizzes:quiz')
     
     # Si no hay intento en progreso, verificar ventana de acceso solo para nuevos ingresos
     if not continuar_evaluacion:
@@ -425,37 +387,11 @@ def take_quiz(request, pk):
             messages.warning(request, 'Esta evaluación no está disponible en este momento.')
             return redirect('quizzes:quiz')
         
-        # Crear o actualizar el monitoreo para este estudiante
-        try:
-            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
-                evaluacion=evaluacion,
-                participante=participante,
-                defaults={'resultado': resultado_activo} if resultado_activo else {}
-            )
-            
-            # Si el monitoreo existe y el participante tiene intentos disponibles, reactivarlo
-            if not created:
-                intentos_disponibles_monitoreo = participante.get_intentos_disponibles(evaluacion)
-                if intentos_disponibles_monitoreo > 0:
-                    # Si tenía estado finalizado pero ahora tiene intentos, reactivarlo
-                    if monitoreo.estado == 'finalizado':
-                        monitoreo.estado = 'activo'
-                        monitoreo.ultima_actividad = timezone.now()
-                        monitoreo.save()
-                        print(f"Reactivando monitoreo para {participante.NombresCompletos} - Nuevo intento detectado")
-                
-                # Actualizar resultado activo si corresponde
-                if resultado_activo and not monitoreo.resultado:
-                    monitoreo.resultado = resultado_activo
-                    monitoreo.save()
-        except Exception as e:
-            # Si hay error al crear el monitoreo, continuar sin él
-            print(f"Error al actualizar monitoreo: {e}")
-            pass
-    
     if request.method == 'POST':
         # Verificar si la evaluación fue finalizada por cambios de pestaña
         finalizada_por_cambios_pestana = request.POST.get('finalizada_por_cambios_pestana') == 'true'
+        numero_intento_actual = resultado_activo.numero_intento if resultado_activo else 1
+        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, numero_intento_actual)
         
         if finalizada_por_cambios_pestana:
             # Finalización por cambios de pestaña - asignar puntaje de 0
@@ -481,9 +417,6 @@ def take_quiz(request, pk):
             score = 0
             puntos_ganados = 0
             puntos_posibles_totales = 0
-            numero_intento_actual = resultado_activo.numero_intento if resultado_activo else 1
-            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, numero_intento_actual)
-            
             respuestas_finales = {}
             for pregunta in preguntas_mostradas:
                 selected = request.POST.get(f'pregunta_{pregunta.id}')
@@ -498,6 +431,7 @@ def take_quiz(request, pk):
             puntaje_ponderado = (puntos_ganados / puntos_posibles_totales) * 10 if puntos_posibles_totales > 0 else 0
             puntos_obtenidos = round(max(0, puntaje_ponderado), 3)
             puntos_totales = 10
+            percentage = round((puntos_obtenidos / puntos_totales) * 100, 1)
             
             # Calcular tiempo utilizado en segundos
             if resultado_activo and resultado_activo.fecha_inicio:
@@ -521,29 +455,16 @@ def take_quiz(request, pk):
             resultado_activo.tiempo_restante = 0
             resultado_activo.save()
             
-            # Actualizar el monitoreo (el intento se registra con el resultado completado)
-            monitoreo = MonitoreoEvaluacion.objects.filter(
-                evaluacion=evaluacion,
-                participante=participante
-            ).first()
-            if monitoreo:
-                monitoreo.estado = 'finalizado'
-                monitoreo.resultado = resultado_activo
-                
-                # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
-                if finalizada_por_cambios_pestana:
-                    monitoreo.agregar_alerta(
-                        'finalizacion_automatica',
-                        'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
-                        severidad='alta'
-                    )
-                    # Marcar la finalización administrativa en el monitoreo
-                    monitoreo.finalizado_por_admin = request.user
-                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
-                    monitoreo.fecha_finalizacion_admin = timezone.now()
-                    monitoreo.save()
-                else:
-                    monitoreo.save()
+            if finalizada_por_cambios_pestana:
+                resultado_activo.agregar_alerta(
+                    'finalizacion_automatica',
+                    'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
+                    severidad='alta'
+                )
+                resultado_activo.finalizado_por_admin = request.user
+                resultado_activo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
+                resultado_activo.fecha_finalizacion_admin = timezone.now()
+                resultado_activo.save()
                 
         else:
             # Obtener el siguiente número de intento
@@ -562,29 +483,16 @@ def take_quiz(request, pk):
                 tiempo_restante=0
             )
             
-            # Actualizar el monitoreo (el intento se registra con el resultado completado)
-            monitoreo = MonitoreoEvaluacion.objects.filter(
-                evaluacion=evaluacion,
-                participante=participante
-            ).first()
-            if monitoreo:
-                monitoreo.estado = 'finalizado'
-                monitoreo.resultado = nuevo_resultado
-                
-                # Si fue finalizada por cambios de pestaña, agregar información al monitoreo
-                if finalizada_por_cambios_pestana:
-                    monitoreo.agregar_alerta(
-                        'finalizacion_automatica',
-                        'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
-                        severidad='alta'
-                    )
-                    # Marcar la finalización administrativa en el monitoreo
-                    monitoreo.finalizado_por_admin = request.user
-                    monitoreo.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
-                    monitoreo.fecha_finalizacion_admin = timezone.now()
-                    monitoreo.save()
-                else:
-                    monitoreo.save()
+            if finalizada_por_cambios_pestana:
+                nuevo_resultado.agregar_alerta(
+                    'finalizacion_automatica',
+                    'Evaluación finalizada automáticamente por exceso de cambios de pestaña (4/4)',
+                    severidad='alta'
+                )
+                nuevo_resultado.finalizado_por_admin = request.user
+                nuevo_resultado.motivo_finalizacion = 'Evaluación finalizada automáticamente por exceder el límite de cambios de pestaña (4/4)'
+                nuevo_resultado.fecha_finalizacion_admin = timezone.now()
+                nuevo_resultado.save()
         
         # Agregar un mensaje específico si fue finalizada por cambios de pestaña
         if finalizada_por_cambios_pestana:
@@ -596,7 +504,7 @@ def take_quiz(request, pk):
             'score': score,
             'total_questions': len(preguntas_mostradas) if not finalizada_por_cambios_pestana else 0,
             'percentage': percentage,
-            'finalizada_por_cambios_pestana': finalizada_por_cambios_pestana
+            'finalizada_por_cambios_pestana': finalizada_por_cambios_pestana,
         })
     
     # Obtener preguntas para este estudiante específico
@@ -627,30 +535,6 @@ def take_quiz(request, pk):
             tiempo_restante=tiempo_total
         )
         
-        # Actualizar monitoreo al crear nuevo intento
-        try:
-            monitoreo = MonitoreoEvaluacion.objects.filter(
-                evaluacion=evaluacion,
-                participante=participante
-            ).first()
-            
-            if monitoreo:
-                # Al crear un nuevo resultado, activar el monitoreo
-                monitoreo.estado = 'activo'
-                monitoreo.resultado = resultado_activo
-                monitoreo.ultima_actividad = timezone.now()
-                
-                # Inicializar datos de progreso
-                monitoreo.preguntas_respondidas = 0
-                monitoreo.preguntas_revisadas = len(preguntas_mostradas)
-                
-                monitoreo.save()
-                print(f"Activando monitoreo para {participante.NombresCompletos} - Iniciando nuevo intento {siguiente_intento}")
-                print(f"DEBUG - Inicializando monitoreo: 0/{len(preguntas_mostradas)} preguntas")
-        except Exception as e:
-            print(f"Error al activar monitoreo: {e}")
-            pass
-    
     context = {
         'evaluacion': evaluacion,
         'preguntas': preguntas_mostradas,
@@ -659,14 +543,8 @@ def take_quiz(request, pk):
         'continuar_evaluacion': continuar_evaluacion
     }
     
-    # Logging para debugging del contexto
-    if resultado_activo:
-        print(f"DEBUG - Contexto resultado tiene respuestas_guardadas: {resultado_activo.respuestas_guardadas}")
-        print(f"DEBUG - continuar_evaluacion: {continuar_evaluacion}")
-    
     return render(request, 'quizzes/take_quiz.html', context)
 
-@csrf_exempt
 @login_required
 def guardar_respuesta_automatica(request, pk):
     """
@@ -684,14 +562,15 @@ def guardar_respuesta_automatica(request, pk):
         if participante not in participantes_autorizados:
             return JsonResponse({'success': False, 'error': 'No autorizado'})
         
-        # Verificar si la evaluación fue finalizada administrativamente
-        monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+        # Verificar si la evaluación fue finalizada administrativamente.
+        resultado_finalizado_admin = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante=participante,
-            estado='finalizado'
-        ).first()
+            completada=True,
+            finalizado_por_admin__isnull=False
+        ).order_by('-numero_intento').first()
         
-        if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
+        if resultado_finalizado_admin:
             return JsonResponse({
                 'success': False, 
                 'error': 'Evaluación finalizada administrativamente',
@@ -709,11 +588,6 @@ def guardar_respuesta_automatica(request, pk):
             }
         )
         
-        # Si no se creó nuevo y no tiene tiempo_restante, asignarlo
-        if not created and not resultado.tiempo_restante:
-            resultado.tiempo_restante = evaluacion.duration_minutes * 60
-            resultado.save()
-        
         # Verificación adicional: No permitir guardado si ya está completada
         if resultado.completada:
             return JsonResponse({
@@ -726,67 +600,25 @@ def guardar_respuesta_automatica(request, pk):
         import json
         data = json.loads(request.body.decode('utf-8'))
         respuestas = data.get('respuestas', {})
-        tiempo_restante = data.get('tiempo_restante', evaluacion.duration_minutes * 60)
         
         # Asegurar que respuestas_guardadas esté inicializado
         if resultado.respuestas_guardadas is None:
             resultado.respuestas_guardadas = {}
-        
-        # Logging para debugging
-        print(f"DEBUG - Guardando respuestas para {participante.NombresCompletos}: {respuestas}")
-        print(f"DEBUG - Respuestas anteriores: {resultado.respuestas_guardadas}")
         
         # Hacer una copia del diccionario para evitar problemas de referencia
         respuestas_actualizadas = resultado.respuestas_guardadas.copy()
         respuestas_actualizadas.update(respuestas)
         
         resultado.respuestas_guardadas = respuestas_actualizadas
-        resultado.tiempo_restante = tiempo_restante
+        resultado.tiempo_restante = calcular_tiempo_restante_servidor(resultado, evaluacion)
         resultado.ultima_actividad = timezone.now()
         resultado.save()
-        
-        # Verificar que se guardó correctamente
-        resultado.refresh_from_db()
-        print(f"DEBUG - Respuestas después de guardar (verificación): {resultado.respuestas_guardadas}")
-        
-        # Actualizar monitoreo
-        try:
-            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
-                evaluacion=evaluacion,
-                participante=participante,
-                defaults={'resultado': resultado}
-            )
-            
-            # Si no se creó nuevo, actualizar el resultado si es necesario
-            if not created and not monitoreo.resultado:
-                monitoreo.resultado = resultado
-                monitoreo.save()
-            
-            # Calcular estadísticas del monitoreo
-            preguntas_respondidas = len([r for r in respuestas.values() if r])
-            preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento)
-            total_preguntas = len(preguntas_mostradas)
-            
-            # Actualizar datos del monitoreo
-            monitoreo.preguntas_respondidas = preguntas_respondidas
-            monitoreo.preguntas_revisadas = total_preguntas
-            monitoreo.tiempo_activo += 30  # Asumir 30 segundos de actividad por guardado
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-            print(f"DEBUG - Monitoreo actualizado: {preguntas_respondidas}/{total_preguntas} preguntas")
-            
-        except Exception as e:
-            # Si hay error al actualizar el monitoreo, continuar sin él
-            print(f"DEBUG - Error al actualizar monitoreo: {e}")
-            pass
         
         return JsonResponse({'success': True})
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-@csrf_exempt
 @login_required
 def registrar_cambio_pestana(request, pk):
     """
@@ -804,14 +636,15 @@ def registrar_cambio_pestana(request, pk):
         if participante not in participantes_autorizados:
             return JsonResponse({'success': False, 'error': 'No autorizado'})
         
-        # Verificar si la evaluación fue finalizada administrativamente
-        monitoreo_existente = MonitoreoEvaluacion.objects.filter(
+        # Verificar si la evaluación fue finalizada administrativamente.
+        resultado_finalizado_admin = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante=participante,
-            estado='finalizado'
-        ).first()
+            completada=True,
+            finalizado_por_admin__isnull=False
+        ).order_by('-numero_intento').first()
         
-        if monitoreo_existente and monitoreo_existente.finalizado_por_admin:
+        if resultado_finalizado_admin:
             return JsonResponse({
                 'success': False, 
                 'error': 'Evaluación finalizada administrativamente',
@@ -830,47 +663,19 @@ def registrar_cambio_pestana(request, pk):
                 'success': False, 
                 'error': 'No se encontró una evaluación activa'
             })
-        
-        # Procesar datos del cambio de pestaña
-        import json
-        data = json.loads(request.body.decode('utf-8'))
-        cambios_pestana = data.get('cambios_pestana', 0)
-        tiempo_restante = data.get('tiempo_restante', 0)
-        
-        # Actualizar información de cambios de pestaña en el resultado
-        if not hasattr(resultado, 'cambios_pestana') or resultado.cambios_pestana is None:
-            resultado.cambios_pestana = 0
-            
-        resultado.cambios_pestana = cambios_pestana
-        resultado.tiempo_restante = tiempo_restante
-        resultado.ultima_actividad = timezone.now()
-        resultado.save()
-        
-        # Actualizar monitoreo con información del cambio de pestaña
-        try:
-            monitoreo, created = MonitoreoEvaluacion.objects.get_or_create(
-                evaluacion=evaluacion,
-                participante=participante,
-                defaults={'resultado': resultado}
-            )
-            
-            if not created and not monitoreo.resultado:
-                monitoreo.resultado = resultado
-                monitoreo.save()
-            
-            # Registrar alerta de cambio de pestaña
-            alerta_texto = f"Cambio de pestaña #{cambios_pestana} - Tiempo restante: {tiempo_restante//60}:{tiempo_restante%60:02d}"
-            monitoreo.agregar_alerta('cambio_pestana', alerta_texto, severidad='media')
-            
-            monitoreo.cambios_pestana = cambios_pestana
-            monitoreo.ultima_actividad = timezone.now()
-            monitoreo.save()
-            
-            print(f"DEBUG - Cambio de pestaña #{cambios_pestana} registrado para {participante.NombresCompletos}")
-            
-        except Exception as e:
-            print(f"DEBUG - Error al actualizar monitoreo con cambio de pestaña: {e}")
-            pass
+
+        # El navegador sólo informa el evento: el contador y tiempo se calculan aquí.
+        with transaction.atomic():
+            resultado = ResultadoEvaluacion.objects.select_for_update().get(pk=resultado.pk)
+            resultado.cambios_pestana = (resultado.cambios_pestana or 0) + 1
+            resultado.tiempo_restante = calcular_tiempo_restante_servidor(resultado, evaluacion)
+            resultado.ultima_actividad = timezone.now()
+            resultado.save(update_fields=['cambios_pestana', 'tiempo_restante', 'ultima_actividad'])
+
+        cambios_pestana = resultado.cambios_pestana
+        tiempo_restante = resultado.tiempo_restante
+        alerta_texto = f"Cambio de pestaña #{cambios_pestana} - Tiempo restante: {tiempo_restante//60}:{tiempo_restante%60:02d}"
+        resultado.agregar_alerta('cambio_pestana', alerta_texto, severidad='media')
         
         return JsonResponse({
             'success': True,
@@ -881,7 +686,43 @@ def registrar_cambio_pestana(request, pk):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-@csrf_exempt
+
+@login_required
+def registrar_evento_auditoria(request, pk):
+    """Registra señales del navegador para revisión, sin penalizar al estudiante."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+
+    try:
+        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        participante = Participantes.objects.get(user=request.user)
+        if participante not in evaluacion.get_participantes_autorizados():
+            return JsonResponse({'success': False, 'error': 'No autorizado'}, status=403)
+
+        resultado = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion, participante=participante, completada=False
+        ).first()
+        if not resultado:
+            return JsonResponse({'success': False, 'error': 'No se encontró una evaluación activa'}, status=404)
+
+        data = json.loads(request.body.decode('utf-8'))
+        eventos_auditoria = {
+            'perdida_foco': 'La ventana de la evaluación perdió el foco. Se registró para revisión, sin descontar cambios de pestaña.',
+            'salida_pantalla_completa': 'El estudiante salió de pantalla completa. Se registró para revisión, sin descontar cambios de pestaña.',
+        }
+        tipo_evento = data.get('tipo_evento')
+        if tipo_evento not in eventos_auditoria:
+            return JsonResponse({'success': False, 'error': 'Tipo de evento no válido'}, status=400)
+
+        resultado.agregar_alerta(tipo_evento, eventos_auditoria[tipo_evento], severidad='baja')
+        return JsonResponse({'success': True, 'auditoria': True})
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'}, status=400)
+    except Participantes.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Participante no encontrado'}, status=403)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
 @login_required
 def verificar_estado_evaluacion(request, pk):
     """
@@ -899,20 +740,21 @@ def verificar_estado_evaluacion(request, pk):
             completada=False
         ).first()
         
-        # Verificar si la evaluación fue finalizada administrativamente
-        monitoreo = MonitoreoEvaluacion.objects.filter(
+        # Verificar si la evaluación fue finalizada administrativamente.
+        resultado_finalizado_admin = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
             participante=participante,
-            estado='finalizado'
-        ).first()
+            completada=True,
+            finalizado_por_admin__isnull=False
+        ).order_by('-numero_intento').first()
         
         response_data = {'finalizada_admin': False}
         
-        if monitoreo and monitoreo.finalizado_por_admin:
+        if resultado_finalizado_admin:
             response_data.update({
                 'finalizada_admin': True,
-                'motivo': monitoreo.motivo_finalizacion,
-                'admin': monitoreo.finalizado_por_admin.get_full_name() or monitoreo.finalizado_por_admin.username
+                'motivo': resultado_finalizado_admin.motivo_finalizacion,
+                'admin': resultado_finalizado_admin.finalizado_por_admin.get_full_name() or resultado_finalizado_admin.finalizado_por_admin.username
             })
         
         # Incluir información actualizada de cambios de pestañas si hay resultado activo
@@ -928,7 +770,6 @@ def verificar_estado_evaluacion(request, pk):
     except Exception as e:
         return JsonResponse({'finalizada_admin': False, 'error': str(e)})
 
-@csrf_exempt
 @login_required
 def obtener_progreso_evaluacion(request, pk):
     """
@@ -2265,6 +2106,11 @@ def revisar_intento_evaluacion(request, pk):
     # Obtener el resultado específico
     resultado = get_object_or_404(ResultadoEvaluacion, pk=pk, participante=participante, completada=True)
     evaluacion = resultado.evaluacion
+
+    # No revelar preguntas ni respuestas correctas mientras la ventana de la
+    # evaluación siga abierta, incluso si el estudiante accede a la URL directa.
+    if not evaluacion.is_finished():
+        return redirect('quizzes:student_results')
     
     snapshot = resultado.get_snapshot_respuestas()
     preguntas_con_respuestas = []
@@ -5357,13 +5203,16 @@ def monitoreo_evaluacion(request, pk):
         messages.error(request, 'No tienes permisos para acceder al monitoreo en tiempo real.')
         return redirect('quizzes:dashboard')
     
-    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
     participantes_autorizados = evaluacion.get_participantes_autorizados()
     total_participantes = len(participantes_autorizados)
     
     resultados = ResultadoEvaluacion.objects.filter(evaluacion=evaluacion).select_related('participante')
-    participantes_activos = sum(1 for r in resultados if r.esta_activo())
-    participantes_finalizados = sum(1 for r in resultados if r.completada)
+    ultimos_resultados = {}
+    for resultado in resultados.order_by('participante_id', '-numero_intento'):
+        ultimos_resultados.setdefault(resultado.participante_id, resultado)
+    participantes_activos = sum(1 for r in ultimos_resultados.values() if r.esta_activo())
+    participantes_finalizados = sum(1 for r in ultimos_resultados.values() if r.completada)
     
     context = {
         'evaluacion': evaluacion,
@@ -5377,7 +5226,6 @@ def monitoreo_evaluacion(request, pk):
     return render(request, 'quizzes/monitoreo_evaluacion.html', context)
 
 
-@csrf_exempt
 @login_required
 def actualizar_monitoreo(request, pk):
     """
@@ -5395,7 +5243,9 @@ def actualizar_monitoreo(request, pk):
         evaluacion_id = data.get('evaluacion_id') or pk
         
         participante = get_object_or_404(Participantes, pk=participante_id)
-        evaluacion = get_object_or_404(Evaluacion, pk=evaluacion_id)
+        if str(evaluacion_id) != str(pk):
+            return JsonResponse({'error': 'La evaluación no coincide con la URL'}, status=400)
+        evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
         
         resultado = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion,
@@ -5418,7 +5268,6 @@ def actualizar_monitoreo(request, pk):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@csrf_exempt
 @login_required
 def obtener_estado_monitoreo(request, pk):
     """
@@ -5427,18 +5276,41 @@ def obtener_estado_monitoreo(request, pk):
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'error': 'Sin permisos'}, status=403)
     
-    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
     participantes_autorizados = evaluacion.get_participantes_autorizados()
     datos_monitoreo = []
-    
+    participante_ids = [participante.id for participante in participantes_autorizados]
+    resultados = ResultadoEvaluacion.objects.filter(
+        evaluacion=evaluacion, participante_id__in=participante_ids
+    ).order_by('participante_id', '-numero_intento')
+    configuraciones = {
+        configuracion.participante_id: configuracion.intentos_maximos
+        for configuracion in IntentosParticipante.objects.filter(
+            evaluacion=evaluacion, participante_id__in=participante_ids
+        )
+    }
+    ultimos_resultados = {}
+    intentos_usados_por_participante = {}
+    for resultado in resultados:
+        ultimos_resultados.setdefault(resultado.participante_id, resultado)
+        if resultado.completada:
+            intentos_usados_por_participante[resultado.participante_id] = (
+                intentos_usados_por_participante.get(resultado.participante_id, 0) + 1
+            )
+
+    total_banco_preguntas = evaluacion.preguntas.count()
+    cantidad_configurada = sum(
+        cuota.cantidad_preguntas for cuota in evaluacion.cuotas_unidades.all()
+    ) or evaluacion.preguntas_a_mostrar or 10
+    total_preguntas_mostradas = min(total_banco_preguntas, cantidad_configurada)
+
     for participante in participantes_autorizados:
-        resultado = ResultadoEvaluacion.objects.filter(
-            evaluacion=evaluacion,
-            participante=participante
-        ).order_by('-numero_intento').first()
-        
-        intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
-        intentos_usados = participante.get_intentos_usados(evaluacion)
+        resultado = ultimos_resultados.get(participante.id)
+        intentos_usados = intentos_usados_por_participante.get(participante.id, 0)
+        intentos_maximos = configuraciones.get(
+            participante.id, participante.intentos_maximos_default
+        )
+        intentos_disponibles = max(0, intentos_maximos - intentos_usados)
         ha_iniciado = resultado is not None
         
         if not resultado:
@@ -5450,15 +5322,20 @@ def obtener_estado_monitoreo(request, pk):
         else:
             estado = 'inactivo'
             
-        preguntas_respondidas = len(resultado.respuestas_guardadas) if (resultado and isinstance(resultado.respuestas_guardadas, dict)) else 0
-        preguntas_mostradas = evaluacion.get_preguntas_para_estudiante(participante.id, resultado.numero_intento if resultado else 1)
-        total_preguntas = len(preguntas_mostradas)
-        porcentaje_avance = round((preguntas_respondidas / total_preguntas * 100), 1) if total_preguntas > 0 else 0
+        respuestas = obtener_diccionario_respuestas(resultado)
+        preguntas_respondidas = min(total_preguntas_mostradas, sum(
+            1 for clave, respuesta in respuestas.items()
+            if clave.startswith('pregunta_') and respuesta
+        ))
+        porcentaje_avance = round(
+            (preguntas_respondidas / total_preguntas_mostradas * 100), 1
+        ) if total_preguntas_mostradas else 0
         
         alertas = resultado.alertas_detectadas if (resultado and resultado.alertas_detectadas) else []
         
         datos_monitoreo.append({
-            'id': resultado.id if resultado else f"part_{participante.id}",
+            # La clave visual debe ser estable por participante, no por intento.
+            'id': participante.id,
             'resultado_id': resultado.id if resultado else None,
             'participante_id': participante.id,
             'participante_nombre': participante.NombresCompletos,
@@ -5467,7 +5344,7 @@ def obtener_estado_monitoreo(request, pk):
             'esta_activo': resultado.esta_activo() if resultado else False,
             'ha_iniciado': ha_iniciado,
             'preguntas_respondidas': preguntas_respondidas,
-            'preguntas_revisadas': total_preguntas,
+            'preguntas_revisadas': total_preguntas_mostradas,
             'porcentaje_avance': porcentaje_avance,
             'ultima_actividad': resultado.ultima_actividad.isoformat() if (resultado and resultado.ultima_actividad) else None,
             'alertas_count': len(alertas),
@@ -5487,7 +5364,6 @@ def obtener_estado_monitoreo(request, pk):
     })
 
 
-@csrf_exempt
 @login_required
 def finalizar_evaluacion_admin(request, pk):
     """
@@ -5504,10 +5380,10 @@ def finalizar_evaluacion_admin(request, pk):
         monitoreo_id = data.get('monitoreo_id') or data.get('resultado_id')
         motivo = data.get('motivo', 'Finalización administrativa')
         
-        evaluacion = get_object_or_404(Evaluacion, pk=pk)
+        evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
         
         # Buscar por ID de ResultadoEvaluacion o por participante
-        resultado = ResultadoEvaluacion.objects.filter(pk=monitoreo_id).first()
+        resultado = ResultadoEvaluacion.objects.filter(pk=monitoreo_id, evaluacion=evaluacion).first()
         if not resultado:
             resultado = ResultadoEvaluacion.objects.filter(
                 evaluacion=evaluacion,
@@ -5537,19 +5413,28 @@ def detalle_monitoreo(request, monitoreo_id):
         messages.error(request, 'No tienes permisos para acceder a esta funcionalidad.')
         return redirect('quizzes:dashboard')
     
-    resultado = get_object_or_404(ResultadoEvaluacion, pk=monitoreo_id)
+    resultado_seleccionado = get_resultado_monitoreable_or_404(request, monitoreo_id)
+    intentos = ResultadoEvaluacion.objects.filter(
+        evaluacion=resultado_seleccionado.evaluacion,
+        participante=resultado_seleccionado.participante,
+    ).select_related('finalizado_por_admin').order_by('-numero_intento')
+
+    # El detalle siempre representa el intento más reciente como estado actual,
+    # incluso si se llega mediante la URL de un intento histórico.
+    resultado = intentos.first()
     
     context = {
         'resultado': resultado,
         'evaluacion': resultado.evaluacion,
         'participante': resultado.participante,
         'alertas': resultado.alertas_detectadas or [],
+        'intentos': intentos,
+        'total_intentos': intentos.count(),
     }
     
     return render(request, 'quizzes/detalle_monitoreo.html', context)
 
 
-@csrf_exempt
 @login_required
 def agregar_alerta_manual(request, monitoreo_id):
     """
@@ -5567,7 +5452,7 @@ def agregar_alerta_manual(request, monitoreo_id):
         descripcion = data.get('descripcion', '')
         severidad = data.get('severidad', 'baja')
         
-        resultado = get_object_or_404(ResultadoEvaluacion, pk=monitoreo_id)
+        resultado = get_resultado_monitoreable_or_404(request, monitoreo_id)
         resultado.agregar_alerta(tipo_alerta, descripcion, severidad)
         
         return JsonResponse({
@@ -6023,7 +5908,6 @@ def custom_404_view(request, exception=None, path=None):
     return render(request, 'errors/404.html', context, status=404)
 
 
-@csrf_exempt
 @login_required
 def dar_nuevo_intento_evaluacion(request, pk):
     """
@@ -6036,14 +5920,17 @@ def dar_nuevo_intento_evaluacion(request, pk):
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'success': False, 'error': 'Sin permisos'}, status=403)
     
-    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
     
     try:
         data = json.loads(request.body)
         participante_id = data.get('participante_id')
+        cantidad_intentos = int(data.get('cantidad_intentos', 1))
         
         if not participante_id:
             return JsonResponse({'success': False, 'error': 'ID del participante requerido'})
+        if cantidad_intentos < 1 or cantidad_intentos > 10:
+            return JsonResponse({'success': False, 'error': 'La cantidad de intentos debe estar entre 1 y 10'})
         
         participante = get_object_or_404(Participantes, id=participante_id)
         
@@ -6057,34 +5944,35 @@ def dar_nuevo_intento_evaluacion(request, pk):
             participante=participante,
             evaluacion=evaluacion,
             defaults={
-                'intentos_maximos': participante.intentos_maximos_default + 1,
+                'intentos_maximos': participante.intentos_maximos_default + cantidad_intentos,
                 'creado_por': request.user,
-                'motivo': 'Intento adicional otorgado por administrador'
+                'motivo': f'{cantidad_intentos} intento(s) adicional(es) otorgado(s) por administrador'
             }
         )
         
         if not created:
-            # Si ya existe, incrementar los intentos máximos
-            intento_config.intentos_maximos += 1
-            intento_config.save()
+            intento_config.intentos_maximos += cantidad_intentos
+            intento_config.motivo = f'{cantidad_intentos} intento(s) adicional(es) otorgado(s) por administrador'
+            intento_config.save(update_fields=['intentos_maximos', 'motivo'])
         
         # Recalcular los intentos disponibles después del otorgamiento
         nuevos_intentos_disponibles = participante.get_intentos_disponibles(evaluacion)
         
         return JsonResponse({
             'success': True,
-            'message': f'Se ha otorgado un nuevo intento a {participante.NombresCompletos}. Intentos disponibles: {nuevos_intentos_disponibles}',
+            'message': f'Se otorgaron {cantidad_intentos} intento(s) a {participante.NombresCompletos}. Intentos disponibles: {nuevos_intentos_disponibles}',
             'intentos_disponibles': nuevos_intentos_disponibles,
             'intentos_usados': participante.get_intentos_usados(evaluacion)
         })
     
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Datos JSON inválidos'})
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'La cantidad de intentos debe ser un número válido'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
 
-@csrf_exempt
 @login_required
 def reducir_cambios_pestana(request, pk):
     """
@@ -6097,7 +5985,7 @@ def reducir_cambios_pestana(request, pk):
     if not (request.user.is_superuser or hasattr(request.user, 'adminprofile')):
         return JsonResponse({'success': False, 'error': 'Sin permisos'}, status=403)
     
-    evaluacion = get_object_or_404(Evaluacion, pk=pk)
+    evaluacion = get_evaluacion_monitoreable_or_404(request, pk)
     
     try:
         data = json.loads(request.body)
@@ -6143,7 +6031,7 @@ def reducir_cambios_pestana(request, pk):
             f'Cambios de pestaña reducidos por administrador ({request.user.username}): {cambios_actuales} → {nuevos_cambios}',
             severidad='baja'
         )
-        resultado_activo.save()
+        resultado_activo.save(update_fields=['cambios_pestana'])
         
         return JsonResponse({
             'success': True,

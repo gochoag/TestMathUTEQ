@@ -40,7 +40,13 @@
           <span class="d-inline d-sm-none fw-bold">EvaUTEQ</span>
         </span>
 
-        <!-- Selector de Contexto / Concurso Estilo SGA UTEQ (Mejorado UX/UI & Responsivo) -->
+        {% if student_concurso %}
+        <div class="ms-auto flex-shrink-0 d-inline-flex align-items-center gap-1 text-white fw-semibold px-2 py-1" style="font-size: 0.82rem;">
+          <i class="bi bi-trophy-fill text-warning fs-6"></i>
+          <span class="text-truncate" style="max-width: 230px;">{{ student_concurso.nombre }} ({{ student_concurso.anio }})</span>
+        </div>
+        {% else %}
+
         <div class="ms-auto flex-shrink-0">
           <button
             class="btn btn-outline-light btn-sm d-flex align-items-center gap-1.5 fw-semibold px-2.5 py-1 rounded-3 shadow-sm"
@@ -48,7 +54,7 @@
             data-bs-toggle="modal"
             data-bs-target="#modalSelectorContexto"
             style="background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(6px); font-size: 0.82rem;"
-            title="Cambiar Contexto Operativo (Carrera / Concurso)"
+            title="Cambiar (Carrera / Concurso)"
           >
             <!-- Badge 1: Carrera / Filtro Organizacional -->
             <span class="d-inline-flex align-items-center gap-1 text-warning border-end pe-2 me-1 border-light-subtle">
@@ -87,10 +93,12 @@
             <i class="bi bi-chevron-down small opacity-75 me-0.5"></i>
           </button>
         </div>
+        {% endif %}
       </div>
     </nav>
     {% include 'quizzes/sidebar.html' %} 
 
+    {% if not student_concurso %}
     <!-- Modal Selector de Concurso Estilo UTEQ SGA -->
     <div class="modal fade" id="modalSelectorContexto" tabindex="-1" aria-labelledby="modalSelectorContextoLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 440px;">
@@ -171,6 +179,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
     {% endif %}
     <main id="main-content" class="flex-grow-1">
       {% block content %}{% endblock %}

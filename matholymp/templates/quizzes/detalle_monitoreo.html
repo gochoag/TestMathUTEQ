@@ -112,6 +112,80 @@
         </div>
     </div>
 
+    <!-- Historial completo de intentos -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-clock-history"></i>
+                        Historial de Intentos
+                    </h5>
+                    <span class="badge bg-primary">{{ total_intentos }} intento{{ total_intentos|pluralize }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Intento</th>
+                                    <th scope="col">Estado</th>
+                                    <th scope="col">Nota</th>
+                                    <th scope="col">Tiempo</th>
+                                    <th scope="col">Finalización</th>
+                                    <th scope="col">Cambios de pestaña</th>
+                                    <th scope="col">Alertas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for intento in intentos %}
+                                <tr{% if intento.id == resultado.id %} class="table-active"{% endif %}>
+                                    <td>
+                                        <strong>#{{ intento.numero_intento }}</strong>
+                                        {% if intento.id == resultado.id %}
+                                        <span class="badge bg-secondary ms-1">Actual</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if intento.completada %}
+                                        <span class="badge bg-success">Finalizado</span>
+                                        {% elif intento.esta_activo %}
+                                        <span class="badge bg-primary">En progreso</span>
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if intento.completada %}
+                                        <strong class="text-success">{{ intento.get_puntaje_numerico }}</strong>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ intento.get_tiempo_formateado }}</td>
+                                    <td>
+                                        {% if intento.fecha_fin %}
+                                        {{ intento.fecha_fin|date:"d/m/Y H:i" }}
+                                        {% else %}
+                                        <span class="text-muted">En curso</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ intento.cambios_pestana|default:0 }}/4</td>
+                                    <td>
+                                        <span class="badge {% if intento.alertas_detectadas %}bg-warning text-dark{% else %}bg-light text-dark{% endif %}">
+                                            {{ intento.alertas_detectadas|length }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Informacion temporal -->
     <div class="row mb-4">
         <div class="col-md-6">
@@ -164,7 +238,9 @@
                                 <div class="d-flex w-100 justify-content-between">
                                     <h6 class="mb-1">
                                         <span class="badge bg-{% if alerta.severidad == 'alta' %}danger{% elif alerta.severidad == 'media' %}warning{% else %}info{% endif %}">
-                                            {{ alerta.tipo|title }}
+                                            {% if alerta.tipo == 'perdida_foco' %}Pérdida de foco
+                                            {% elif alerta.tipo == 'salida_pantalla_completa' %}Salida de pantalla completa
+                                            {% else %}{{ alerta.tipo|title }}{% endif %}
                                         </span>
                                         {{ alerta.descripcion }}
                                     </h6>

@@ -4,6 +4,7 @@ let currentMonitoreoId = null;
 let lastMonitoreoData = {};
 let searchTimeout;
 let totalParticipantes = 0;
+let monitoreoRequestInFlight = false;
 
 // Función para formatear tiempo en segundos
 function formatTime(seconds) {
@@ -38,148 +39,129 @@ function getEstadoText(estaActivo, estado, haIniciado, intentosDisponibles) {
     return 'Estado desconocido';
 }
 
-// Genera el HTML interno de una fila de la tabla de monitoreo
+function crearElemento(tag, className = '', text = null) {
+    const elemento = document.createElement(tag);
+    if (className) elemento.className = className;
+    if (text !== null) elemento.textContent = text;
+    return elemento;
+}
+
+function crearBoton(className, title, icono, callback, texto = '') {
+    const boton = crearElemento('button', `btn ${className}`);
+    boton.type = 'button';
+    boton.title = title;
+    boton.setAttribute('aria-label', title);
+    boton.appendChild(crearElemento('i', `bi ${icono}`));
+    if (texto) boton.append(` ${texto}`);
+    if (callback) boton.addEventListener('click', callback);
+    else boton.disabled = true;
+    return boton;
+}
+
+// Genera una fila sin interpolar datos del participante como HTML ni JavaScript.
 function generarFilaMonitoreo(monitoreo) {
-    // Columna Progreso/Puntaje
-    let progresoPuntajeContent = '';
+    const fila = document.createElement('tr');
+    fila.id = `monitoreo-row-${monitoreo.id}`;
 
-    if (monitoreo.estado === 'finalizado' && monitoreo.intentos_disponibles === 0) {
-        if (monitoreo.tiene_resultado_completado) {
-            const puntajeColor = monitoreo.puntaje >= 7 ? 'success' : monitoreo.puntaje >= 5 ? 'warning' : 'danger';
-            progresoPuntajeContent = `
-                <div class="text-center">
-                    <strong class="text-${puntajeColor}">${monitoreo.puntaje_numerico || 0}</strong><br>
-                    <small class="text-muted">${monitoreo.puntaje || 0}%</small>
-                </div>`;
-        } else {
-            progresoPuntajeContent = `
-                <div class="text-center">
-                    <span class="badge bg-secondary"><i class="bi bi-check-circle"></i> Completado</span>
-                </div>`;
-        }
-    } else if ((monitoreo.estado === 'finalizado' || monitoreo.estado === 'inactivo') && monitoreo.intentos_disponibles > 0) {
-        progresoPuntajeContent = `
-            <div class="text-center">
-                <span class="badge bg-warning"><i class="bi bi-arrow-clockwise"></i> Puede reiniciar</span>
-            </div>`;
-    } else if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
-        progresoPuntajeContent = `
-            <div class="text-center">
-                <span class="badge bg-info"><i class="bi bi-clock"></i> Sin iniciar</span>
-            </div>`;
-    } else {
-        const porcentaje = monitoreo.porcentaje_avance || 0;
-        progresoPuntajeContent = `
-            <div class="progress" style="height: 20px;">
-                <div class="progress-bar ${porcentaje > 0 ? 'bg-primary' : 'bg-light'}" role="progressbar"
-                     style="width: ${porcentaje}%"
-                     aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100">
-                    ${porcentaje}%
-                </div>
-            </div>
-            <small class="text-muted">
-                ${monitoreo.preguntas_respondidas || 0} respondidas / ${monitoreo.preguntas_revisadas || 0} revisadas
-            </small>`;
-    }
-
-    // Columna Última Actividad
-    let ultimaActividadContent;
-    if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
-        ultimaActividadContent = '<span class="text-muted"><i class="bi bi-dash-circle"></i> Sin iniciar</span>';
-    } else if (monitoreo.ultima_actividad) {
-        const fechaActividad = new Date(monitoreo.ultima_actividad);
-        const diferencia = Math.floor((new Date() - fechaActividad) / 60000);
-        const colorActividad = diferencia > 10 ? 'danger' : diferencia > 5 ? 'warning' : 'success';
-        ultimaActividadContent = `<span class="text-${colorActividad}">
-            <i class="bi bi-clock"></i> ${fechaActividad.toLocaleTimeString()}
-            ${diferencia > 0 ? `<br><small class="text-muted">Hace ${diferencia} min</small>` : ''}
-        </span>`;
-    } else {
-        ultimaActividadContent = '<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Sin registro</span>';
-    }
-
-    // Columna Intentos
     const intentosUsados = monitoreo.intentos_usados || 0;
     const intentosDisponibles = monitoreo.intentos_disponibles || 0;
     const intentosTotales = intentosUsados + intentosDisponibles;
-    const intentosBadge = `<span class="badge ${intentosDisponibles > 0 ? 'bg-success' : 'bg-danger'}" title="Disponibles/Total">
-        ${intentosDisponibles}/${intentosTotales}
-    </span>`;
-
-    // Columna Cambios Pestañas
     const cambiosActuales = monitoreo.cambios_pestana_actuales || 0;
     const cambiosMaximo = monitoreo.cambios_pestana_maximo || 4;
-    let cambiosBadgeColor = 'bg-success';
-    if (cambiosActuales >= cambiosMaximo) cambiosBadgeColor = 'bg-danger';
-    else if (cambiosActuales > cambiosMaximo / 2) cambiosBadgeColor = 'bg-warning text-dark';
-    const cambiosBadge = `<span class="badge ${cambiosBadgeColor}" title="Cambios/Máximo">${cambiosActuales}/${cambiosMaximo}</span>`;
 
-    // Columna Acciones
-    let accionesContent;
-    if (monitoreo.intentos_disponibles > 0) {
-        if (monitoreo.estado === 'pendiente' || !monitoreo.ha_iniciado) {
-            accionesContent = `<button type="button" class="btn btn-outline-info" disabled title="Esperando que inicie">
-                <i class="bi bi-hourglass-split"></i> Esperando
-            </button>`;
-        } else if (monitoreo.estado === 'activo') {
-            accionesContent = `
-                <button type="button" class="btn btn-outline-warning"
-                        onclick="agregarAlerta(${monitoreo.id})" title="Agregar alerta">
-                    <i class="bi bi-exclamation-triangle"></i>
-                </button>
-                <button type="button" class="btn btn-outline-danger"
-                        onclick="reducirCambiosPestana(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${cambiosActuales}, ${cambiosMaximo})"
-                        title="Reducir cambios de pestañas">
-                    <i class="bi bi-dash-circle"></i>
-                </button>
-                <button type="button" class="btn btn-outline-danger"
-                        onclick="finalizarEvaluacion(${monitoreo.id}, '${monitoreo.participante_nombre}')"
-                        title="Finalizar evaluación">
-                    <i class="bi bi-stop-circle"></i>
-                </button>`;
-        } else {
-            accionesContent = `<button type="button" class="btn btn-outline-success" disabled title="Puede reiniciar cuando quiera">
-                <i class="bi bi-play-circle"></i> Disponible
-            </button>`;
+    const participante = crearElemento('td');
+    participante.appendChild(crearElemento('strong', '', monitoreo.participante_nombre));
+    participante.appendChild(document.createElement('br'));
+    participante.appendChild(crearElemento('small', 'text-muted', monitoreo.participante_cedula));
+    fila.appendChild(participante);
+
+    const estado = crearElemento('td');
+    estado.appendChild(crearElemento(
+        'span',
+        `badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, intentosDisponibles)}`,
+        getEstadoText(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, intentosDisponibles)
+    ));
+    fila.appendChild(estado);
+
+    const progreso = crearElemento('td');
+    if (monitoreo.estado === 'finalizado' && intentosDisponibles === 0 && monitoreo.tiene_resultado_completado) {
+        const puntaje = Number(monitoreo.puntos_obtenidos || 0);
+        const color = puntaje >= 7 ? 'success' : puntaje >= 5 ? 'warning' : 'danger';
+        const contenedor = crearElemento('div', 'text-center');
+        contenedor.appendChild(crearElemento('strong', `text-${color}`, monitoreo.puntaje_numerico || '0.000/10'));
+        progreso.appendChild(contenedor);
+    } else if ((monitoreo.estado === 'finalizado' || monitoreo.estado === 'inactivo') && intentosDisponibles > 0) {
+        progreso.appendChild(crearElemento('span', 'badge bg-warning', 'Puede reiniciar'));
+    } else if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
+        progreso.appendChild(crearElemento('span', 'badge bg-info', 'Sin iniciar'));
+    } else {
+        const porcentaje = Math.max(0, Math.min(100, Number(monitoreo.porcentaje_avance || 0)));
+        const barra = crearElemento('div', 'progress');
+        barra.style.height = '20px';
+        const progresoBarra = crearElemento('div', `progress-bar ${porcentaje > 0 ? 'bg-primary' : 'bg-light'}`, `${porcentaje}%`);
+        progresoBarra.style.width = `${porcentaje}%`;
+        progresoBarra.setAttribute('role', 'progressbar');
+        progresoBarra.setAttribute('aria-valuenow', porcentaje);
+        progresoBarra.setAttribute('aria-valuemin', '0');
+        progresoBarra.setAttribute('aria-valuemax', '100');
+        barra.appendChild(progresoBarra);
+        progreso.append(barra, crearElemento('small', 'text-muted', `${monitoreo.preguntas_respondidas || 0} respondidas / ${monitoreo.preguntas_revisadas || 0} revisadas`));
+    }
+    fila.appendChild(progreso);
+
+    const actividad = crearElemento('td');
+    if (!monitoreo.ha_iniciado || monitoreo.estado === 'pendiente') {
+        actividad.appendChild(crearElemento('span', 'text-muted', 'Sin iniciar'));
+    } else if (monitoreo.ultima_actividad) {
+        const fecha = new Date(monitoreo.ultima_actividad);
+        const minutos = Math.max(0, Math.floor((Date.now() - fecha.getTime()) / 60000));
+        const color = minutos >= 5 ? 'danger' : minutos >= 3 ? 'warning' : 'success';
+        actividad.appendChild(crearElemento('span', `text-${color}`, fecha.toLocaleTimeString()));
+        if (minutos > 0) {
+            actividad.appendChild(document.createElement('br'));
+            actividad.appendChild(crearElemento('small', 'text-muted', `Hace ${minutos} min`));
         }
     } else {
-        accionesContent = `<button type="button" class="btn btn-outline-success"
-                onclick="darNuevoIntento(${monitoreo.participante_id}, '${monitoreo.participante_nombre}', ${intentosUsados}, ${intentosTotales})"
-                title="Dar nuevo intento">
-            <i class="bi bi-arrow-clockwise"></i>
-        </button>`;
+        actividad.appendChild(crearElemento('span', 'text-warning', 'Sin registro'));
+    }
+    fila.appendChild(actividad);
+
+    const intentos = crearElemento('td');
+    const intentosBadge = crearElemento('span', `badge ${intentosDisponibles > 0 ? 'bg-success' : 'bg-danger'}`, `${intentosDisponibles}/${intentosTotales}`);
+    intentosBadge.title = 'Disponibles/Total';
+    intentos.appendChild(intentosBadge);
+    fila.appendChild(intentos);
+
+    const cambios = crearElemento('td');
+    const claseCambios = cambiosActuales >= cambiosMaximo ? 'bg-danger' : cambiosActuales > cambiosMaximo / 2 ? 'bg-warning text-dark' : 'bg-success';
+    cambios.appendChild(crearElemento('span', `badge ${claseCambios}`, `${cambiosActuales}/${cambiosMaximo}`));
+    fila.appendChild(cambios);
+
+    const alertas = crearElemento('td');
+    alertas.appendChild(crearElemento('span', `badge ${monitoreo.alertas_count > 0 ? 'bg-danger' : 'bg-success'}`, monitoreo.alertas_count || 0));
+    fila.appendChild(alertas);
+
+    const acciones = crearElemento('td');
+    const grupo = crearElemento('div', 'btn-group btn-group-sm');
+    grupo.setAttribute('role', 'group');
+    if (monitoreo.resultado_id) {
+        grupo.appendChild(crearBoton('btn-outline-info', 'Ver detalles', 'bi-eye', () => verDetalles(monitoreo.resultado_id)));
+    } else {
+        grupo.appendChild(crearBoton('btn-outline-info', 'Aún no hay un intento para revisar', 'bi-eye', null));
     }
 
-    return `
-        <td>
-            <strong>${monitoreo.participante_nombre}</strong><br>
-            <small class="text-muted">${monitoreo.participante_cedula}</small>
-        </td>
-        <td>
-            <span class="badge bg-${getEstadoColor(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, monitoreo.intentos_disponibles)}">
-                ${getEstadoText(monitoreo.esta_activo, monitoreo.estado, monitoreo.ha_iniciado, monitoreo.intentos_disponibles)}
-            </span>
-        </td>
-        <td>${progresoPuntajeContent}</td>
-        <td>${ultimaActividadContent}</td>
-        <td>${intentosBadge}</td>
-        <td>${cambiosBadge}</td>
-        <td>
-            ${monitoreo.alertas_count > 0
-                ? `<span class="badge bg-danger">${monitoreo.alertas_count}</span>`
-                : '<span class="badge bg-success">0</span>'
-            }
-        </td>
-        <td>
-            <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-info"
-                        onclick="verDetalles(${monitoreo.id})" title="Ver detalles">
-                    <i class="bi bi-eye"></i>
-                </button>
-                ${accionesContent}
-            </div>
-        </td>
-    `;
+    if (monitoreo.estado === 'activo' && monitoreo.resultado_id) {
+        grupo.appendChild(crearBoton('btn-outline-warning', 'Agregar alerta', 'bi-exclamation-triangle', () => agregarAlerta(monitoreo.resultado_id)));
+        grupo.appendChild(crearBoton('btn-outline-danger', 'Reducir cambios de pestañas', 'bi-dash-circle', () => reducirCambiosPestana(monitoreo.participante_id, monitoreo.participante_nombre, cambiosActuales, cambiosMaximo)));
+        grupo.appendChild(crearBoton('btn-outline-danger', 'Finalizar evaluación', 'bi-stop-circle', () => finalizarEvaluacion(monitoreo.resultado_id, monitoreo.participante_nombre)));
+    } else if (intentosDisponibles === 0) {
+        grupo.appendChild(crearBoton('btn-outline-success', 'Dar nuevo intento', 'bi-arrow-clockwise', () => darNuevoIntento(monitoreo.participante_id, monitoreo.participante_nombre, intentosUsados, intentosTotales)));
+    } else {
+        grupo.appendChild(crearBoton('btn-outline-secondary', monitoreo.ha_iniciado ? 'Puede reiniciar cuando quiera' : 'Esperando que inicie', monitoreo.ha_iniciado ? 'bi-play-circle' : 'bi-hourglass-split', null, monitoreo.ha_iniciado ? 'Disponible' : 'Esperando'));
+    }
+    acciones.appendChild(grupo);
+    fila.appendChild(acciones);
+    return fila;
 }
 
 // Notifica al admin cuando detecta cambios importantes entre actualizaciones
@@ -194,7 +176,7 @@ function notificarCambioEstado(monitoreo, estadoAnterior) {
     } else if (monitoreo.alertas_count > (estadoAnterior.alertas_count || 0)) {
         showDynamicToast({ type: 'warning', title: 'Nueva alerta', message: `Se agregó una alerta para ${nombre}` });
     } else if (estadoAnterior.esta_activo && !monitoreo.esta_activo && monitoreo.estado !== 'finalizado') {
-        showDynamicToast({ type: 'warning', title: 'Participante inactivo', message: `${nombre} lleva más de 1 hora sin actividad` });
+        showDynamicToast({ type: 'warning', title: 'Participante inactivo', message: `${nombre} lleva más de 5 minutos sin actividad` });
     }
 }
 
@@ -215,79 +197,83 @@ function hasMonitoreoChanged(current, previous) {
     );
 }
 
-// Carga y actualiza la tabla de monitoreo desde el backend
-function cargarMonitoreo() {
-    fetch(window.monitoreoEstadoUrl)
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            return response.json();
-        })
-        .then(data => {
-            if (!data.monitoreos || !Array.isArray(data.monitoreos)) {
-                throw new Error('Datos de monitoreo inválidos');
+function actualizarEstadisticas(monitoreos) {
+    const activos = monitoreos.filter(item => item.estado === 'activo').length;
+    const finalizados = monitoreos.filter(item => item.estado === 'finalizado').length;
+    const pendientes = monitoreos.length - activos - finalizados;
+    document.getElementById('stat-activos').textContent = activos;
+    document.getElementById('stat-finalizados').textContent = finalizados;
+    document.getElementById('stat-pendientes').textContent = pendientes;
+    document.getElementById('stat-total').textContent = monitoreos.length;
+    totalParticipantes = monitoreos.length;
+}
+
+function mostrarErrorMonitoreo() {
+    const tbody = document.getElementById('tbody-monitoreo');
+    tbody.replaceChildren();
+    const fila = document.createElement('tr');
+    const celda = crearElemento('td', 'text-center text-danger', 'Error al cargar los datos del monitoreo. Verificando conexión...');
+    celda.colSpan = 8;
+    fila.appendChild(celda);
+    tbody.appendChild(fila);
+}
+
+// Carga y actualiza la tabla de monitoreo sin solapar solicitudes HTTP.
+async function cargarMonitoreo() {
+    if (monitoreoRequestInFlight) return;
+    monitoreoRequestInFlight = true;
+    try {
+        const response = await fetch(window.monitoreoEstadoUrl, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const data = await response.json();
+        if (!Array.isArray(data.monitoreos)) throw new Error('Datos de monitoreo inválidos');
+
+        const tbody = document.getElementById('tbody-monitoreo');
+        const nuevosDatos = {};
+        const filasActuales = new Map(
+            [...tbody.querySelectorAll('tr[id^="monitoreo-row-"]')].map(fila => [fila.id, fila])
+        );
+
+        data.monitoreos.forEach(monitoreo => {
+            const rowId = `monitoreo-row-${monitoreo.id}`;
+            const filaAnterior = filasActuales.get(rowId);
+            const datosAnteriores = lastMonitoreoData[monitoreo.id];
+            const cambio = hasMonitoreoChanged(monitoreo, datosAnteriores);
+
+            if (!filaAnterior || cambio) {
+                if (datosAnteriores) notificarCambioEstado(monitoreo, datosAnteriores);
+                const nuevaFila = generarFilaMonitoreo(monitoreo);
+                if (filaAnterior) {
+                    nuevaFila.classList.add('fila-actualizada');
+                    nuevaFila.style.background = '#fff3cd';
+                    filaAnterior.replaceWith(nuevaFila);
+                    setTimeout(() => {
+                        nuevaFila.style.background = '';
+                        nuevaFila.classList.remove('fila-actualizada');
+                    }, 1000);
+                } else {
+                    tbody.appendChild(nuevaFila);
+                }
             }
-
-            const tbody = document.getElementById('tbody-monitoreo');
-            const isFirstLoad = Object.keys(lastMonitoreoData).length === 0;
-
-            if (isFirstLoad) {
-                tbody.innerHTML = '';
-                data.monitoreos.forEach(monitoreo => {
-                    const row = document.createElement('tr');
-                    row.id = `monitoreo-row-${monitoreo.id}`;
-                    row.innerHTML = generarFilaMonitoreo(monitoreo);
-                    tbody.appendChild(row);
-                    lastMonitoreoData[monitoreo.id] = { ...monitoreo };
-                });
-            } else {
-                data.monitoreos.forEach(monitoreo => {
-                    const rowId = `monitoreo-row-${monitoreo.id}`;
-                    const existingRow = document.getElementById(rowId);
-                    const hasChanged = hasMonitoreoChanged(monitoreo, lastMonitoreoData[monitoreo.id]);
-
-                    if (hasChanged) {
-                        if (lastMonitoreoData[monitoreo.id]) {
-                            notificarCambioEstado(monitoreo, lastMonitoreoData[monitoreo.id]);
-                        }
-
-                        if (existingRow) {
-                            existingRow.classList.add('fila-actualizada');
-                            existingRow.style.background = '#fff3cd';
-                            existingRow.innerHTML = generarFilaMonitoreo(monitoreo);
-                            setTimeout(() => {
-                                existingRow.style.background = '';
-                                existingRow.classList.remove('fila-actualizada');
-                            }, 1000);
-                        } else {
-                            const row = document.createElement('tr');
-                            row.id = rowId;
-                            row.innerHTML = generarFilaMonitoreo(monitoreo);
-                            tbody.appendChild(row);
-                        }
-                    }
-
-                    lastMonitoreoData[monitoreo.id] = { ...monitoreo };
-                });
-            }
-
-            document.getElementById('last-update').textContent = new Date(data.timestamp).toLocaleTimeString();
-
-            setTimeout(() => {
-                const filas = document.querySelectorAll('#tabla-monitoreo tbody tr');
-                updateSearchCounter(filas.length, '');
-                refreshSearch();
-            }, 100);
-        })
-        .catch(error => {
-            console.error('Error al cargar monitoreo:', error);
-            document.getElementById('tbody-monitoreo').innerHTML = `
-                <tr>
-                    <td colspan="8" class="text-center text-danger">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        Error al cargar los datos del monitoreo. Verificando conexión...
-                    </td>
-                </tr>`;
+            filasActuales.delete(rowId);
+            nuevosDatos[monitoreo.id] = { ...monitoreo };
         });
+
+        // Elimina filas de participantes que ya no pertenecen a la evaluación.
+        filasActuales.forEach(fila => fila.remove());
+        lastMonitoreoData = nuevosDatos;
+        actualizarEstadisticas(data.monitoreos);
+        document.getElementById('last-update').textContent = new Date(data.timestamp).toLocaleTimeString();
+        refreshSearch();
+        updateSearchCounter(document.querySelectorAll('#tabla-monitoreo tbody tr[id^="monitoreo-row-"]').length, document.getElementById('search-participantes').value);
+    } catch (error) {
+        console.error('Error al cargar monitoreo:', error);
+        // Se vacía el cache para que una recuperación reconstruya la tabla completa.
+        lastMonitoreoData = {};
+        mostrarErrorMonitoreo();
+    } finally {
+        monitoreoRequestInFlight = false;
+    }
 }
 
 // Abre el modal para finalizar la evaluación de un participante
@@ -393,32 +379,9 @@ function normalizeText(text) {
     return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
-function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function highlightMatch(text, searchTerm) {
-    if (!searchTerm) return text;
-    const normalizedText = normalizeText(text);
-    const normalizedSearch = normalizeText(searchTerm);
-    if (!normalizedText.includes(normalizedSearch)) return text;
-    const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
-    return text.replace(regex, '<mark class="bg-warning">$1</mark>');
-}
-
-function removeHighlight(fila) {
-    fila.querySelectorAll('mark.bg-warning').forEach(el => { el.outerHTML = el.textContent; });
-}
-
-function highlightText(fila, searchTerm) {
-    removeHighlight(fila);
-    const cell = fila.querySelector('td:first-child');
-    if (cell) cell.innerHTML = highlightMatch(cell.textContent, searchTerm);
-}
-
 function updateSearchCounter(visibleCount, searchTerm) {
     const counter = document.getElementById('search-results-count');
-    const total = document.querySelectorAll('#tabla-monitoreo tbody tr').length || totalParticipantes;
+    const total = totalParticipantes;
     if (searchTerm === '') {
         counter.textContent = `Mostrando ${total} participante${total !== 1 ? 's' : ''}`;
         counter.className = 'text-muted';
@@ -452,7 +415,7 @@ function searchParticipantes(searchTerm) {
     const normalizedSearch = normalizeText(searchTerm);
     let visibleCount = 0;
 
-    document.querySelectorAll('#tabla-monitoreo tbody tr').forEach(fila => {
+    document.querySelectorAll('#tabla-monitoreo tbody tr[id^="monitoreo-row-"]').forEach(fila => {
         const cell = fila.querySelector('td:first-child');
         if (!cell) return;
 
@@ -462,8 +425,6 @@ function searchParticipantes(searchTerm) {
             fila.style.display = '';
             fila.classList.remove('search-no-results');
             visibleCount++;
-            if (searchTerm !== '') highlightText(fila, searchTerm);
-            else removeHighlight(fila);
         } else {
             fila.style.display = 'none';
             fila.classList.add('search-no-results');
@@ -504,13 +465,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Auto-refresh
     const autoRefreshCheckbox = document.getElementById('auto-refresh');
     function toggleAutoRefresh() {
+        clearInterval(autoRefreshInterval);
         if (autoRefreshCheckbox.checked) {
-            autoRefreshInterval = setInterval(cargarMonitoreo, 5000);
-        } else {
-            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(cargarMonitoreo, 10000);
         }
     }
     autoRefreshCheckbox.addEventListener('change', toggleAutoRefresh);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            clearInterval(autoRefreshInterval);
+        } else if (autoRefreshCheckbox.checked) {
+            cargarMonitoreo();
+            toggleAutoRefresh();
+        }
+    });
     toggleAutoRefresh();
 
     // Actualización dinámica del nuevo total de intentos

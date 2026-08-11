@@ -97,7 +97,7 @@
                                                     <i class="bi bi-window-stack me-1"></i>
                                                     Cambios de pestaña
                                                 </small>
-                                                <span id="tabChangesCounter" class="fw-bold fs-6 text-success">0/3</span>
+                                                <span id="tabChangesCounter" class="fw-bold fs-6 text-success">0/4</span>
                                             </div>
                                         </div>
                                         
@@ -156,6 +156,29 @@
     </div>
 </div>
 
+<!-- Inicio controlado: el clic permite solicitar pantalla completa al navegador. -->
+<div class="modal fade" id="startEvaluationModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="startEvaluationTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="startEvaluationTitle">
+                    <i class="bi bi-arrows-fullscreen me-2"></i>Iniciar evaluación
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="display-5 text-primary mb-3"><i class="bi bi-clipboard-check"></i></div>
+                <p class="mb-2 fw-semibold">La evaluación se abrirá en pantalla completa.</p>
+                <p class="text-muted small mb-0">No cierres ni cambies de pestaña durante el intento. Presiona comenzar para abrir la evaluación.</p>
+            </div>
+            <div class="modal-footer justify-content-center border-0 pt-0">
+                <button type="button" class="btn btn-primary px-4" id="btn-start-evaluation">
+                    <i class="bi bi-play-fill me-1"></i>Comenzar evaluación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal de confirmación -->
 <div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog">
@@ -209,6 +232,7 @@ window.respuestasGuardadas = {% if continuar_evaluacion and resultado and result
 
 window.verificarEstadoUrl = "{% url 'quizzes:verificar_estado_evaluacion' evaluacion.pk %}";
 window.registrarCambioPestanaUrl = "{% url 'quizzes:registrar_cambio_pestana' evaluacion.pk %}";
+window.registrarAuditoriaUrl = "{% url 'quizzes:registrar_evento_auditoria' evaluacion.pk %}";
 window.guardarRespuestaAutomaticaUrl = "{% url 'quizzes:guardar_respuesta_automatica' evaluacion.pk %}";
 window.quizUrl = "{% url 'quizzes:quiz' %}";
 </script>

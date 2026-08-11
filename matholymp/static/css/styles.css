@@ -203,9 +203,9 @@ body .swal2-popup {
     z-index: 10000 !important;
 }
 
-/* Fondo blanco para el login */
+/* Fondo institucional del login */
 .login-bg-white {
-    background: #f4f7fa !important;
+    background: #f4f7fa url('../img/backphoto.png') center center / cover no-repeat !important;
     min-height: 100vh;
 }
 .login-card {
