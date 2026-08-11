@@ -1,3 +1,5 @@
+from django.conf import settings
+
 from .models import Concurso, Carrera, AdminProfile, Participantes
 
 def concurso_context_processor(request):
@@ -5,8 +7,11 @@ def concurso_context_processor(request):
     Context processor global que provee el concurso activo y concursos disponibles
     para el selector de contexto en el Navbar.
     """
+    context_configuracion = {
+        'registro_publico_habilitado': settings.REGISTRO_PUBLICO_HABILITADO,
+    }
     if not hasattr(request, 'user') or not request.user.is_authenticated:
-        return {}
+        return context_configuracion
 
     user = request.user
     
@@ -64,6 +69,7 @@ def concurso_context_processor(request):
         request.session['active_concurso_id'] = active_concurso.id
 
     return {
+        **context_configuracion,
         'active_concurso': active_concurso,
         'active_concurso_id': session_concurso_id if session_concurso_id is not None else (active_concurso.id if active_concurso else 'ALL'),
         'available_concursos': available_concursos,

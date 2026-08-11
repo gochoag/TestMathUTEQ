@@ -9,6 +9,12 @@ SECRET_KEY = config("SECRET_KEY")
 
 DEBUG = True
 
+# El registro público se mantiene desactivado mientras los participantes se
+# incorporan administrativamente mediante formularios y carga de Excel.
+REGISTRO_PUBLICO_HABILITADO = config(
+    "REGISTRO_PUBLICO_HABILITADO", default=False, cast=bool
+)
+
 ALLOWED_HOSTS = ["*"]
 
 # URL base para enlaces en correos obtenida desde .env
