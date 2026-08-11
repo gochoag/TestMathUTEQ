@@ -13,32 +13,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 `¿Estás seguro de que deseas iniciar un nuevo intento de la evaluación "${quizTitle}"?` :
                 `¿Estás seguro de que deseas iniciar la evaluación "${quizTitle}"?`;
             
-            Swal.fire({
+            confirmAppAction({
                 title: title,
                 text: text,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#007bff',
-                cancelButtonColor: '#6c757d',
                 confirmButtonText: 'Sí, iniciar',
-                cancelButtonText: 'Cancelar',
-                reverseButtons: false,
-                customClass: {
-                    popup: 'swal-popup-quiz-confirm'
-                }
+                cancelButtonText: 'Cancelar'
             }).then((result) => {
                 if (result.isConfirmed) {
                     // Mostrar loading
-                    Swal.fire({
+                    showAppLoading({
                         title: 'Cargando evaluación...',
                         text: 'Por favor espera mientras se prepara la evaluación',
                         icon: 'info',
                         allowOutsideClick: false,
                         allowEscapeKey: false,
-                        showConfirmButton: false,
-                        didOpen: () => {
-                            Swal.showLoading();
-                        }
                     });
                     
                     // Redirigir después de un breve delay

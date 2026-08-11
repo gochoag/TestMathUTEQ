@@ -38,6 +38,44 @@ body .swal2-popup {
     position: relative !important;
 }
 
+/* Tema visual compartido por todos los diálogos EVAUTEQ. */
+/* También alcanza diálogos con clases particulares, por ejemplo sobre modales. */
+.swal2-popup {
+    width: min(32rem, calc(100vw - 2rem));
+    padding: 1.75rem;
+    border: 1px solid #dce5df;
+    border-radius: 1rem;
+    box-shadow: 0 1.25rem 3.5rem rgba(21, 60, 39, 0.18);
+}
+
+.swal2-popup .swal2-title {
+    color: #173c27;
+    font-size: 1.35rem;
+    line-height: 1.3;
+}
+
+.swal2-popup .swal2-html-container {
+    color: #526058;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.swal2-popup .swal2-confirm,
+.swal2-popup .swal2-cancel {
+    min-width: 7.5rem;
+    margin: 0.3rem;
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    box-shadow: none;
+}
+
+.swal2-popup .swal2-confirm:focus-visible,
+.swal2-popup .swal2-cancel:focus-visible {
+    outline: 3px solid rgba(8, 124, 63, 0.3);
+    outline-offset: 2px;
+}
+
 /* Asegurar que el backdrop de SweetAlert2 también esté por encima */
 .swal2-backdrop-show {
     z-index: 99998 !important;

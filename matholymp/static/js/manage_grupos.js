@@ -1,12 +1,9 @@
 function confirmDeleteGrupo(id, nombre) {
-    Swal.fire({
+    confirmDestructiveAction({
         title: '\u00bfEliminar grupo?',
         html: `\u00bfEst\u00e1s seguro de que quieres eliminar el grupo <strong>${nombre}</strong>?`,
-        icon: 'warning',
-        showCancelButton: true,
         confirmButtonText: 'S\u00ed, eliminar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
+        cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = '?delete_id=' + id;
@@ -15,25 +12,16 @@ function confirmDeleteGrupo(id, nombre) {
 }
 
 function confirmSendEmail(id, nombreGrupo, nombreRepresentante, sendUrl) {
-    Swal.fire({
+    confirmAppAction({
         title: '\u00bfEnviar correo?',
         html: `\u00bfEst\u00e1s seguro de que quieres enviar un correo al representante <strong>${nombreRepresentante}</strong> con la lista de participantes del grupo <strong>${nombreGrupo}</strong>?`,
-        icon: 'question',
-        showCancelButton: true,
         confirmButtonText: 'S\u00ed, enviar',
-        cancelButtonText: 'Cancelar',
-        reverseButtons: false
+        cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            Swal.fire({
+            showAppLoading({
                 title: 'Enviando correo...',
                 html: 'Por favor espera mientras se env\u00eda el correo electr\u00f3nico al representante.',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                showConfirmButton: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
             });
 
             fetch(sendUrl.replace('0', id), {
@@ -49,30 +37,23 @@ function confirmSendEmail(id, nombreGrupo, nombreRepresentante, sendUrl) {
                 throw new Error('Error en la respuesta del servidor');
             })
             .then(data => {
-                Swal.close();
-
                 if (data.success) {
-                    showDynamicToast({
-                        type: 'success',
-                        title: '\u00c9xito',
-                        message: data.message
+                    showAppSuccess({
+                        title: 'Correo enviado',
+                        text: data.message
                     });
                 } else {
-                    showDynamicToast({
-                        type: 'danger',
-                        title: 'Error',
-                        message: data.message
+                    showAppError({
+                        title: 'No se envi\u00f3 el correo',
+                        text: data.message
                     });
                 }
             })
             .catch(error => {
-                Swal.close();
-
                 console.error('Error:', error);
-                showDynamicToast({
-                    type: 'danger',
-                    title: 'Error',
-                    message: 'Hubo un error al enviar el correo. Por favor, intenta de nuevo.'
+                showAppError({
+                    title: 'Error de conexi\u00f3n',
+                    text: 'Hubo un error al enviar el correo. Por favor, intenta de nuevo.'
                 });
             });
         }

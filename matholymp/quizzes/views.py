@@ -6,7 +6,10 @@ from django.urls import reverse
 from django.core.mail import send_mail
 from django.conf import settings
 from .models import Evaluacion, AdminProfile, Participantes, GrupoParticipantes, Representante, SolicitudClaveTemporal, UserProfile, IntentosParticipante, AuditLog
-from .email_utils import generate_email_messages
+from .email_utils import (
+    generate_credentials_email,
+    generate_participants_list_email,
+)
 from .scope_utils import get_user_scope, filter_queryset_by_scope
 from .decorators import superuser_required, full_access_required, admin_required
 from django.utils import timezone
@@ -891,15 +894,13 @@ def manage_participants(request):
                 concurso=scope_concurso, carrera=scope_carrera
             )
             try:
-                subject = 'Credenciales de Acceso - Sistema Olymp'
-                system_name = 'Sistema Olymp'
-                plain_message, html_message = generate_email_messages(
-                    subject=subject,
+                subject = 'Credenciales de acceso - EVAUTEQ'
+                system_name = 'Plataforma EVAUTEQ'
+                plain_message, html_message = generate_credentials_email(
                     nombre=NombresCompletos,
                     system_name=system_name,
                     username=cedula,
                     nueva_password=password,
-                    email_type='credentials'
                 )
                 send_mail(
                     subject,
@@ -1139,16 +1140,14 @@ def manage_admins(request):
                 carrera_id=carrera_id
             )
             try:
-                subject = 'Credenciales de Acceso - Panel de Administración Olymp'
-                system_name = 'Panel de Administración Olymp'
+                subject = 'Credenciales de acceso - Administración EVAUTEQ'
+                system_name = 'Panel de administración EVAUTEQ'
                 full_name = f"{first_name} {last_name}".strip()
-                plain_message, html_message = generate_email_messages(
-                    subject=subject,
+                plain_message, html_message = generate_credentials_email(
                     nombre=full_name,
                     system_name=system_name,
                     username=username,
                     nueva_password=password,
-                    email_type='credentials'
                 )
                 send_mail(
                     subject,
@@ -4074,84 +4073,54 @@ def send_participants_email(request, grupo_id):
         return redirect('quizzes:dashboard')
     
     try:
-        grupo = GrupoParticipantes.objects.select_related('representante').prefetch_related('participantes').get(id=grupo_id)
+        grupo = GrupoParticipantes.objects.select_related(
+            'representante', 'concurso', 'concurso__carrera'
+        ).get(id=grupo_id)
         
         if not grupo.representante:
             messages.error(request, 'Este grupo no tiene un representante asignado.')
             return redirect('quizzes:manage_grupos')
         
-        if not grupo.participantes.exists():
+        participantes = grupo.participantes.select_related('user').order_by(
+            'NombresCompletos', 'id'
+        )
+        if not participantes.exists():
             messages.error(request, 'Este grupo no tiene participantes asignados.')
             return redirect('quizzes:manage_grupos')
         
-        # Crear tabla HTML moderna con los datos de los participantes
-        participantes_html = """
-        <table style="width: 100%; border-collapse: collapse; background: white;">
-            <thead>
-                <tr>
-                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Cédula</th>
-                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Nombres Completos</th>
-                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Email</th>
-                    <!--<th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Teléfono</th>-->
-                    <!--<th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Edad</th>-->
-                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Usuario</th>
-                    <th style="background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%); color: white; padding: 15px 10px; text-align: left; font-weight: 600; font-size: 14px;">Contraseña</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-        
-        for participante in grupo.participantes.all():
-            nueva_password = get_random_string(length=6)
-            participante.user.set_password(nueva_password)
-            participante.user.save()
-            
-            participantes_html += f"""
-                <tr style="border-bottom: 1px solid #e0e0e0;">
-                    <td style="padding: 12px 10px; font-size: 13px; font-weight: 600; color: #333;">{participante.cedula}</td>
-                    <td style="padding: 12px 10px; font-size: 13px; color: #555;">{participante.NombresCompletos}</td>
-                    <td style="padding: 12px 10px; font-size: 13px; color: #667eea;">{participante.email}</td>
-                    <!--<td style="padding: 12px 10px; font-size: 13px; color: #666;">{participante.phone or 'No registrado'}</td>-->
-                    <!--<td style="padding: 12px 10px; font-size: 13px; color: #666;">{participante.edad or 'No registrado'}</td>-->
-                    <td style="padding: 12px 10px; font-size: 13px; font-family: 'Courier New', monospace; font-weight: 600; color: #667eea;">{participante.user.username}</td>
-                    <td style="padding: 12px 10px; font-size: 13px; font-family: 'Courier New', monospace; font-weight: 600; color: #e74c3c; background: #fdf2f2; border-radius: 4px;">{nueva_password}</td>
-                </tr>
-            """
-        
-        participantes_html += """
-            </tbody>
-        </table>
-        """
-        
-        # Crear el mensaje del correo usando la función global
-        subject = f'Lista de Participantes - Grupo: {grupo.name}'
-        
-        # Preparar contenido adicional para la función global
-        additional_content = {
-            'participantes_html': participantes_html,
-            'total_participantes': grupo.participantes.count()
-        }
-        
-        # Generar mensajes usando la función global
-        plain_message, html_message = generate_email_messages(
-            subject=subject,
-            nombre=grupo.representante.NombresRepresentante,
-            system_name=grupo.name,
-            username='',  # No aplica para lista de participantes
-            nueva_password='',  # No aplica para lista de participantes
-            email_type='participants_list',
-            additional_content=additional_content
-        )
-        
-        # Enviar el correo
-        send_mail(
-            subject,
-            plain_message,
-            settings.EMAIL_HOST_USER,
-            [grupo.representante.CorreoRepresentante],
-            fail_silently=False,
-            html_message=html_message
-        )
+        # Las contraseñas sólo se confirman si el correo se pudo enviar.
+        with transaction.atomic():
+            participantes_email = []
+            for participante in participantes:
+                nueva_password = get_random_string(length=6)
+                participante.user.set_password(nueva_password)
+                participante.user.save()
+                participantes_email.append({
+                    'cedula': participante.cedula,
+                    'nombre': participante.NombresCompletos,
+                    'email': participante.email,
+                    'username': participante.user.username,
+                    'password': nueva_password,
+                })
+
+            subject = f'Lista de Participantes - Grupo: {grupo.name}'
+            plain_message, html_message = generate_participants_list_email(
+                nombre=grupo.representante.NombresRepresentante,
+                grupo_nombre=grupo.name,
+                concurso_nombre=grupo.concurso.nombre,
+                carrera_nombre=grupo.concurso.carrera.nombre,
+                participantes=participantes_email,
+            )
+            enviados = send_mail(
+                subject,
+                plain_message,
+                settings.EMAIL_HOST_USER,
+                [grupo.representante.CorreoRepresentante],
+                fail_silently=False,
+                html_message=html_message
+            )
+            if enviados != 1:
+                raise RuntimeError('El servidor de correo no confirmó el envío.')
         
         # Verificar si es una petición AJAX
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -4205,8 +4174,8 @@ def send_credentials_email(request, user_type, user_id):
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
-            subject = f'Credenciales de Acceso - Sistema Olymp'
-            system_name = 'Sistema Olymp'
+            subject = 'Credenciales de acceso - EVAUTEQ'
+            system_name = 'Plataforma EVAUTEQ'
             
         elif user_type == 'admin':
             if not request.user.is_superuser:
@@ -4225,21 +4194,19 @@ def send_credentials_email(request, user_type, user_id):
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
-            subject = f'Credenciales de Acceso - Panel de Administración Olymp'
-            system_name = 'Panel de Administración Olymp'
+            subject = 'Credenciales de acceso - Administración EVAUTEQ'
+            system_name = 'Panel de administración EVAUTEQ'
             
         else:
             messages.error(request, 'Tipo de usuario no válido.')
             return redirect('quizzes:dashboard')
         
-        # Generar mensajes usando la función global
-        plain_message, html_message = generate_email_messages(
-            subject=subject,
+        # Generar correo institucional de credenciales.
+        plain_message, html_message = generate_credentials_email(
             nombre=nombre,
             system_name=system_name,
             username=username,
             nueva_password=nueva_password,
-            email_type='credentials'
         )
         
         # Enviar el correo
@@ -5487,8 +5454,8 @@ def send_credentials_for_clave_temporal(tipo_usuario, user_id):
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
-            subject = f'Credenciales de Acceso - Sistema Olymp'
-            system_name = 'Sistema Olymp'
+            subject = 'Credenciales de acceso - EVAUTEQ'
+            system_name = 'Plataforma EVAUTEQ'
             
         else:  # admin
             user_obj = AdminProfile.objects.get(id=user_id)
@@ -5501,17 +5468,15 @@ def send_credentials_for_clave_temporal(tipo_usuario, user_id):
             user_obj.user.set_password(nueva_password)
             user_obj.user.save()
             
-            subject = f'Credenciales de Acceso - Panel de Administración Olymp'
-            system_name = 'Panel de Administración Olymp'
+            subject = 'Credenciales de acceso - Administración EVAUTEQ'
+            system_name = 'Panel de administración EVAUTEQ'
         
-        # Generar mensajes usando la función global
-        plain_message, html_message = generate_email_messages(
-            subject=subject,
+        # Generar correo institucional de credenciales.
+        plain_message, html_message = generate_credentials_email(
             nombre=nombre,
             system_name=system_name,
             username=username,
             nueva_password=nueva_password,
-            email_type='credentials'
         )
         
         # Enviar el correo

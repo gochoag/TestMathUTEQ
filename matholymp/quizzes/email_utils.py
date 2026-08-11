@@ -3,7 +3,285 @@ Utilidades para el envío de correos electrónicos
 """
 
 import datetime
+from html import escape
+
 from django.conf import settings
+
+
+def generate_participants_list_email(
+    *, nombre, grupo_nombre, concurso_nombre, carrera_nombre, participantes
+):
+    """Genera el correo institucional con las credenciales de un grupo.
+
+    Usa tablas y estilos inline para conservar la estructura en Gmail, Outlook
+    y clientes móviles, donde el CSS avanzado y las fuentes externas no son
+    confiables.
+    """
+    current_year = datetime.datetime.now().year
+    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+    login_url = f"{site_url}/login/"
+    support_email = getattr(
+        settings, 'SUPPORT_EMAIL', 'olimpiadasmecanicauteq@gmail.com'
+    )
+
+    recipient_name = escape(str(nombre))
+    group_name = escape(str(grupo_nombre))
+    contest_name = escape(str(concurso_nombre))
+    program_name = escape(str(carrera_nombre))
+    safe_support_email = escape(str(support_email))
+
+    rows = []
+    for index, participante in enumerate(participantes, start=1):
+        row_background = '#f8fbf9' if index % 2 == 0 else '#ffffff'
+        rows.append(
+            f"""
+            <tr>
+                <td style="padding:12px 8px;border-bottom:1px solid #e7ece9;color:#68736e;font-size:12px;text-align:center;background:{row_background};">{index}</td>
+                <td style="padding:12px 10px;border-bottom:1px solid #e7ece9;color:#1e2b25;font-size:13px;font-weight:700;line-height:18px;background:{row_background};">{escape(str(participante['nombre']))}</td>
+                <td style="padding:12px 8px;border-bottom:1px solid #e7ece9;color:#35423b;font-size:12px;background:{row_background};">{escape(str(participante['cedula']))}</td>
+                <td style="padding:12px 8px;border-bottom:1px solid #e7ece9;color:#28724c;font-size:12px;word-break:break-word;background:{row_background};">{escape(str(participante['email']))}</td>
+                <td style="padding:12px 8px;border-bottom:1px solid #e7ece9;color:#1e2b25;font-family:Consolas,'Courier New',monospace;font-size:12px;background:{row_background};">{escape(str(participante['username']))}</td>
+                <td style="padding:12px 8px;border-bottom:1px solid #e7ece9;color:#79550a;font-family:Consolas,'Courier New',monospace;font-size:12px;font-weight:700;background:#fff8e8;">{escape(str(participante['password']))}</td>
+            </tr>
+            """
+        )
+
+    participants_rows = ''.join(rows)
+    total_participantes = len(participantes)
+    plain_lines = '\n'.join(
+        f"{index}. {participant['nombre']} | Cédula: {participant['cedula']} | "
+        f"Usuario: {participant['username']} | Contraseña: {participant['password']}"
+        for index, participant in enumerate(participantes, start=1)
+    )
+    plain_message = f"""Estimado/a {nombre},
+
+Se generó la lista de participantes asignados al grupo "{grupo_nombre}".
+
+Concurso: {concurso_nombre}
+Carrera: {carrera_nombre}
+Total de participantes: {total_participantes}
+
+Las credenciales incluidas son confidenciales. Compártalas únicamente con cada
+participante y evite reenviar este correo.
+
+{plain_lines}
+
+Acceso a la plataforma: {login_url}
+Soporte: {support_email}
+
+Atentamente,
+{carrera_nombre}
+Universidad Técnica Estatal de Quevedo
+"""
+
+    html_message = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Participantes asignados</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f2f5f3;font-family:Arial,Helvetica,sans-serif;color:#1e2b25;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    Lista y credenciales de {total_participantes} participantes del grupo {group_name}.
+  </div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f2f5f3;">
+    <tr>
+      <td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="720" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:720px;background-color:#ffffff;border:1px solid #dce5df;">
+          <tr>
+            <td style="padding:32px 34px 28px;background-color:#087c3f;border-bottom:5px solid #f0a429;">
+              <p style="margin:0 0 8px;color:#d7f0e0;font-size:12px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;">EVAUTEQ · Gestión de participantes</p>
+              <h1 style="margin:0;color:#ffffff;font-size:27px;line-height:34px;font-weight:700;">Participantes asignados</h1>
+              <p style="margin:10px 0 0;color:#e6f5eb;font-size:15px;line-height:22px;">Información para el representante del grupo</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 34px 18px;">
+              <p style="margin:0 0 16px;font-size:16px;line-height:24px;">Estimado/a <strong>{recipient_name}</strong>,</p>
+              <p style="margin:0;font-size:15px;line-height:24px;color:#435149;">A continuación encontrará la relación de estudiantes asignados y sus credenciales de acceso. Comparta cada credencial únicamente con su respectivo participante.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 34px 22px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f4f8f5;border:1px solid #dce8e0;">
+                <tr>
+                  <td style="padding:16px 18px;border-left:4px solid #087c3f;">
+                    <p style="margin:0 0 5px;color:#66736c;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Grupo</p>
+                    <p style="margin:0;color:#173c27;font-size:17px;font-weight:700;">{group_name}</p>
+                    <p style="margin:8px 0 0;color:#526058;font-size:13px;line-height:19px;">{contest_name} · {program_name}</p>
+                  </td>
+                  <td align="center" width="116" style="padding:16px 12px;border-left:1px solid #dce8e0;">
+                    <p style="margin:0;color:#087c3f;font-size:28px;line-height:30px;font-weight:700;">{total_participantes}</p>
+                    <p style="margin:5px 0 0;color:#66736c;font-size:11px;font-weight:700;text-transform:uppercase;">Participantes</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 34px 24px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#fff8e8;border:1px solid #f4deb0;">
+                <tr>
+                  <td style="padding:15px 17px;border-left:4px solid #d68c00;">
+                    <p style="margin:0 0 4px;color:#765000;font-size:14px;font-weight:700;">Información confidencial</p>
+                    <p style="margin:0;color:#705a27;font-size:13px;line-height:19px;">Las contraseñas de esta lista se generaron con este envío. No reenvíe el correo completo ni publique las credenciales en grupos o redes sociales.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 34px 12px;">
+              <h2 style="margin:0;color:#173c27;font-size:18px;line-height:26px;">Listado de acceso</h2>
+              <p style="margin:5px 0 0;color:#66736c;font-size:13px;line-height:19px;">Usuario y contraseña temporal para el acceso inicial a la plataforma.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 22px 22px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border:1px solid #dce5df;border-collapse:collapse;">
+                <thead>
+                  <tr>
+                    <th align="center" style="padding:12px 6px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">#</th>
+                    <th align="left" style="padding:12px 8px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">PARTICIPANTE</th>
+                    <th align="left" style="padding:12px 6px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">CÉDULA</th>
+                    <th align="left" style="padding:12px 6px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">CORREO</th>
+                    <th align="left" style="padding:12px 6px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">USUARIO</th>
+                    <th align="left" style="padding:12px 6px;background-color:#145a35;color:#ffffff;font-size:11px;line-height:15px;">CONTRASEÑA</th>
+                  </tr>
+                </thead>
+                <tbody>{participants_rows}</tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:2px 34px 32px;">
+              <a href="{login_url}" style="display:inline-block;padding:13px 22px;background-color:#087c3f;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:4px;">Abrir plataforma EVAUTEQ</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 34px;background-color:#eef3f0;border-top:1px solid #dce5df;text-align:center;">
+              <p style="margin:0;color:#445149;font-size:13px;line-height:20px;">Para soporte, escriba a <a href="mailto:{safe_support_email}" style="color:#087c3f;font-weight:700;text-decoration:none;">{safe_support_email}</a>.</p>
+              <p style="margin:13px 0 0;color:#173c27;font-size:13px;font-weight:700;line-height:20px;">{program_name}<br>Universidad Técnica Estatal de Quevedo</p>
+              <p style="margin:15px 0 0;color:#7d8982;font-size:11px;line-height:16px;">Mensaje automático · {current_year}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+    return plain_message, html_message
+
+
+def generate_credentials_email(*, nombre, system_name, username, nueva_password):
+    """Genera el correo institucional para credenciales nuevas o restablecidas."""
+    current_year = datetime.datetime.now().year
+    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+    login_url = f"{site_url}/login/"
+    support_email = getattr(
+        settings, 'SUPPORT_EMAIL', 'olimpiadasmecanicauteq@gmail.com'
+    )
+
+    recipient_name = escape(str(nombre))
+    system_label = escape(str(system_name))
+    safe_username = escape(str(username))
+    safe_password = escape(str(nueva_password))
+    safe_support_email = escape(str(support_email))
+    plain_message = f"""Estimado/a {nombre},
+
+Se generaron nuevas credenciales de acceso para {system_name}.
+
+Usuario: {username}
+Contraseña: {nueva_password}
+
+Acceda a la plataforma en: {login_url}
+
+Por seguridad, no comparta estas credenciales. Si necesita ayuda, contacte a:
+{support_email}
+
+Atentamente,
+Universidad Técnica Estatal de Quevedo
+"""
+
+    html_message = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credenciales de acceso</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f2f5f3;font-family:Arial,Helvetica,sans-serif;color:#1e2b25;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    Sus nuevas credenciales de acceso para EVAUTEQ están disponibles.
+  </div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f2f5f3;">
+    <tr>
+      <td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:620px;background-color:#ffffff;border:1px solid #dce5df;">
+          <tr>
+            <td style="padding:32px 34px 28px;background-color:#087c3f;border-bottom:5px solid #f0a429;">
+              <p style="margin:0 0 8px;color:#d7f0e0;font-size:12px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;">EVAUTEQ · Acceso seguro</p>
+              <h1 style="margin:0;color:#ffffff;font-size:27px;line-height:34px;font-weight:700;">Credenciales de acceso</h1>
+              <p style="margin:10px 0 0;color:#e6f5eb;font-size:15px;line-height:22px;">{system_label}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 34px 18px;">
+              <p style="margin:0 0 16px;font-size:16px;line-height:24px;">Estimado/a <strong>{recipient_name}</strong>,</p>
+              <p style="margin:0;font-size:15px;line-height:24px;color:#435149;">Hemos generado las credenciales que necesita para ingresar a la plataforma.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 34px 22px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border:1px solid #dce8e0;background-color:#f8fbf9;">
+                <tr>
+                  <td style="padding:15px 18px;border-left:4px solid #087c3f;">
+                    <p style="margin:0;color:#66736c;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Usuario</p>
+                    <p style="margin:7px 0 0;color:#173c27;font-family:Consolas,'Courier New',monospace;font-size:18px;font-weight:700;word-break:break-word;">{safe_username}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:15px 18px;border-top:1px solid #dce8e0;border-left:4px solid #d68c00;background-color:#fff8e8;">
+                    <p style="margin:0;color:#765000;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Contraseña temporal</p>
+                    <p style="margin:7px 0 0;color:#79550a;font-family:Consolas,'Courier New',monospace;font-size:18px;font-weight:700;word-break:break-word;">{safe_password}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 34px 24px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#fff8e8;border:1px solid #f4deb0;">
+                <tr>
+                  <td style="padding:15px 17px;border-left:4px solid #d68c00;">
+                    <p style="margin:0 0 4px;color:#765000;font-size:14px;font-weight:700;">Proteja su acceso</p>
+                    <p style="margin:0;color:#705a27;font-size:13px;line-height:19px;">No comparta estas credenciales ni reenvíe este correo. Si no solicitó este acceso, contacte al equipo de soporte.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:2px 34px 32px;">
+              <a href="{login_url}" style="display:inline-block;padding:13px 22px;background-color:#087c3f;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:4px;">Ingresar a EVAUTEQ</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 34px;background-color:#eef3f0;border-top:1px solid #dce5df;text-align:center;">
+              <p style="margin:0;color:#445149;font-size:13px;line-height:20px;">¿Necesita ayuda? Escriba a <a href="mailto:{safe_support_email}" style="color:#087c3f;font-weight:700;text-decoration:none;">{safe_support_email}</a>.</p>
+              <p style="margin:13px 0 0;color:#173c27;font-size:13px;font-weight:700;line-height:20px;">Universidad Técnica Estatal de Quevedo</p>
+              <p style="margin:15px 0 0;color:#7d8982;font-size:11px;line-height:16px;">Mensaje automático · {current_year}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+    return plain_message, html_message
 
 def generate_email_messages(subject, nombre, system_name, username, nueva_password, email_type='credentials', additional_content=None):
     """

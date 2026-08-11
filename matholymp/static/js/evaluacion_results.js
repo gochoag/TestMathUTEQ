@@ -435,8 +435,8 @@ function generarRetroalimentacion() {
     const grupoSeleccionado = document.querySelector('[data-grupo-seleccionado]')?.dataset.grupoSeleccionado;
     
     if (!grupoSeleccionado) {
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'warning',
                 title: 'Selecciona un Grupo',
                 text: 'Debes seleccionar un grupo específico para generar retroalimentación.',
@@ -587,8 +587,8 @@ function descargarRetroalimentacion() {
     const grupoId = document.querySelector('[data-grupo-id]')?.dataset.grupoId;
     
     if (!grupoId) {
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: 'No se pudo identificar el grupo seleccionado.',
@@ -609,8 +609,8 @@ function descargarRetroalimentacion() {
     const categoriasMedias = categoriasData.filter(c => c.porcentaje >= 50 && c.porcentaje < 80);
     
     // Mostrar mensaje de confirmación
-    if (window.Swal) {
-        Swal.fire({
+    if (window.showAppDialog) {
+        confirmAppAction({
             title: '¿Descargar Retroalimentación?',
             html: `
                 <p>Se generará un PDF con la retroalimentación del grupo <strong>${grupoSeleccionado}</strong> que incluye:</p>
@@ -620,16 +620,13 @@ function descargarRetroalimentacion() {
                     <li>Mensaje de agradecimiento</li>
                 </ul>
             `,
-            icon: 'question',
-            showCancelButton: true,
             confirmButtonText: 'Descargar PDF',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#0d6efd',
             showLoaderOnConfirm: true,
             preConfirm: () => {
                 return descargarPDF(grupoId, retroalimentacionPersonalizada, categoriasDificiles, categoriasMedias);
             },
-            allowOutsideClick: () => !Swal.isLoading()
+            allowOutsideClick: () => !isAppLoading()
         });
     } else {
         // Si no hay SweetAlert2, descargar directamente
@@ -692,8 +689,8 @@ async function descargarPDF(grupoId, retroalimentacionPersonalizada, categoriasD
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'success',
                 title: 'PDF Descargado',
                 text: 'El PDF de retroalimentación se ha descargado correctamente.',
@@ -705,8 +702,8 @@ async function descargarPDF(grupoId, retroalimentacionPersonalizada, categoriasD
     } catch (error) {
         console.error('Error al descargar PDF:', error);
         
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: error.message || 'Ocurrió un error al descargar el PDF. Por favor, intente nuevamente.',
@@ -728,8 +725,8 @@ function enviarCorreoRetroalimentacion() {
     const grupoId = document.querySelector('[data-grupo-id]')?.dataset.grupoId;
     
     if (!grupoId) {
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: 'No se pudo identificar el grupo seleccionado.',
@@ -750,8 +747,8 @@ function enviarCorreoRetroalimentacion() {
     const categoriasMedias = categoriasData.filter(c => c.porcentaje >= 50 && c.porcentaje < 80);
     
     // Confirmar envío
-    if (window.Swal) {
-        Swal.fire({
+    if (window.showAppDialog) {
+        confirmAppAction({
             title: '¿Enviar Retroalimentación?',
             html: `
                 <p>Se enviará un correo electrónico al representante del grupo <strong>${grupoSeleccionado}</strong> con:</p>
@@ -761,10 +758,6 @@ function enviarCorreoRetroalimentacion() {
                     <li>Archivo Excel con resultados detallados</li>
                 </ul>
             `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#0d6efd',
-            cancelButtonColor: '#6c757d',
             confirmButtonText: 'Sí, enviar',
             cancelButtonText: 'Cancelar'
         }).then((result) => {
@@ -786,8 +779,8 @@ function enviarCorreo(grupoId, retroalimentacionPersonalizada) {
     const url = document.querySelector('[data-enviar-retroalimentacion-url]')?.dataset.enviarRetroalimentacionUrl;
     
     if (!url) {
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error de Configuración',
                 text: 'URL de envío no configurada.',
@@ -798,15 +791,15 @@ function enviarCorreo(grupoId, retroalimentacionPersonalizada) {
     }
     
     // Mostrar indicador de carga
-    if (window.Swal) {
-        Swal.fire({
+    if (window.showAppDialog) {
+        showAppDialog({
             title: 'Enviando Correo...',
             html: 'Por favor espera mientras se envía la retroalimentación.',
             allowOutsideClick: false,
             allowEscapeKey: false,
             showConfirmButton: false,
             didOpen: () => {
-                Swal.showLoading();
+                showAppLoader();
             }
         });
     }
@@ -842,8 +835,8 @@ function enviarCorreo(grupoId, retroalimentacionPersonalizada) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (window.Swal) {
-                Swal.fire({
+            if (window.showAppDialog) {
+                showAppDialog({
                     icon: 'success',
                     title: '¡Correo Enviado!',
                     text: data.message || 'La retroalimentación ha sido enviada exitosamente.',
@@ -859,8 +852,8 @@ function enviarCorreo(grupoId, retroalimentacionPersonalizada) {
                 modal.hide();
             }
         } else {
-            if (window.Swal) {
-                Swal.fire({
+            if (window.showAppDialog) {
+                showAppDialog({
                     icon: 'error',
                     title: 'Error al Enviar',
                     text: data.error || 'Hubo un problema al enviar el correo.',
@@ -873,8 +866,8 @@ function enviarCorreo(grupoId, retroalimentacionPersonalizada) {
     })
     .catch(error => {
         console.error('Error:', error);
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error de Conexión',
                 text: 'No se pudo conectar con el servidor. Inténtalo de nuevo.',
@@ -914,8 +907,8 @@ function exportarResultados() {
     // Obtener URL base desde el template
     const exportUrl = document.querySelector('[data-export-url]')?.dataset.exportUrl;
     if (!exportUrl) {
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error de Configuración',
                 text: 'URL de exportación no configurada.',
@@ -966,8 +959,8 @@ function exportarResultados() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'success',
                 title: 'Exportación Exitosa',
                 text: 'Los resultados han sido descargados exitosamente.',
@@ -977,8 +970,8 @@ function exportarResultados() {
     })
     .catch(error => {
         console.error('Error al exportar:', error);
-        if (window.Swal) {
-            Swal.fire({
+        if (window.showAppDialog) {
+            showAppDialog({
                 icon: 'error',
                 title: 'Error al Exportar',
                 text: 'Hubo un problema al exportar los resultados. Inténtalo de nuevo.',

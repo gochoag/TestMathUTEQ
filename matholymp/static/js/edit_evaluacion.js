@@ -13,7 +13,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     const endTime = document.getElementById('evaluacionEndTime').value;
 
     if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Campos requeridos',
             text: 'Por favor, completa todos los campos obligatorios.'
@@ -22,7 +22,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     }
 
     if (duration < 1 || duration > 480) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Duracion invalida',
             text: 'La duracion debe estar entre 1 y 480 minutos.'
@@ -34,7 +34,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     const endDateTime = new Date(`${endDate} ${endTime}`);
 
     if (startDateTime >= endDateTime) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Fechas invalidas',
             text: 'La fecha de inicio debe ser anterior a la fecha de finalizacion.'
@@ -42,12 +42,12 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
         return;
     }
 
-    Swal.fire({
+    showAppDialog({
         title: 'Guardando...',
         text: 'Por favor espera',
         allowOutsideClick: false,
         didOpen: () => {
-            Swal.showLoading();
+            showAppLoader();
         }
     });
 
@@ -69,7 +69,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: '¡Guardado!',
                 text: 'La evaluacion ha sido actualizada exitosamente',
@@ -79,7 +79,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
                 window.location.href = redirectUrl;
             });
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'Error al actualizar la evaluacion'
@@ -88,7 +88,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     })
     .catch(error => {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de conexion al actualizar la evaluacion'

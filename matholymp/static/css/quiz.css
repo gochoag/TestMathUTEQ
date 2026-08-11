@@ -40,32 +40,3 @@
     padding-left: 10px;
     padding-right: 10px;
 }
-
-/* Estilos personalizados para SweetAlert2 */
-.swal-popup-quiz-confirm {
-    font-family: inherit;
-}
-
-.swal-popup-quiz-confirm .swal2-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #343a40;
-}
-
-.swal-popup-quiz-confirm .swal2-content {
-    font-size: 1rem;
-    color: #6c757d;
-    line-height: 1.5;
-}
-
-.swal-popup-quiz-confirm .swal2-confirm {
-    font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-}
-
-.swal-popup-quiz-confirm .swal2-cancel {
-    font-weight: 500;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-}

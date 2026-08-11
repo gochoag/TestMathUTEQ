@@ -109,7 +109,7 @@ function setupEventListeners() {
     const btnGuardarPreguntas = document.getElementById('btnGuardarPreguntas');
     if (btnGuardarPreguntas) {
         btnGuardarPreguntas.addEventListener('click', function() {
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: '¡Éxito!',
                 text: 'Las preguntas se han guardado correctamente',
@@ -194,7 +194,7 @@ async function processBase64Images(content) {
 async function saveQuestion() {
     // Verificar si se pueden modificar las preguntas
     if (window.canModifyQuestions === false) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Operación no permitida',
             text: window.restrictionMessage || 'No se pueden agregar preguntas en este momento.',
@@ -224,7 +224,7 @@ async function saveQuestion() {
         }
     } catch (error) {
         console.error('Error processing images:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Advertencia',
             text: 'Hubo un problema procesando las imágenes. Continuando con el guardado...',
@@ -247,7 +247,7 @@ async function saveQuestion() {
     
     // Validaciones
     if (!pregunta.trim()) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'El enunciado de la pregunta es obligatorio',
@@ -259,7 +259,7 @@ async function saveQuestion() {
     }
     
     if (!opcionCorrecta) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Debe seleccionar una opción correcta',
@@ -272,7 +272,7 @@ async function saveQuestion() {
     
     // Validar categoría
     if (!categoria || categoria === '' || categoria === '0') {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Debe seleccionar una categoría',
@@ -285,7 +285,7 @@ async function saveQuestion() {
     
     // Validar puntos
     if (isNaN(puntos) || puntos < 1 || puntos > 10) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Los puntos deben estar entre 1 y 10',
@@ -299,7 +299,7 @@ async function saveQuestion() {
     // Verificar que todas las opciones tengan contenido
     for (let i = 0; i < opciones.length; i++) {
         if (!opciones[i].trim()) {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: `La opción ${'ABCD'[i]} es obligatoria`,
@@ -314,7 +314,7 @@ async function saveQuestion() {
     // Preparar datos para enviar
     const categoriaInt = parseInt(categoria);
     if (isNaN(categoriaInt)) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'La categoría seleccionada no es válida',
@@ -335,15 +335,11 @@ async function saveQuestion() {
     
     // Mostrar indicador de carga
     const actionText = isEditing ? 'Actualizando' : 'Guardando';
-    Swal.fire({
+    showAppLoading({
         title: `${actionText} pregunta...`,
         html: 'Por favor espera mientras se procesa la pregunta.',
         allowOutsideClick: false,
         allowEscapeKey: false,
-        showConfirmButton: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
     });
     
     // Deshabilitar el botón de guardar
@@ -376,14 +372,14 @@ async function saveQuestion() {
         }
 
         if (responseData.success) {
-            Swal.close();
+            closeAppDialog();
 
             // Cerrar el modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('modalPregunta'));
             modal.hide();
 
             // Mostrar mensaje de éxito
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: '¡Éxito!',
                 text: responseData.message,
@@ -399,9 +395,9 @@ async function saveQuestion() {
                 window.location.reload();
             }, 2000);
         } else {
-            Swal.close();
+            closeAppDialog();
 
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: responseData.error,
@@ -416,10 +412,10 @@ async function saveQuestion() {
             btnGuardar.disabled = false;
         }
 
-        Swal.close();
+        closeAppDialog();
 
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de red o del servidor',
@@ -434,7 +430,7 @@ async function saveQuestion() {
 function deletePregunta(preguntaId) {
     // Verificar si se pueden modificar las preguntas
     if (window.canModifyQuestions === false) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Operación no permitida',
             text: window.restrictionMessage || 'No se pueden eliminar preguntas en este momento.',
@@ -446,13 +442,9 @@ function deletePregunta(preguntaId) {
         return;
     }
 
-    Swal.fire({
+    confirmDestructiveAction({
         title: '¿Estás seguro?',
         text: "Esta acción no se puede deshacer. Se eliminará la pregunta y todas sus opciones.",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
         confirmButtonText: 'Sí, eliminar',
         cancelButtonText: 'Cancelar',
         customClass: {
@@ -470,7 +462,7 @@ function deletePregunta(preguntaId) {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'success',
                         title: '¡Eliminada!',
                         text: data.message,
@@ -492,7 +484,7 @@ function deletePregunta(preguntaId) {
                         }, 500);
                     }
                 } else {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'error',
                         title: 'Error',
                         text: data.error,
@@ -504,7 +496,7 @@ function deletePregunta(preguntaId) {
             })
             .catch(error => {
                 console.error('Error:', error);
-                Swal.fire({
+                showAppDialog({
                     icon: 'error',
                     title: 'Error',
                     text: 'Error de red o del servidor',
@@ -521,7 +513,7 @@ function deletePregunta(preguntaId) {
 async function editPregunta(preguntaId) {
     // Verificar si se pueden modificar las preguntas
     if (window.canModifyQuestions === false) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Operación no permitida',
             text: window.restrictionMessage || 'No se pueden editar preguntas en este momento.',
@@ -535,12 +527,12 @@ async function editPregunta(preguntaId) {
 
     try {
         // Mostrar loading
-        Swal.fire({
+        showAppDialog({
             title: 'Cargando...',
             text: 'Obteniendo datos de la pregunta',
             allowOutsideClick: false,
             didOpen: () => {
-                Swal.showLoading();
+                showAppLoader();
             },
             customClass: {
                 container: 'swal-over-modal'
@@ -553,7 +545,7 @@ async function editPregunta(preguntaId) {
         
         if (data.success) {
             // Cerrar loading
-            Swal.close();
+            closeAppDialog();
             
             // Configurar modo edición
             currentPreguntaId = preguntaId;
@@ -604,7 +596,7 @@ async function editPregunta(preguntaId) {
             setTimeout(corregirAlineacionImagenesMejorada, 200);
             
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error,
@@ -615,7 +607,7 @@ async function editPregunta(preguntaId) {
         }
     } catch (error) {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de red o del servidor',
@@ -706,7 +698,7 @@ async function actualizarPuntos(preguntaId, puntos) {
     // Verificar si se pueden modificar las preguntas
     if (window.canModifyQuestions === false) {
         // Mostrar mensaje y revertir el valor
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Operación no permitida',
             text: window.restrictionMessage || 'No se pueden modificar preguntas en este momento.',
@@ -738,7 +730,7 @@ async function actualizarPuntos(preguntaId, puntos) {
         
         if (data.success) {
             // Mostrar notificación de éxito
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: 'Éxito',
                 text: 'Puntos actualizados correctamente',
@@ -749,7 +741,7 @@ async function actualizarPuntos(preguntaId, puntos) {
                 }
             });
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error,
@@ -760,7 +752,7 @@ async function actualizarPuntos(preguntaId, puntos) {
         }
     } catch (error) {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de red o del servidor',
@@ -853,7 +845,7 @@ function actualizarTotalCuotasVisual() {
 
 async function guardarCuotasUnidad() {
     if (!window.canModifyQuestions) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Acción no permitida',
             text: window.restrictionMessage || 'No se pueden modificar las cuotas de esta evaluación.'
@@ -873,7 +865,7 @@ async function guardarCuotasUnidad() {
     });
 
     if (total <= 0) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Total de preguntas inválido',
             text: 'La suma total de preguntas a mostrar debe ser mayor a 0.'
@@ -881,11 +873,11 @@ async function guardarCuotasUnidad() {
         return;
     }
 
-    Swal.fire({
+    showAppDialog({
         title: 'Guardando distribución...',
         text: 'Por favor espera',
         allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); }
+        didOpen: () => { showAppLoader(); }
     });
 
     try {
@@ -899,7 +891,7 @@ async function guardarCuotasUnidad() {
         });
         const data = await response.json();
         if (data.success) {
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: '¡Guardado!',
                 text: data.message || 'Distribución de preguntas actualizada exitosamente.',
@@ -908,7 +900,7 @@ async function guardarCuotasUnidad() {
             });
             actualizarTotalCuotasVisual();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'No se pudo guardar la distribución.'
@@ -916,11 +908,11 @@ async function guardarCuotasUnidad() {
         }
     } catch (error) {
         console.error('Error al guardar cuotas:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error de red',
             text: 'Ocurrió un error al guardar la distribución de preguntas.'
         });
     }
 }
-
+

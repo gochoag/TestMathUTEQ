@@ -179,30 +179,6 @@
     z-index: 1065 !important;
 }
 
-/* SweetAlert2 por encima de modales */
-.swal2-container {
-    z-index: 9999 !important;
-}
-.swal2-popup {
-    z-index: 10000 !important;
-}
-
-/* Clases adicionales para SweetAlert2 sobre modales */
-.swal2-container-over-modal {
-    z-index: 9999 !important;
-}
-.swal2-popup-over-modal {
-    z-index: 10000 !important;
-}
-
-/* Asegurar que SweetAlert2 esté por encima de todo */
-body .swal2-container {
-    z-index: 9999 !important;
-}
-body .swal2-popup {
-    z-index: 10000 !important;
-}
-
 /* Fondo institucional del login */
 .login-bg-white {
     background: #f4f7fa url('../img/backphoto.png') center center / cover no-repeat !important;

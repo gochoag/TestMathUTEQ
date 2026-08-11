@@ -10,24 +10,18 @@ document.addEventListener('DOMContentLoaded', function () {
         const username = usernameInput ? usernameInput.value.trim() : '';
 
         if (!username) {
-            Swal.fire({
-                icon: 'warning',
+            showAppWarning({
                 title: 'Campo requerido',
-                text: 'Por favor, ingrese su nombre de usuario.',
-                confirmButtonColor: '#00923f'
+                text: 'Por favor, ingrese su nombre de usuario.'
             });
             return;
         }
 
-        Swal.fire({
-            icon: 'question',
+        confirmAppAction({
             title: 'Confirmar solicitud',
             text: `¿Está seguro de que "${username}" es su usuario correcto? Se enviará una nueva contraseña a su correo electrónico.`,
-            showCancelButton: true,
             confirmButtonText: 'Sí, enviar',
-            cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#00923f',
-            cancelButtonColor: '#6c757d'
+            cancelButtonText: 'Cancelar'
         }).then((result) => {
             if (result.isConfirmed) {
                 solicitarClaveTemporal(username);
@@ -36,13 +30,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function solicitarClaveTemporal(username) {
-        Swal.fire({
+        showAppLoading({
             title: 'Procesando solicitud...',
             text: 'Verificando usuario y enviando correo...',
-            allowOutsideClick: false,
-            didOpen: () => {
-                Swal.showLoading();
-            }
         });
 
         fetch(url, {
@@ -58,11 +48,9 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                Swal.fire({
-                    icon: 'success',
+                showAppSuccess({
                     title: '¡Solicitud enviada!',
-                    text: data.message,
-                    confirmButtonColor: '#28a745'
+                    text: data.message
                 }).then(() => {
                     const modalEl = document.getElementById('modalClaveTemporal');
                     if (modalEl) {
@@ -74,21 +62,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 });
             } else {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: data.message,
-                    confirmButtonColor: '#dc3545'
+                showAppError({
+                    title: 'No se pudo procesar la solicitud',
+                    text: data.message
                 });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            Swal.fire({
-                icon: 'error',
+            showAppError({
                 title: 'Error de conexión',
-                text: 'Ha ocurrido un error al procesar su solicitud. Por favor, intente nuevamente.',
-                confirmButtonColor: '#dc3545'
+                text: 'Ha ocurrido un error al procesar su solicitud. Por favor, intente nuevamente.'
             });
         });
     }

@@ -13,14 +13,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const anioInput = document.getElementById('anio_concurso');
       const val = parseInt(anioInput.value || anioInput.placeholder || maxYear, 10);
       if (val > maxYear) {
-        Swal.fire('Año inválido', 'No puede seleccionar un año futuro.', 'error');
+        showAppDialog('Año inválido', 'No puede seleccionar un año futuro.', 'error');
         return;
       }
-      Swal.fire({
+      confirmAppAction({
         title: '¿Confirmar cambio de año?',
         text: 'Esto filtrará toda la información por el año seleccionado.',
         icon: 'warning',
-        showCancelButton: true,
         confirmButtonText: 'Sí, cambiar',
         cancelButtonText: 'Cancelar'
       }).then((result) => {
@@ -34,11 +33,10 @@ document.addEventListener('DOMContentLoaded', function() {
   if (formEtapas) {
     formEtapas.addEventListener('submit', function(e) {
       e.preventDefault();
-      Swal.fire({
+      confirmAppAction({
         title: '¿Confirmar cambio de etapas?',
         text: 'Esto afectará la progresión entre etapas.',
         icon: 'warning',
-        showCancelButton: true,
         confirmButtonText: 'Sí, cambiar',
         cancelButtonText: 'Cancelar'
       }).then((result) => {
@@ -75,7 +73,7 @@ function guardarCategoria() {
   };
 
   if (!data.nombre) {
-    Swal.fire('Error', 'El nombre de la categoría es obligatorio', 'error');
+    showAppDialog('Error', 'El nombre de la categoría es obligatorio', 'error');
     return;
   }
 
@@ -96,7 +94,7 @@ function guardarCategoria() {
   .then(response => response.json())
   .then(data => {
     if (data.success) {
-      Swal.fire({
+      showAppDialog({
         icon: 'success',
         title: '¡Éxito!',
         text: data.message,
@@ -106,11 +104,11 @@ function guardarCategoria() {
         location.reload();
       });
     } else {
-      Swal.fire('Error', data.error || 'Error al guardar la categoría', 'error');
+      showAppDialog('Error', data.error || 'Error al guardar la categoría', 'error');
     }
   })
   .catch(error => {
-    Swal.fire('Error', 'Error de conexión al guardar la categoría', 'error');
+    showAppDialog('Error', 'Error de conexión al guardar la categoría', 'error');
   });
 }
 
@@ -136,22 +134,20 @@ function editarCategoria(categoriaId) {
         const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
         modal.show();
       } else {
-        Swal.fire('Error', data.error || 'Error al cargar los datos de la categoría', 'error');
+        showAppDialog('Error', data.error || 'Error al cargar los datos de la categoría', 'error');
       }
     })
     .catch(error => {
-      Swal.fire('Error', 'Error de conexión al cargar la categoría', 'error');
+      showAppDialog('Error', 'Error de conexión al cargar la categoría', 'error');
     });
 }
 
 function toggleCategoria(categoriaId, activar) {
   const accion = activar ? 'activar' : 'desactivar';
   
-  Swal.fire({
+  confirmAppAction({
     title: `¿${accion.charAt(0).toUpperCase() + accion.slice(1)} categoría?`,
     text: `Esta acción ${accion}á la categoría.`,
-    icon: 'question',
-    showCancelButton: true,
     confirmButtonText: `Sí, ${accion}`,
     cancelButtonText: 'Cancelar'
   }).then((result) => {
@@ -168,7 +164,7 @@ function toggleCategoria(categoriaId, activar) {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          Swal.fire({
+          showAppDialog({
             icon: 'success',
             title: '¡Éxito!',
             text: data.message,
@@ -178,11 +174,11 @@ function toggleCategoria(categoriaId, activar) {
             location.reload();
           });
         } else {
-          Swal.fire('Error', data.error || 'Error al cambiar el estado de la categoría', 'error');
+          showAppDialog('Error', data.error || 'Error al cambiar el estado de la categoría', 'error');
         }
       })
       .catch(error => {
-        Swal.fire('Error', 'Error de conexión', 'error');
+        showAppDialog('Error', 'Error de conexión', 'error');
       });
     }
   });

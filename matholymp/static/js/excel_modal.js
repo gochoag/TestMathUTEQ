@@ -20,7 +20,7 @@ function processExcelFile() {
     const file = fileInput.files[0];
     
     if (!file) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Archivo requerido',
             text: 'Por favor selecciona un archivo Excel.',
@@ -29,7 +29,7 @@ function processExcelFile() {
     }
     
     // Mostrar indicador de carga
-    Swal.fire({
+    showAppDialog({
         title: 'Leyendo archivo...',
         html: 'Por favor espera mientras se leen las columnas del Excel.',
         allowOutsideClick: false,
@@ -39,7 +39,7 @@ function processExcelFile() {
             container: 'swal2-container-over-modal',
             popup: 'swal2-popup-over-modal'
         },
-        didOpen: () => { Swal.showLoading(); }
+        didOpen: () => { showAppLoader(); }
     });
     
     // Enviar el archivo al servidor para leer los headers con openpyxl
@@ -58,7 +58,7 @@ function processExcelFile() {
     })
     .then(response => response.json())
     .then(data => {
-        Swal.close();
+        closeAppDialog();
         
         if (data.success && data.headers) {
             // Usar los headers devueltos por openpyxl (mismos índices que process_excel_participants)
@@ -66,7 +66,7 @@ function processExcelFile() {
             populateColumnMapping();
             showStep2();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error al leer el archivo',
                 text: data.error || 'El archivo Excel está vacío o no contiene datos válidos.',
@@ -78,9 +78,9 @@ function processExcelFile() {
         }
     })
     .catch(error => {
-        Swal.close();
+        closeAppDialog();
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error al leer el archivo',
             text: 'Por favor intenta de nuevo.',
@@ -156,7 +156,7 @@ function previewData() {
     });
     
     if (missingFields.length > 0) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Campos requeridos',
             text: `Por favor selecciona los campos requeridos: ${missingFields.join(', ')}`,
@@ -178,7 +178,7 @@ function previewData() {
     if (mapEdad) columnMapping[mapEdad] = 'edad';
     
     // Mostrar indicador de carga
-    Swal.fire({
+    showAppDialog({
         title: 'Procesando archivo...',
         html: 'Por favor espera mientras se procesa el archivo Excel.',
         allowOutsideClick: false,
@@ -189,7 +189,7 @@ function previewData() {
             popup: 'swal2-popup-over-modal'
         },
         didOpen: () => {
-            Swal.showLoading();
+            showAppLoader();
         }
     });
     
@@ -213,14 +213,14 @@ function previewData() {
     .then(response => response.json())
     .then(data => {
         // Cerrar el loading
-        Swal.close();
+        closeAppDialog();
         
         if (data.success) {
             processedData = data.data;
             displayPreview(data);
             showStep3();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error al procesar el archivo',
                 text: 'Error: ' + data.error,
@@ -233,10 +233,10 @@ function previewData() {
     })
     .catch(error => {
         // Cerrar el loading
-        Swal.close();
+        closeAppDialog();
         
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error al procesar el archivo',
             text: 'Por favor intenta de nuevo.',
@@ -283,7 +283,7 @@ function displayPreview(data) {
             const btn = document.getElementById('showAllErrorsBtn');
             if (btn) {
                 btn.addEventListener('click', function() {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'info',
                         title: 'Todos los errores',
                         html: `
@@ -332,7 +332,7 @@ function displayPreview(data) {
 // Función para guardar participantes
 function saveParticipants() {
     if (processedData.length === 0) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'No hay datos válidos',
             text: 'Por favor verifica los datos y vuelve a intentar.',
@@ -340,11 +340,9 @@ function saveParticipants() {
         return;
     }
 
-    Swal.fire({
+    confirmAppAction({
         title: `¿Guardar participantes?`,
         text: `Se guardarán ${processedData.length} participantes.`,
-        icon: 'question',
-        showCancelButton: true,
         confirmButtonText: 'Sí, guardar',
         cancelButtonText: 'Cancelar',
         customClass: {
@@ -354,7 +352,7 @@ function saveParticipants() {
     }).then((result) => {
         if (result.isConfirmed) {
             // Mostrar indicador de carga con título y mensaje personalizados
-            Swal.fire({
+            showAppDialog({
                 title: 'Guardando participantes...',
                 html: 'Por favor espera mientras se guardan los participantes en la base de datos.',
                 allowOutsideClick: false,
@@ -365,7 +363,7 @@ function saveParticipants() {
                     popup: 'swal2-popup-over-modal'
                 },
                 didOpen: () => {
-                    Swal.showLoading();
+                    showAppLoader();
                 }
             });
             
@@ -385,7 +383,7 @@ function saveParticipants() {
             .then(response => response.json())
             .then(data => {
                 // Cerrar el loading
-                Swal.close();
+                closeAppDialog();
                 
                 if (data.success) {
                     let errorHtml = '';
@@ -406,7 +404,7 @@ function saveParticipants() {
                         `;
                     }
 
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'success',
                         title: 'Participantes guardados',
                         html: `Se guardaron <strong>${data.created_count}</strong> participantes exitosamente.` + errorHtml,
@@ -419,7 +417,7 @@ function saveParticipants() {
                             const btn = document.getElementById('showAllSavedErrorsBtn');
                             if (btn) {
                                 btn.addEventListener('click', function() {
-                                    Swal.fire({
+                                    showAppDialog({
                                         icon: 'info',
                                         title: 'Todos los errores',
                                         html: `
@@ -443,7 +441,7 @@ function saveParticipants() {
                     });
 
                 } else {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'error',
                         title: 'Error al guardar',
                         text: data.error,
@@ -456,10 +454,10 @@ function saveParticipants() {
             })
             .catch(error => {
                 // Cerrar el loading
-                Swal.close();
+                closeAppDialog();
                 
                 console.error('Error:', error);
-                Swal.fire({
+                showAppDialog({
                     icon: 'error',
                     title: 'Error de red',
                     text: 'No se pudo guardar los participantes. Por favor intenta de nuevo.',

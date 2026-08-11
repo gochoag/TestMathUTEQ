@@ -62,7 +62,7 @@ function iniciarEvaluacion() {
         setTimeout(() => {
             if (cambiosPestana > 0 && cambiosPestana < maxCambiosPestana) {
                 const cambiosRestantes = maxCambiosPestana - cambiosPestana;
-                Swal.fire({
+                showAppWideAlert({
                     icon: 'warning',
                     title: 'Advertencia de Continuación',
                     html: `
@@ -83,10 +83,7 @@ function iniciarEvaluacion() {
                     `,
                     confirmButtonText: 'Entendido',
                     timer: 5000,
-                    showConfirmButton: true,
-                    customClass: {
-                        popup: 'swal-wide'
-                    }
+                    showConfirmButton: true
                 });
             }
         }, 2000);
@@ -118,7 +115,7 @@ function inicializarEvaluacion() {
     iniciarVerificacionEstado();
     
     if (window.continuarEvaluacion) {
-        Swal.fire({
+        showAppWideAlert({
             icon: 'info',
             title: 'Continuando Evaluación',
             text: 'Se ha detectado una evaluación en progreso. Tu tiempo y respuestas han sido restaurados.',
@@ -151,7 +148,7 @@ function verificarEstadoEvaluacion() {
                 limpiarIntervalos();
                 evaluacionEnviandose = true;
                 
-                Swal.fire({
+                showAppWideAlert({
                     icon: 'error',
                     title: 'Evaluación Finalizada',
                     html: `
@@ -177,7 +174,7 @@ function verificarEstadoEvaluacion() {
                     
                     actualizarContadorCambiosPestana();
                     
-                    Swal.fire({
+                    showAppWideAlert({
                         icon: 'info',
                         title: 'Cambios de Pestañas Actualizados',
                         html: `
@@ -327,7 +324,7 @@ function mostrarAdvertenciaCambioPestana() {
     if (!advertenciasMostradas) {
         advertenciasMostradas = true;
         
-        Swal.fire({
+        showAppWideAlert({
             icon: 'warning',
             title: 'Advertencia de Cambio de Pestaña',
             html: `
@@ -348,10 +345,7 @@ function mostrarAdvertenciaCambioPestana() {
             `,
             confirmButtonText: 'Entendido',
             allowOutsideClick: false,
-            allowEscapeKey: false,
-            customClass: {
-                popup: 'swal-wide'
-            }
+            allowEscapeKey: false
         }).then(() => {
             advertenciasMostradas = false;
         });
@@ -371,7 +365,7 @@ function finalizarPorCambiosPestana() {
 
 // Enviar evaluación por cambios de pestaña
 function enviarEvaluacionPorCambiosPestana() {
-    Swal.fire({
+    showAppWideAlert({
         icon: 'error',
         title: 'Evaluación Finalizada Automáticamente',
         html: `
@@ -391,10 +385,7 @@ function enviarEvaluacionPorCambiosPestana() {
         `,
         confirmButtonText: 'Entendido',
         allowOutsideClick: false,
-        allowEscapeKey: false,
-        customClass: {
-            popup: 'swal-wide'
-        }
+        allowEscapeKey: false
     }).then(() => {
         const form = document.getElementById('quizForm');
         const input = document.createElement('input');
@@ -537,7 +528,7 @@ function guardarRespuestaAutomatica() {
                 limpiarIntervalos();
                 evaluacionEnviandose = true;
                 
-                Swal.fire({
+                showAppWideAlert({
                     icon: 'error',
                     title: 'Evaluación Finalizada',
                     text: 'Tu evaluación ha sido finalizada administrativamente. Tu puntaje será de 0/10.',
@@ -635,7 +626,7 @@ function enviarEvaluacion() {
 
 // Envío automático cuando se acaba el tiempo
 function enviarEvaluacionAutomaticamente() {
-    Swal.fire({
+    showAppWideAlert({
         icon: 'warning',
         title: '¡Tiempo Agotado!',
         text: 'Se ha agotado el tiempo de la evaluación. Se enviará automáticamente.',

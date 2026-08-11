@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateSidebarAvatar(data.avatar_url);
                     
                     // Mostrar mensaje de éxito
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'success',
                         title: '¡Éxito!',
                         text: data.message,
@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     // Verificar si la sesión ha expirado
                     if (data.session_expired) {
-                        Swal.fire({
+                        showAppDialog({
                             icon: 'warning',
                             title: 'Sesión Expirada',
                             text: data.message,
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     } else {
                         // Mostrar mensaje de error del servidor
-                        Swal.fire({
+                        showAppDialog({
                             icon: 'error',
                             title: 'Error',
                             text: data.message || 'Hubo un error al actualizar el perfil.'
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     errorMessage = error.data.message;
                     icon = 'warning';
                     
-                    Swal.fire({
+                    showAppDialog({
                         icon: icon,
                         title: 'Sesión Expirada',
                         text: errorMessage,
@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     errorMessage = 'Error de conexión. Verifica tu conexión a internet e intenta de nuevo.';
                 }
                 
-                Swal.fire({
+                showAppDialog({
                     icon: icon,
                     title: 'Error',
                     text: errorMessage
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (file) {
                 // Validar tamaño (5MB)
                 if (file.size > 5 * 1024 * 1024) {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'error',
                         title: 'Archivo demasiado grande',
                         text: 'El archivo es demasiado grande. El tamaño máximo es 5MB.'
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Validar tipo
                 if (!file.type.startsWith('image/')) {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'error',
                         title: 'Tipo de archivo no válido',
                         text: 'Por favor selecciona un archivo de imagen válido.'
@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             
             if (newPassword.value !== confirmPassword.value) {
-                Swal.fire({
+                showAppDialog({
                     icon: 'error',
                     title: 'Error',
                     text: 'Las contraseñas no coinciden'
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data.success) {
                     // Mostrar mensaje de éxito
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'success',
                         title: '¡Éxito!',
                         text: data.message,
@@ -287,7 +287,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     // Verificar si la sesión ha expirado
                     if (data.session_expired) {
-                        Swal.fire({
+                        showAppDialog({
                             icon: 'warning',
                             title: 'Sesión Expirada',
                             text: data.message,
@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     } else {
                         // Mostrar mensaje de error del servidor
-                        Swal.fire({
+                        showAppDialog({
                             icon: 'error',
                             title: 'Error',
                             text: data.message || 'Hubo un error al cambiar la contraseña.'
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     errorMessage = error.data.message;
                     icon = 'warning';
                     
-                    Swal.fire({
+                    showAppDialog({
                         icon: icon,
                         title: 'Sesión Expirada',
                         text: errorMessage,
@@ -337,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     errorMessage = 'Error de conexión. Verifica tu conexión a internet e intenta de nuevo.';
                 }
                 
-                Swal.fire({
+                showAppDialog({
                     icon: icon,
                     title: 'Error',
                     text: errorMessage

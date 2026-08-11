@@ -78,11 +78,6 @@
     }
 }
 
-/* CSS para que SweetAlert2 aparezca por encima del modal */
-.swal-over-modal {
-    z-index: 9999 !important;
-}
-
 /* Estilos para las etapas */
 .etapa-badge {
     width: 60px;
