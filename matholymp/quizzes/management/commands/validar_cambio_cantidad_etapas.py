@@ -29,7 +29,6 @@ from quizzes.models import (
     Pregunta,
     Opcion,
     ResultadoEvaluacion,
-    SystemConfig,
 )
 
 
@@ -43,7 +42,7 @@ class Command(BaseCommand):
         self.stdout.write("🚀 Iniciando script de validación de cambio de etapas...")
 
         # Año activo
-        anio_activo = SystemConfig.get_active_year()
+        anio_activo = timezone.now().year
 
         # 1) Crear 6 representantes
         representantes = [self._crear_representante() for _ in range(6)]
@@ -207,8 +206,8 @@ class Command(BaseCommand):
             TelefonoRepresentante=self._generar_telefono(),
             CorreoRepresentante=correo_representante,
         )
-        # Ajustar al año activo del sistema
-        representante.anio = SystemConfig.get_active_year()
+        # Ajustar al año activo
+        representante.anio = timezone.now().year
         representante.save(update_fields=["anio"])
         return representante
 

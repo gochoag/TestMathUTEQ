@@ -7,14 +7,13 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
 
     const title = document.getElementById('evaluacionTitle').value.trim();
     const duration = document.getElementById('evaluacionDuration').value;
-    const preguntasMostrar = document.getElementById('evaluacionPreguntasMostrar').value;
     const startDate = document.getElementById('evaluacionStartDate').value;
     const startTime = document.getElementById('evaluacionStartTime').value;
     const endDate = document.getElementById('evaluacionEndDate').value;
     const endTime = document.getElementById('evaluacionEndTime').value;
 
-    if (!title || !duration || !preguntasMostrar || !startDate || !startTime || !endDate || !endTime) {
-        Swal.fire({
+    if (!title || !duration || !startDate || !startTime || !endDate || !endTime) {
+        showAppDialog({
             icon: 'error',
             title: 'Campos requeridos',
             text: 'Por favor, completa todos los campos obligatorios.'
@@ -23,19 +22,10 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     }
 
     if (duration < 1 || duration > 480) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Duracion invalida',
             text: 'La duracion debe estar entre 1 y 480 minutos.'
-        });
-        return;
-    }
-
-    if (preguntasMostrar < 1 || preguntasMostrar > 100) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Numero de preguntas invalido',
-            text: 'El numero de preguntas a mostrar debe estar entre 1 y 100.'
         });
         return;
     }
@@ -44,7 +34,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     const endDateTime = new Date(`${endDate} ${endTime}`);
 
     if (startDateTime >= endDateTime) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Fechas invalidas',
             text: 'La fecha de inicio debe ser anterior a la fecha de finalizacion.'
@@ -52,12 +42,12 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
         return;
     }
 
-    Swal.fire({
+    showAppDialog({
         title: 'Guardando...',
         text: 'Por favor espera',
         allowOutsideClick: false,
         didOpen: () => {
-            Swal.showLoading();
+            showAppLoader();
         }
     });
 
@@ -70,7 +60,6 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
         body: JSON.stringify({
             title: title,
             duration: duration,
-            preguntas_a_mostrar: preguntasMostrar,
             start_date: startDate,
             start_time: startTime,
             end_date: endDate,
@@ -80,7 +69,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            Swal.fire({
+            showAppDialog({
                 icon: 'success',
                 title: '¡Guardado!',
                 text: 'La evaluacion ha sido actualizada exitosamente',
@@ -90,7 +79,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
                 window.location.href = redirectUrl;
             });
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'Error al actualizar la evaluacion'
@@ -99,7 +88,7 @@ document.getElementById('editEvaluacionForm').addEventListener('submit', functio
     })
     .catch(error => {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de conexion al actualizar la evaluacion'

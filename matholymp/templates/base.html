@@ -21,28 +21,166 @@
   </head>
   <body class="d-flex flex-column min-vh-100">
     {% if user.is_authenticated %}
-    <nav class="navbar navbar-expand-lg custom-header">
-      <div
-        class="container-fluid position-absolute d-flex align-items-center justify-content-start"
-      >
+    <nav class="navbar custom-header px-2">
+      <div class="container-fluid d-flex align-items-center justify-content-start flex-nowrap overflow-hidden">
         <button
-          class="btn btn-sidebar-toggle d-inline-flex align-items-center justify-content-start me-2"
+          class="btn btn-sidebar-toggle d-inline-flex align-items-center justify-content-start me-2 flex-shrink-0"
           id="sidebarToggleBtnHeader"
           aria-label="Expandir menú"
           type="button"
-          style="font-size: 2rem"
+          style="font-size: 1.75rem"
         >
           <i class="bi bi-justify"></i>
         </button>
-        <!-- <span class="header-separator mx-1">|</span> -->
         <span
-          class="header-title text-white fw-semibold"
-          style="font-size: 1.15rem; letter-spacing: 0.5px"
-          >Sistema evaluativo para concursos de la UTEQ</span
+          class="header-title text-white fw-semibold text-truncate me-auto"
+          style="font-size: 1.1rem; letter-spacing: 0.5px"
         >
+          <span class="d-none d-sm-inline">Sistema evaluativo para concursos de la UTEQ</span>
+          <span class="d-inline d-sm-none fw-bold">EvaUTEQ</span>
+        </span>
+
+        {% if student_concurso %}
+        <div class="ms-auto flex-shrink-0 d-inline-flex align-items-center gap-1 text-white fw-semibold px-2 py-1" style="font-size: 0.82rem;">
+          <i class="bi bi-trophy-fill text-warning fs-6"></i>
+          <span class="text-truncate" style="max-width: 230px;">{{ student_concurso.nombre }} ({{ student_concurso.anio }})</span>
+        </div>
+        {% else %}
+
+        <div class="ms-auto flex-shrink-0">
+          <button
+            class="btn btn-outline-light btn-sm d-flex align-items-center gap-1.5 fw-semibold px-2.5 py-1 rounded-3 shadow-sm"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#modalSelectorContexto"
+            style="background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(6px); font-size: 0.82rem;"
+            title="Cambiar (Carrera / Concurso)"
+          >
+            <!-- Badge 1: Carrera / Filtro Organizacional -->
+            <span class="d-inline-flex align-items-center gap-1 text-warning border-end pe-2 me-1 border-light-subtle">
+              <i class="bi bi-mortarboard-fill fs-6"></i>
+              <span class="text-truncate d-none d-lg-inline" style="max-width: 160px;">
+                {% if user.is_superuser %}
+                  {% if active_carrera_filter %}{{ active_carrera_filter.nombre }}{% else %}Todas las Carreras{% endif %}
+                {% else %}
+                  {{ admin_profile.carrera.nombre|default:"Mi Carrera" }}
+                {% endif %}
+              </span>
+              <span class="d-inline d-lg-none">
+                {% if user.is_superuser %}
+                  {% if active_carrera_filter %}{{ active_carrera_filter.facultad.siglas|default:active_carrera_filter.nombre }}{% else %}Todas{% endif %}
+                {% else %}
+                  {{ admin_profile.carrera.facultad.siglas|default:"Carrera" }}
+                {% endif %}
+              </span>
+            </span>
+
+            <!-- Badge 2: Concurso / Período Activo -->
+            <span class="d-inline-flex align-items-center gap-1 text-white">
+              <i class="bi bi-trophy-fill text-warning fs-6"></i>
+              <span class="text-truncate d-none d-md-inline" style="max-width: 190px;">
+                {% if active_concurso %}
+                  {{ active_concurso.nombre }} ({{ active_concurso.anio }})
+                {% else %}
+                  Todos los Concursos
+                {% endif %}
+              </span>
+              <span class="d-inline d-md-none text-truncate" style="max-width: 110px;">
+                {% if active_concurso %}{{ active_concurso.nombre }}{% else %}Todos{% endif %}
+              </span>
+            </span>
+
+            <i class="bi bi-chevron-down small opacity-75 me-0.5"></i>
+          </button>
+        </div>
+        {% endif %}
       </div>
     </nav>
-    {% include 'quizzes/sidebar.html' %} {% endif %}
+    {% include 'quizzes/sidebar.html' %} 
+
+    {% if not student_concurso %}
+    <!-- Modal Selector de Concurso Estilo UTEQ SGA -->
+    <div class="modal fade" id="modalSelectorContexto" tabindex="-1" aria-labelledby="modalSelectorContextoLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 440px;">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+          <div class="modal-header border-bottom-0 pb-1">
+            <h6 class="modal-title fw-bold text-success d-flex align-items-center gap-2" id="modalSelectorContextoLabel">
+              <i class="bi bi-calendar-event fs-5"></i> PERÍODO / CONCURSO
+            </h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-2 px-3 pb-3">
+            {% if user.is_superuser %}
+              <form method="post" action="{% url 'quizzes:cambiar_contexto_activo' %}" class="mb-3 p-2 bg-light rounded-3 border">
+                {% csrf_token %}
+                <label class="form-label text-muted text-uppercase fw-bold mb-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">Filtrar por Carrera</label>
+                <select name="carrera_id" class="form-select form-select-sm fw-semibold" onchange="this.form.submit()">
+                  <option value="ALL" {% if active_carrera_filter_id == 'ALL' %}selected{% endif %}>🌐 Todas las Carreras</option>
+                  {% for car in available_carreras %}
+                    <option value="{{ car.id }}" {% if active_carrera_filter_id == car.id %}selected{% endif %}>
+                      {{ car.nombre }} ({{ car.facultad.siglas|default:car.facultad.nombre }})
+                    </option>
+                  {% endfor %}
+                </select>
+              </form>
+            {% endif %}
+
+            <div class="text-muted text-uppercase fw-bold mb-2 ms-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">
+              • CONCURSOS DISPONIBLES
+            </div>
+
+            <div class="list-group list-group-flush rounded-3 border overflow-hidden">
+              <a href="{% url 'quizzes:cambiar_contexto_activo' %}?concurso_id=ALL" 
+                 class="list-group-item list-group-item-action d-flex align-items-center py-2.5 px-3 {% if active_concurso_id == 'ALL' %}bg-success-subtle text-success fw-bold border-start border-4 border-success{% endif %}">
+                <div class="me-3 fs-5 d-flex align-items-center flex-shrink-0">
+                  {% if active_concurso_id == 'ALL' %}
+                    <i class="bi bi-check-lg text-success fw-bold"></i>
+                  {% else %}
+                    <i class="bi bi-circle text-muted opacity-50"></i>
+                  {% endif %}
+                </div>
+                <div>
+                  <div class="lh-sm text-wrap text-break fw-semibold">🌐 Todos los Concursos</div>
+                  <small class="text-muted fw-normal" style="font-size: 0.75rem;">Sin filtro de concurso</small>
+                </div>
+              </a>
+
+              {% for conc in available_concursos %}
+                <a href="{% url 'quizzes:cambiar_contexto_activo' %}?concurso_id={{ conc.id }}" 
+                   class="list-group-item list-group-item-action d-flex align-items-center py-2.5 px-3 {% if active_concurso and active_concurso.id == conc.id %}bg-success-subtle text-success fw-bold border-start border-4 border-success{% endif %}">
+                  <div class="me-3 fs-5 d-flex align-items-center flex-shrink-0">
+                    {% if active_concurso and active_concurso.id == conc.id %}
+                      <i class="bi bi-check-lg text-success fw-bold"></i>
+                    {% else %}
+                      <i class="bi bi-circle text-muted opacity-50"></i>
+                    {% endif %}
+                  </div>
+                  <div class="flex-grow-1 min-w-0">
+                    <div class="lh-sm text-wrap text-break fw-bold" style="font-size: 0.92rem; color: {% if active_concurso and active_concurso.id == conc.id %}#0f5132{% else %}#212529{% endif %};">
+                      {{ conc.nombre }} - {{ conc.anio }}
+                    </div>
+                    <small class="text-muted fw-normal d-block text-wrap text-break" style="font-size: 0.75rem;">
+                      {{ conc.carrera.nombre }} ({{ conc.carrera.facultad.siglas|default:conc.carrera.facultad.nombre }})
+                    </small>
+                  </div>
+                </a>
+              {% empty %}
+                <div class="p-3 text-center text-muted small">
+                  <i class="bi bi-info-circle me-1"></i> No hay concursos registrados en esta carrera.
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="modal-footer border-top-0 pt-0 pb-3 px-3 justify-content-start">
+            <small class="text-muted d-flex align-items-center gap-1" style="font-size: 0.76rem;">
+              <i class="bi bi-info-circle text-success"></i> Selecciona un concurso para cambiar el contexto del sistema.
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
     <main id="main-content" class="flex-grow-1">
       {% block content %}{% endblock %}
     </main>
@@ -50,6 +188,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{% static 'js/swal-utils.js' %}"></script>
     <script src="{% static 'js/actions.js' %}"></script>
     <script src="{% static 'js/toasts.js' %}"></script>
     <script src="{% static 'js/form_validation.js' %}"></script>

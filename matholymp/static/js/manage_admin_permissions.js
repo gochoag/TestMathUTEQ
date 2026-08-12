@@ -13,11 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const username = btn.dataset.username;
             const action   = btn.textContent.trim(); // "Habilitar" o "Deshabilitar"
 
-            Swal.fire({
+            confirmAppAction({
                 title: `¿Seguro que quieres ${action.toLowerCase()}?`,
                 text: `Control de acceso para ${username}`,
                 icon: 'warning',
-                showCancelButton: true,
                 confirmButtonText: 'Sí, adelante',
                 cancelButtonText: 'Cancelar',
             }).then((result) => {

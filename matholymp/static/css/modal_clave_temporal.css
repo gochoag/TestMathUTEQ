@@ -88,26 +88,3 @@
     }
 }
 
-/* Estilos para SweetAlert2 personalizados */
-.swal2-popup {
-    border-radius: 1rem !important;
-}
-
-.swal2-title {
-    color: #495057 !important;
-    font-weight: 600 !important;
-}
-
-.swal2-content {
-    color: #6c757d !important;
-}
-
-.swal2-confirm {
-    border-radius: 0.75rem !important;
-    font-weight: 600 !important;
-}
-
-.swal2-cancel {
-    border-radius: 0.75rem !important;
-    font-weight: 600 !important;
-}

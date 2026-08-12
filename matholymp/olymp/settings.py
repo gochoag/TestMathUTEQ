@@ -1,6 +1,6 @@
 import os
 
-from decouple import config
+from decouple import Csv, config
 from django.contrib.messages import constants as messages
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -9,9 +9,22 @@ SECRET_KEY = config("SECRET_KEY")
 
 DEBUG = True
 
+# El registro público se mantiene desactivado mientras los participantes se
+# incorporan administrativamente mediante formularios y carga de Excel.
+REGISTRO_PUBLICO_HABILITADO = config(
+    "REGISTRO_PUBLICO_HABILITADO", default=False, cast=bool
+)
+
 ALLOWED_HOSTS = ["*"]
 
-CSRF_TRUSTED_ORIGINS = ["https://aplicaciones.uteq.edu.ec:9051"]
+# URL base para enlaces en correos obtenida desde .env
+SITE_URL = config("SITE_URL", default="http://localhost:8000")
+
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="http://localhost:8000,http://127.0.0.1:8000",
+    cast=Csv()
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -29,6 +42,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "olymp.middleware.AuditMiddleware",
     "olymp.middleware.SessionTimeoutMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -47,6 +61,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "quizzes.context_processors.concurso_context_processor",
             ],
         },
     },

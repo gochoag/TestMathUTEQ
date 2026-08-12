@@ -76,22 +76,86 @@
                                 </div>
                                 <div class="card-body">
                                     <p><strong>Usuario:</strong> {{ user.username }}</p>
-                                    <p><strong>Email:</strong> {{ user.email }}</p>
+                                    <p class="text-break"><strong>Email:</strong> {{ user.email }}</p>
                                     <p><strong>Rol:</strong> 
                                         {% if role == 'superadmin' %}
-                                            <span class="badge bg-danger">Super Admin</span>
+                                            <span class="badge bg-danger text-wrap text-break align-middle">Super Admin (Global)</span>
                                         {% elif role == 'admin' %}
                                             {% if has_full_access %}
-                                                <span class="badge bg-success">Admin Total</span>
+                                                <span class="badge bg-success text-wrap text-break align-middle">Admin Acceso Total</span>
                                             {% else %}
-                                                <span class="badge bg-warning">Admin Limitado</span>
+                                                <span class="badge bg-warning text-dark text-wrap text-break align-middle">Admin Limitado</span>
                                             {% endif %}
                                         {% elif role == 'participant' %}
-                                            <span class="badge bg-primary">Participante</span>
+                                            <span class="badge bg-primary text-wrap text-break align-middle">Participante</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">Sin Rol</span>
+                                            <span class="badge bg-secondary text-wrap text-break align-middle">Sin Rol</span>
                                         {% endif %}
                                     </p>
+                                    {% if scope_carrera or is_global or scope_concurso %}
+                                        <hr class="my-3">
+                                        <div class="scope-info-container">
+                                            <h6 class="text-uppercase text-muted fw-bold mb-2" style="font-size: 0.72rem; letter-spacing: 0.5px;">
+                                                <i class="bi bi-compass me-1"></i>Ámbito Operativo
+                                            </h6>
+                                            
+                                            {% if scope_carrera %}
+                                                <div class="p-2 mb-2 bg-white rounded-3 border-start border-4 border-info shadow-sm">
+                                                    <div class="d-flex align-items-start">
+                                                        <div class="badge bg-info text-dark rounded-circle p-2 me-2 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px;">
+                                                            <i class="bi bi-mortarboard-fill fs-6"></i>
+                                                        </div>
+                                                        <div class="flex-grow-1 min-w-0">
+                                                            <div class="text-muted fw-bold text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.3px;">Carrera Asignada</div>
+                                                            <div class="fw-bold text-dark text-break lh-sm" style="font-size: 0.88rem;">
+                                                                {{ scope_carrera.nombre }}
+                                                                {% if scope_carrera.codigo %}
+                                                                    <span class="badge bg-light text-dark border ms-1" style="font-size: 0.7rem;">{{ scope_carrera.codigo }}</span>
+                                                                {% endif %}
+                                                            </div>
+                                                            {% if scope_carrera.facultad %}
+                                                                <div class="text-muted small pt-1 mt-1 border-top text-break" style="font-size: 0.76rem;">
+                                                                    <i class="bi bi-building me-1 text-secondary"></i>{{ scope_carrera.facultad.nombre }}
+                                                                </div>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% elif is_global %}
+                                                <div class="p-2 mb-2 bg-white rounded-3 border-start border-4 border-dark shadow-sm">
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="badge bg-dark text-white rounded-circle p-2 me-2 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px;">
+                                                            <i class="bi bi-globe fs-6"></i>
+                                                        </div>
+                                                        <div class="flex-grow-1 min-w-0">
+                                                            <div class="text-muted fw-bold text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.3px;">Alcance Operativo</div>
+                                                            <div class="fw-bold text-dark text-break lh-sm" style="font-size: 0.88rem;">
+                                                                Administración Global
+                                                                <span class="badge bg-dark text-white ms-1" style="font-size: 0.7rem;">Todas las Carreras</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+
+                                            {% if scope_concurso %}
+                                                <div class="p-2 bg-white rounded-3 border-start border-4 border-primary shadow-sm">
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="badge bg-primary text-white rounded-circle p-2 me-2 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px;">
+                                                            <i class="bi bi-trophy-fill fs-6"></i>
+                                                        </div>
+                                                        <div class="flex-grow-1 min-w-0">
+                                                            <div class="text-muted fw-bold text-uppercase" style="font-size: 0.68rem; letter-spacing: 0.3px;">Concurso Activo</div>
+                                                            <div class="fw-bold text-dark text-break lh-sm" style="font-size: 0.88rem;">
+                                                                {{ scope_concurso.nombre }}
+                                                                <span class="badge bg-primary text-white ms-1" style="font-size: 0.7rem;">{{ scope_concurso.anio }}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>

@@ -29,16 +29,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const startTime = document.getElementById('start_time');
             const endTime = document.getElementById('end_time');
             const duration = document.getElementById('duration');
-            const preguntas = document.getElementById('preguntas_a_mostrar');
 
             if (startDate) startDate.value = today;
             if (endDate) endDate.value = today;
             if (startTime) startTime.value = '';
             if (endTime) endTime.value = '';
             if (duration) duration.value = '60';
-            if (preguntas) preguntas.value = '10';
         });
     }
+
 });
 
 // Función para crear evaluación
@@ -46,7 +45,6 @@ async function createQuiz() {
     const titleEl = document.getElementById('quizTitle');
     const etapaEl = document.getElementById('etapa');
     const durationEl = document.getElementById('duration');
-    const preguntasEl = document.getElementById('preguntas_a_mostrar');
     const startDateEl = document.getElementById('start_date');
     const startTimeEl = document.getElementById('start_time');
     const endDateEl = document.getElementById('end_date');
@@ -57,7 +55,6 @@ async function createQuiz() {
     const etapa = etapaEl ? etapaEl.value : '';
     const durationVal = durationEl ? durationEl.value : '';
     const duration = parseInt(durationVal, 10);
-    const preguntas_a_mostrar = preguntasEl ? preguntasEl.value : '10';
     const startDate = startDateEl ? startDateEl.value : '';
     const startTime = startTimeEl ? startTimeEl.value : '';
     const endDate = endDateEl ? endDateEl.value : '';
@@ -66,7 +63,7 @@ async function createQuiz() {
 
     // Validación de campos requeridos
     if (!title || !etapa || !duration || !startDate || !startTime || !endDate || !endTime) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Campos requeridos',
             text: 'Por favor, completa todos los campos obligatorios.',
@@ -77,7 +74,7 @@ async function createQuiz() {
 
     // Validar duración
     if (isNaN(duration) || duration < 1 || duration > 480) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Duración inválida',
             text: 'La duración debe estar entre 1 y 480 minutos.',
@@ -91,7 +88,7 @@ async function createQuiz() {
     const endDateTime = new Date(`${endDate}T${endTime}`);
 
     if (startDateTime >= endDateTime) {
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Fechas inválidas',
             text: 'La fecha de inicio debe ser anterior a la fecha de finalización.',
@@ -100,11 +97,11 @@ async function createQuiz() {
         return;
     }
 
-    Swal.fire({
+    showAppDialog({
         title: 'Creando evaluación...',
         text: 'Por favor espera',
         allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); },
+        didOpen: () => { showAppLoader(); },
         customClass: { container: 'swal-over-modal' }
     });
 
@@ -119,7 +116,6 @@ async function createQuiz() {
                 title,
                 etapa,
                 duration,
-                preguntas_a_mostrar,
                 start_date: startDate,
                 start_time: startTime,
                 end_date: endDate,
@@ -137,7 +133,7 @@ async function createQuiz() {
                 modal.hide();
             }
 
-            await Swal.fire({
+            await showAppDialog({
                 icon: 'success',
                 title: '¡Creada exitosamente!',
                 text: 'La evaluación ha sido creada correctamente',
@@ -148,7 +144,7 @@ async function createQuiz() {
 
             window.location.reload();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'Error al crear la evaluación',
@@ -157,7 +153,7 @@ async function createQuiz() {
         }
     } catch (error) {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de conexión al crear la evaluación',
@@ -205,7 +201,7 @@ async function cargarDatosParticipantes(evaluacionId, etapa) {
             configurarBusqueda();
             configurarPermisosUI(etapa);
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'Error al cargar los datos',
@@ -214,7 +210,7 @@ async function cargarDatosParticipantes(evaluacionId, etapa) {
         }
     } catch (error) {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de conexión al cargar los datos',
@@ -435,7 +431,7 @@ function deseleccionarTodosIndividuales() {
 // Función para guardar participantes
 async function guardarParticipantes() {
     if (currentEtapa !== 1 && !window.isSuperUser) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Acceso Restringido',
             text: 'Solo los superusuarios y administradores con acceso total pueden modificar participantes en etapas avanzadas.',
@@ -452,11 +448,11 @@ async function guardarParticipantes() {
         document.querySelectorAll('#individualesList .form-check-input:checked')
     ).map(cb => cb.value);
 
-    Swal.fire({
+    showAppDialog({
         title: 'Guardando cambios...',
         text: 'Por favor espera',
         allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); },
+        didOpen: () => { showAppLoader(); },
         customClass: { container: 'swal-over-modal' }
     });
 
@@ -476,7 +472,7 @@ async function guardarParticipantes() {
         const data = await response.json();
 
         if (data.success) {
-            await Swal.fire({
+            await showAppDialog({
                 icon: 'success',
                 title: '¡Guardado exitosamente!',
                 text: 'Los participantes han sido asignados correctamente',
@@ -492,7 +488,7 @@ async function guardarParticipantes() {
             }
             window.location.reload();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: data.error || 'Error al guardar los cambios',
@@ -501,7 +497,7 @@ async function guardarParticipantes() {
         }
     } catch (error) {
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error',
             text: 'Error de conexión al guardar los cambios',
@@ -512,24 +508,20 @@ async function guardarParticipantes() {
 
 // Función para eliminar evaluación
 function deleteEvaluacion(evaluacionId, evaluacionTitle) {
-    Swal.fire({
+    confirmDestructiveAction({
         title: '¿Estás seguro?',
         text: `¿Realmente quieres eliminar la evaluación "${evaluacionTitle}"? Esta acción no se puede deshacer.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
         confirmButtonText: 'Sí, eliminar',
         cancelButtonText: 'Cancelar',
         customClass: { container: 'swal-over-modal' }
     }).then(async (result) => {
         if (!result.isConfirmed) return;
 
-        Swal.fire({
+        showAppDialog({
             title: 'Eliminando...',
             text: 'Por favor espera',
             allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); },
+            didOpen: () => { showAppLoader(); },
             customClass: { container: 'swal-over-modal' }
         });
 
@@ -545,7 +537,7 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
             const data = await response.json();
 
             if (data.success) {
-                await Swal.fire({
+                await showAppDialog({
                     icon: 'success',
                     title: '¡Eliminada!',
                     text: 'La evaluación ha sido eliminada exitosamente',
@@ -555,7 +547,7 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
                 });
                 window.location.reload();
             } else {
-                Swal.fire({
+                showAppDialog({
                     icon: 'error',
                     title: 'Error',
                     text: data.error || 'Error al eliminar la evaluación',
@@ -564,7 +556,7 @@ function deleteEvaluacion(evaluacionId, evaluacionTitle) {
             }
         } catch (error) {
             console.error('Error:', error);
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error',
                 text: 'Error de conexión al eliminar la evaluación',

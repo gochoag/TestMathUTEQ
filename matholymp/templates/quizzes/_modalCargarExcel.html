@@ -1,6 +1,7 @@
 {% load static %}
 <!-- Modal Cargar Excel -->
 <div class="modal fade" id="loadExcelModal" tabindex="-1" aria-labelledby="loadExcelLabel" aria-hidden="true" data-bs-backdrop="static"
+     data-headers-url="{% url 'quizzes:get_excel_headers' %}"
      data-process-url="{% url 'quizzes:process_excel_participants' %}" 
      data-save-url="{% url 'quizzes:save_excel_participants' %}">
     <div class="modal-dialog modal-xl">
@@ -131,6 +132,5 @@
     </div>
 </div>
 
-<!-- Scripts necesarios para el modal de Excel -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Script para el modal de Excel -->
 <script src="{% static 'js/excel_modal.js' %}"></script> 

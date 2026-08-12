@@ -1,5 +1,5 @@
 {% load static %}
-<div id="sidebar" class="sidebar d-flex flex-column justify-content-between h-100">
+<div id="sidebar" class="sidebar d-flex flex-column justify-content-between">
   <ul class="nav flex-column sidebar-menu mb-auto px-2">
     <li class="nav-item">
       <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'quizzes:dashboard' %}" onclick="hideSidebarOnMobile()">
@@ -51,8 +51,8 @@
     {% endif %}
   </ul>
   <div class="sidebar-user px-3 position-relative">
-    <div class="dropdown w-100">
-      <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle w-100 sidebar-user-link" id="dropdownUserMenu" data-bs-toggle="dropdown" aria-expanded="false">
+    <div class="dropup w-100">
+      <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle w-100 sidebar-user-link" id="dropdownUserMenu" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
         {% if user.profile and user.profile.avatar %}
           <img src="{{ user.profile.avatar.url }}" alt="avatar" width="36" height="36" class="rounded-circle me-2">
         {% else %}

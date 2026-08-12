@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid" id="detalle-monitoreo-container" data-monitoreo-id="{{ monitoreo.id }}" data-evaluacion-id="{{ evaluacion.id }}">
+<div class="container-fluid" id="detalle-monitoreo-container" data-monitoreo-id="{{ resultado.id }}" data-evaluacion-id="{{ evaluacion.id }}">
     <!-- Header del detalle -->
     <div class="row mb-4">
         <div class="col-12">
@@ -15,7 +15,7 @@
                         <div class="col-md-8">
                             <h2 class="mb-0">
                                 <i class="bi bi-info-circle-fill"></i>
-                                Detalle del Monitoreo
+                                Detalle del Monitoreo y Auditoría
                             </h2>
                             <p class="mb-0 mt-2">
                                 <strong>{{ evaluacion.title }}</strong> - {{ evaluacion.get_etapa_display }}
@@ -40,7 +40,7 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-person-fill"></i>
-                        Informacion del Participante
+                        Información del Participante
                     </h5>
                 </div>
                 <div class="card-body">
@@ -50,7 +50,7 @@
                             <td>{{ participante.NombresCompletos }}</td>
                         </tr>
                         <tr>
-                            <td><strong>Cedula:</strong></td>
+                            <td><strong>Cédula:</strong></td>
                             <td>{{ participante.cedula }}</td>
                         </tr>
                         <tr>
@@ -58,7 +58,7 @@
                             <td>{{ participante.email }}</td>
                         </tr>
                         <tr>
-                            <td><strong>Telefono:</strong></td>
+                            <td><strong>Teléfono:</strong></td>
                             <td>{{ participante.phone|default:"No registrado" }}</td>
                         </tr>
                         <tr>
@@ -74,37 +74,37 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-clipboard-data"></i>
-                        Estado de la Evaluacion
+                        Estado de la Evaluación
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <div class="col-6">
                             <div class="text-center">
-                                <h4 class="text-{{ monitoreo.get_estado_display_color }}">
+                                <h4 class="text-{{ resultado.get_estado_display_color }}">
                                     <i class="bi bi-circle-fill"></i>
-                                    {{ monitoreo.get_estado_display }}
+                                    {% if resultado.completada %}Finalizada{% elif resultado.esta_activo %}En Progreso{% else %}Inactivo{% endif %}
                                 </h4>
                                 <small class="text-muted">Estado Actual</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="text-center">
-                                <h4 class="text-{% if monitoreo.esta_activo %}success{% else %}warning{% endif %}">
-                                    <i class="bi bi-{% if monitoreo.esta_activo %}wifi{% else %}wifi-off{% endif %}"></i>
-                                    {% if monitoreo.esta_activo %}Activo{% else %}Inactivo{% endif %}
+                                <h4 class="text-{% if resultado.esta_activo %}success{% else %}warning{% endif %}">
+                                    <i class="bi bi-{% if resultado.esta_activo %}wifi{% else %}wifi-off{% endif %}"></i>
+                                    {% if resultado.esta_activo %}Activo{% else %}Inactivo{% endif %}
                                 </h4>
-                                <small class="text-muted">Conexion</small>
+                                <small class="text-muted">Conexión</small>
                             </div>
                         </div>
                     </div>
                     <hr>
                     <div class="row">
                         <div class="col-6">
-                            <strong>Pagina Actual:</strong> {{ monitoreo.pagina_actual }}
+                            <strong>Intento N°:</strong> {{ resultado.numero_intento }}
                         </div>
                         <div class="col-6">
-                            <strong>Progreso:</strong> {{ monitoreo.get_porcentaje_avance|floatformat:1 }}%
+                            <strong>Cambios de Pestaña:</strong> {{ resultado.cambios_pestana|default:0 }}/4
                         </div>
                     </div>
                 </div>
@@ -112,37 +112,75 @@
         </div>
     </div>
 
-    <!-- Estadisticas detalladas -->
+    <!-- Historial completo de intentos -->
     <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ monitoreo.preguntas_respondidas }}</h3>
-                    <p class="mb-0">Preguntas Respondidas</p>
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-clock-history"></i>
+                        Historial de Intentos
+                    </h5>
+                    <span class="badge bg-primary">{{ total_intentos }} intento{{ total_intentos|pluralize }}</span>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ monitoreo.preguntas_revisadas }}</h3>
-                    <p class="mb-0">Preguntas Revisadas</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ monitoreo.get_tiempo_total_activo }}</h3>
-                    <p class="mb-0">Tiempo Activo</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-secondary text-white">
-                <div class="card-body text-center">
-                    <h3 class="mb-0">{{ monitoreo.get_tiempo_total_inactivo }}</h3>
-                    <p class="mb-0">Tiempo Inactivo</p>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Intento</th>
+                                    <th scope="col">Estado</th>
+                                    <th scope="col">Nota</th>
+                                    <th scope="col">Tiempo</th>
+                                    <th scope="col">Finalización</th>
+                                    <th scope="col">Cambios de pestaña</th>
+                                    <th scope="col">Alertas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for intento in intentos %}
+                                <tr{% if intento.id == resultado.id %} class="table-active"{% endif %}>
+                                    <td>
+                                        <strong>#{{ intento.numero_intento }}</strong>
+                                        {% if intento.id == resultado.id %}
+                                        <span class="badge bg-secondary ms-1">Actual</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if intento.completada %}
+                                        <span class="badge bg-success">Finalizado</span>
+                                        {% elif intento.esta_activo %}
+                                        <span class="badge bg-primary">En progreso</span>
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if intento.completada %}
+                                        <strong class="text-success">{{ intento.get_puntaje_numerico }}</strong>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ intento.get_tiempo_formateado }}</td>
+                                    <td>
+                                        {% if intento.fecha_fin %}
+                                        {{ intento.fecha_fin|date:"d/m/Y H:i" }}
+                                        {% else %}
+                                        <span class="text-muted">En curso</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ intento.cambios_pestana|default:0 }}/4</td>
+                                    <td>
+                                        <span class="badge {% if intento.alertas_detectadas %}bg-warning text-dark{% else %}bg-light text-dark{% endif %}">
+                                            {{ intento.alertas_detectadas|length }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -155,27 +193,29 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-clock"></i>
-                        Informacion Temporal
+                        Información Temporal
                     </h5>
                 </div>
                 <div class="card-body">
                     <table class="table table-borderless">
                         <tr>
-                            <td><strong>Inicio del Monitoreo:</strong></td>
-                            <td>{{ monitoreo.fecha_inicio_monitoreo|date:"d/m/Y H:i:s" }}</td>
+                            <td><strong>Fecha Inicio:</strong></td>
+                            <td>{{ resultado.fecha_inicio|date:"d/m/Y H:i:s" }}</td>
                         </tr>
                         <tr>
-                            <td><strong>Ultima Actividad:</strong></td>
-                            <td>{{ monitoreo.ultima_actividad|date:"d/m/Y H:i:s" }}</td>
+                            <td><strong>Última Actividad:</strong></td>
+                            <td>{{ resultado.ultima_actividad|date:"d/m/Y H:i:s" }}</td>
                         </tr>
+                        {% if resultado.fecha_fin %}
                         <tr>
-                            <td><strong>Ultima Actualizacion:</strong></td>
-                            <td>{{ monitoreo.fecha_ultima_actualizacion|date:"d/m/Y H:i:s" }}</td>
+                            <td><strong>Fecha Finalización:</strong></td>
+                            <td>{{ resultado.fecha_fin|date:"d/m/Y H:i:s" }}</td>
                         </tr>
-                        {% if monitoreo.fecha_finalizacion_admin %}
+                        {% endif %}
+                        {% if resultado.fecha_finalizacion_admin %}
                         <tr>
                             <td><strong>Finalizado por Admin:</strong></td>
-                            <td>{{ monitoreo.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}</td>
+                            <td>{{ resultado.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}</td>
                         </tr>
                         {% endif %}
                     </table>
@@ -187,26 +227,25 @@
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-exclamation-triangle"></i>
-                        Alertas ({{ monitoreo.alertas_detectadas|length }})
+                        Alertas y Auditoría ({{ resultado.alertas_detectadas|length }})
                     </h5>
                 </div>
-                <div class="card-body">
-                    {% if monitoreo.alertas_detectadas %}
+                <div class="card-body" style="max-height: 250px; overflow-y: auto;">
+                    {% if resultado.alertas_detectadas %}
                         <div class="list-group list-group-flush">
-                            {% for alerta in monitoreo.alertas_detectadas %}
+                            {% for alerta in resultado.alertas_detectadas %}
                             <div class="list-group-item">
                                 <div class="d-flex w-100 justify-content-between">
                                     <h6 class="mb-1">
                                         <span class="badge bg-{% if alerta.severidad == 'alta' %}danger{% elif alerta.severidad == 'media' %}warning{% else %}info{% endif %}">
-                                            {{ alerta.tipo|title }}
+                                            {% if alerta.tipo == 'perdida_foco' %}Pérdida de foco
+                                            {% elif alerta.tipo == 'salida_pantalla_completa' %}Salida de pantalla completa
+                                            {% else %}{{ alerta.tipo|title }}{% endif %}
                                         </span>
                                         {{ alerta.descripcion }}
                                     </h6>
-                                    <small class="text-muted">
-                                        {{ alerta.timestamp|slice:":19"|date:"H:i:s" }}
-                                    </small>
                                 </div>
-                                <small class="text-muted">Severidad: {{ alerta.severidad|title }}</small>
+                                <small class="text-muted">Severidad: {{ alerta.severidad|title }} | {{ alerta.timestamp|slice:":19" }}</small>
                             </div>
                             {% endfor %}
                         </div>
@@ -219,51 +258,32 @@
     </div>
 
     <!-- Informacion de finalizacion administrativa -->
-    {% if monitoreo.finalizado_por_admin %}
+    {% if resultado.finalizado_por_admin %}
     <div class="row mb-4">
         <div class="col-12">
             <div class="card border-danger">
                 <div class="card-header bg-danger text-white">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-stop-circle"></i>
-                        Finalizacion Administrativa
+                        Finalización Administrativa
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <strong>Finalizado por:</strong> {{ monitoreo.finalizado_por_admin.get_full_name|default:monitoreo.finalizado_por_admin.username }}
+                            <strong>Finalizado por:</strong> {{ resultado.finalizado_por_admin.get_full_name|default:resultado.finalizado_por_admin.username }}
                         </div>
                         <div class="col-md-6">
-                            <strong>Fecha:</strong> {{ monitoreo.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}
+                            <strong>Fecha:</strong> {{ resultado.fecha_finalizacion_admin|date:"d/m/Y H:i:s" }}
                         </div>
                     </div>
                     <hr>
                     <div class="row">
                         <div class="col-12">
                             <strong>Motivo:</strong>
-                            <p class="mt-2">{{ monitoreo.motivo_finalizacion }}</p>
+                            <p class="mt-2 text-danger font-monospace">{{ resultado.motivo_finalizacion }}</p>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Irregularidades -->
-    {% if monitoreo.irregularidades %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-warning">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        Irregularidades Detectadas
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <p class="mb-0">{{ monitoreo.irregularidades }}</p>
                 </div>
             </div>
         </div>
@@ -278,33 +298,27 @@
                 <div class="card-header bg-success text-white">
                     <h5 class="card-title mb-0">
                         <i class="bi bi-check-circle"></i>
-                        Resultado de la Evaluacion
+                        Resultado de la Evaluación
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="text-center">
                                 <h4 class="text-success">{{ resultado.get_puntaje_numerico }}</h4>
-                                <small class="text-muted">Puntaje</small>
+                                <small class="text-muted">Nota Final</small>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="text-center">
                                 <h4 class="text-info">{{ resultado.get_tiempo_formateado }}</h4>
                                 <small class="text-muted">Tiempo Utilizado</small>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <h4 class="text-warning">{{ resultado.get_puntaje_porcentaje|floatformat:1 }}%</h4>
-                                <small class="text-muted">Porcentaje</small>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="text-center">
                                 <h4 class="text-primary">{{ resultado.get_posicion_ranking|default:"N/A" }}</h4>
-                                <small class="text-muted">Posicion</small>
+                                <small class="text-muted">Posición en Ranking</small>
                             </div>
                         </div>
                     </div>
@@ -315,7 +329,7 @@
     {% endif %}
 
     <!-- Acciones administrativas -->
-    {% if monitoreo.estado == 'activo' %}
+    {% if not resultado.completada %}
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -333,7 +347,7 @@
                         </button>
                         <button type="button" class="btn btn-danger" onclick="finalizarEvaluacionManual()">
                             <i class="bi bi-stop-circle"></i>
-                            Finalizar Evaluacion
+                            Finalizar Evaluación
                         </button>
                     </div>
                 </div>
@@ -359,8 +373,8 @@
                     <label for="tipo-alerta-manual" class="form-label">Tipo de Alerta:</label>
                     <select class="form-select" id="tipo-alerta-manual">
                         <option value="comportamiento">Comportamiento Sospechoso</option>
-                        <option value="tecnico">Problema Tecnico</option>
-                        <option value="conexion">Problema de Conexion</option>
+                        <option value="tecnico">Problema Técnico</option>
+                        <option value="conexion">Problema de Conexión</option>
                         <option value="inactividad">Inactividad Prolongada</option>
                         <option value="otro">Otro</option>
                     </select>
@@ -374,13 +388,13 @@
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label for="descripcion-alerta-manual" class="form-label">Descripcion:</label>
+                    <label for="descripcion-alerta-manual" class="form-label">Descripción:</label>
                     <textarea class="form-control" id="descripcion-alerta-manual" rows="3" placeholder="Describa la alerta..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-warning" id="btn-confirmar-alerta-manual">
+                <button type="button" class="btn btn-warning" onclick="confirmarAgregarAlertaManual()">
                     <i class="bi bi-plus-circle"></i>
                     Agregar Alerta
                 </button>
@@ -396,32 +410,99 @@
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
                     <i class="bi bi-exclamation-triangle"></i>
-                    Finalizar Evaluacion
+                    Finalizar Evaluación Manualmente
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p><strong>¿Estas seguro de que deseas finalizar la evaluacion de {{ participante.NombresCompletos }}?</strong></p>
-                <p class="text-muted">Esta accion no se puede deshacer.</p>
+                <p><strong>¿Estás seguro de que deseas finalizar la evaluación de {{ participante.NombresCompletos }}?</strong></p>
+                <p class="text-muted">Esta acción asignará un puntaje de 0/10 y finalizará el examen inmediatamente.</p>
                 <div class="mb-3">
-                    <label for="motivo-finalizacion-manual" class="form-label">Motivo de la finalizacion:</label>
-                    <textarea class="form-control" id="motivo-finalizacion-manual" rows="3" placeholder="Describa el motivo de la finalizacion..."></textarea>
+                    <label for="motivo-finalizar-manual" class="form-label">Motivo de la finalización:</label>
+                    <textarea class="form-control" id="motivo-finalizar-manual" rows="3" placeholder="Describa el motivo..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-danger" id="btn-confirmar-finalizar-manual">
+                <button type="button" class="btn btn-danger" onclick="confirmarFinalizarManual()">
                     <i class="bi bi-stop-circle"></i>
-                    Finalizar Evaluacion
+                    Finalizar Evaluación
                 </button>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
-{% csrf_token %}
-<script src="{% static 'js/detalle_monitoreo.js' %}"></script>
+<script>
+function agregarAlertaManual() {
+    new bootstrap.Modal(document.getElementById('modalAlertaManual')).show();
+}
+
+function confirmarAgregarAlertaManual() {
+    const tipo = document.getElementById('tipo-alerta-manual').value;
+    const severidad = document.getElementById('severidad-alerta-manual').value;
+    const descripcion = document.getElementById('descripcion-alerta-manual').value;
+    const resultadoId = "{{ resultado.id }}";
+
+    if (!descripcion) {
+        alert("Por favor ingrese una descripción");
+        return;
+    }
+
+    fetch("{% url 'quizzes:agregar_alerta_manual' monitoreo_id=resultado.id %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            tipo_alerta: tipo,
+            severidad: severidad,
+            descripcion: descripcion
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || "Error al agregar alerta");
+        }
+    });
+}
+
+function finalizarEvaluacionManual() {
+    new bootstrap.Modal(document.getElementById('modalFinalizarManual')).show();
+}
+
+function confirmarFinalizarManual() {
+    const motivo = document.getElementById('motivo-finalizar-manual').value;
+    if (!motivo) {
+        alert("Por favor ingrese un motivo");
+        return;
+    }
+
+    fetch("{% url 'quizzes:finalizar_evaluacion_admin' pk=evaluacion.id %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            monitoreo_id: "{{ resultado.id }}",
+            motivo: motivo
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || "Error al finalizar evaluación");
+        }
+    });
+}
+</script>
 {% endblock %}

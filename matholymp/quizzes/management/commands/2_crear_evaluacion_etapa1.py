@@ -28,7 +28,7 @@ import random
 from django.core.management.base import BaseCommand
 from decimal import Decimal
 
-from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes, SystemConfig, Participantes, ResultadoEvaluacion
+from quizzes.models import Evaluacion, Pregunta, Opcion, GrupoParticipantes, Participantes, ResultadoEvaluacion
 
 class Command(BaseCommand):
     help = 'Crea una evaluación completa para la Etapa 1 con 60 preguntas de matemáticas y simula respuestas realistas para todos los participantes'
@@ -49,7 +49,7 @@ class Command(BaseCommand):
             end_time=fin,
             duration_minutes=60,  # 1 hora
             preguntas_a_mostrar=10,  # Mostrar 10 preguntas aleatorias
-            anio=SystemConfig.get_active_year()
+            anio=ahora.year
         )
 
         self.stdout.write(f"✅ Evaluación creada: {evaluacion.title}")
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         self.stdout.write(f"   - Preguntas a mostrar: {evaluacion.preguntas_a_mostrar}")
 
         # Asignar todos los grupos de participantes del año activo
-        grupos = GrupoParticipantes.objects.filter(anio=SystemConfig.get_active_year())
+        grupos = GrupoParticipantes.objects.all()
         if grupos.exists():
             evaluacion.grupos_participantes.set(grupos)
             self.stdout.write(f"✅ Asignados {grupos.count()} grupos a la evaluación")

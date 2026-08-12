@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.contrib.auth.models import User
-from quizzes.models import Evaluacion, Pregunta, Opcion, Participantes, ResultadoEvaluacion, Representante, GrupoParticipantes
+from quizzes.models import Evaluacion, Pregunta, Opcion, Participantes, ResultadoEvaluacion, Representante, GrupoParticipantes, UnidadTematica, Categoria
 from django.utils.crypto import get_random_string
 import random
 from datetime import timedelta
@@ -48,7 +48,52 @@ class Command(BaseCommand):
             self.stdout.write(f'Eliminando {representantes_prueba.count()} representantes de prueba anteriores...')
             representantes_prueba.delete()
         
-        self.stdout.write('✅ Datos anteriores limpiados correctamente')
+        self.stdout.write('[OK] Datos anteriores limpiados correctamente')
+        
+        # ===== CREAR UNIDADES TEMÁTICAS Y CATEGORÍAS =====
+        self.stdout.write('\n=== CREANDO UNIDADES TEMÁTICAS Y CATEGORÍAS ===')
+        
+        unidades_def = [
+            (1, 'Cinemática y Vectores', 'Unidad 1: Conceptos fundamentales, vectores y movimiento'),
+            (2, 'Dinámica y Potencia', 'Unidad 2: Leyes del movimiento y energía'),
+            (3, 'Termodinámica e Hidrostática', 'Unidad 3: Propiedades térmicas y fluidos'),
+            (4, 'Electromagnetismo', 'Unidad 4: Carga eléctrica y fuerzas electrostáticas'),
+        ]
+        
+        unidades_objs = {}
+        for num, nombre_u, desc_u in unidades_def:
+            u_obj, _ = UnidadTematica.objects.get_or_create(
+                numero=num,
+                defaults={'nombre': nombre_u, 'descripcion': desc_u}
+            )
+            unidades_objs[num] = u_obj
+            self.stdout.write(f'  [+] Unidad {num}: {nombre_u}')
+            
+        categorias_def = [
+            ('Vectores', 1),
+            ('Magnitudes físicas', 1),
+            ('Cinemática (MRUV)', 1),
+            ('Caída libre', 1),
+            ('Leyes de Newton', 2),
+            ('Potencia', 2),
+            ('Temperatura', 3),
+            ('Hidrostática', 3),
+            ('Carga eléctrica', 4),
+            ('Ley de Coulomb', 4),
+        ]
+        
+        categorias_objs = []
+        for nombre_cat, num_u in categorias_def:
+            u_obj = unidades_objs[num_u]
+            cat_obj, _ = Categoria.objects.get_or_create(
+                nombre=nombre_cat,
+                defaults={'unidad': u_obj, 'activa': True}
+            )
+            if cat_obj.unidad != u_obj:
+                cat_obj.unidad = u_obj
+                cat_obj.save()
+            categorias_objs.append(cat_obj)
+            self.stdout.write(f'  [+] Categoría: {nombre_cat} -> Unidad {num_u}')
         
         # ===== CREAR REPRESENTANTES =====
         self.stdout.write('\n=== CREANDO REPRESENTANTES ===')
@@ -63,7 +108,7 @@ class Command(BaseCommand):
             TelefonoRepresentante='0987654321',
             CorreoRepresentante='maria.gonzalez@colegio.edu.ec'
         )
-        self.stdout.write(f'✓ Representante A creado: {representante_a.NombresRepresentante} - {representante_a.NombreColegio}')
+        self.stdout.write(f'[+] Representante A creado: {representante_a.NombresRepresentante} - {representante_a.NombreColegio}')
         
         # Representante para Grupo B
         representante_b = Representante.objects.create(
@@ -75,7 +120,7 @@ class Command(BaseCommand):
             TelefonoRepresentante='0987654322',
             CorreoRepresentante='carlos.rodriguez@instituto.edu.ec'
         )
-        self.stdout.write(f'✓ Representante B creado: {representante_b.NombresRepresentante} - {representante_b.NombreColegio}')
+        self.stdout.write(f'[+] Representante B creado: {representante_b.NombresRepresentante} - {representante_b.NombreColegio}')
         
         # ===== CREAR GRUPOS =====
         self.stdout.write('\n=== CREANDO GRUPOS ===')
@@ -84,13 +129,13 @@ class Command(BaseCommand):
             name='Grupo A - San Francisco',
             representante=representante_a
         )
-        self.stdout.write(f'✓ Grupo A creado: {grupo_a.name}')
+        self.stdout.write(f'[+] Grupo A creado: {grupo_a.name}')
         
         grupo_b = GrupoParticipantes.objects.create(
             name='Grupo B - Tecnológico',
             representante=representante_b
         )
-        self.stdout.write(f'✓ Grupo B creado: {grupo_b.name}')
+        self.stdout.write(f'[+] Grupo B creado: {grupo_b.name}')
         
         # ===== CREAR PARTICIPANTES =====
         self.stdout.write('\n=== CREANDO PARTICIPANTES ===')
@@ -121,12 +166,11 @@ class Command(BaseCommand):
                 user=user,
                 cedula=cedula,
                 NombresCompletos=nombres,
-                email=email,
-                password_temporal=password
+                email=email
             )
             
             participantes_grupo_a.append(participante)
-            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+            self.stdout.write(f'  [+] {nombres} ({cedula})')
         
         # Crear 12 participantes para Grupo B
         self.stdout.write('Creando 12 participantes para Grupo B...')
@@ -150,12 +194,11 @@ class Command(BaseCommand):
                 user=user,
                 cedula=cedula,
                 NombresCompletos=nombres,
-                email=email,
-                password_temporal=password
+                email=email
             )
             
             participantes_grupo_b.append(participante)
-            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+            self.stdout.write(f'  [+] {nombres} ({cedula})')
         
         # Crear 6 participantes individuales
         self.stdout.write('Creando 6 participantes individuales...')
@@ -179,20 +222,19 @@ class Command(BaseCommand):
                 user=user,
                 cedula=cedula,
                 NombresCompletos=nombres,
-                email=email,
-                password_temporal=password
+                email=email
             )
             
             participantes_individuales.append(participante)
-            self.stdout.write(f'  ✓ {nombres} ({cedula})')
+            self.stdout.write(f'  [+] {nombres} ({cedula})')
         
         # Asignar participantes a sus grupos
         grupo_a.participantes.add(*participantes_grupo_a)
         grupo_b.participantes.add(*participantes_grupo_b)
         
-        self.stdout.write(f'✓ 12 participantes asignados a Grupo A')
-        self.stdout.write(f'✓ 12 participantes asignados a Grupo B')
-        self.stdout.write(f'✓ 6 participantes individuales creados')
+        self.stdout.write(f'[+] 12 participantes asignados a Grupo A')
+        self.stdout.write(f'[+] 12 participantes asignados a Grupo B')
+        self.stdout.write(f'[+] 6 participantes individuales creados')
         
         # Lista completa de participantes para etapa 1
         todos_participantes = participantes_grupo_a + participantes_grupo_b + participantes_individuales
@@ -210,17 +252,22 @@ class Command(BaseCommand):
             start_time=start_time_etapa1,
             end_time=end_time_etapa1,
             duration_minutes=60,
-            preguntas_a_mostrar=20  # Mostrar 20 de las 50 preguntas
+            preguntas_unidad_1=4,
+            preguntas_unidad_2=2,
+            preguntas_unidad_3=2,
+            preguntas_unidad_4=2
         )
         
-        self.stdout.write(f'✓ Evaluación creada: {evaluacion_etapa1.title}')
+        self.stdout.write(f'[+] Evaluación creada: {evaluacion_etapa1.title}')
         
         # Crear 50 preguntas con opciones para etapa 1
         self.stdout.write('Creando 50 preguntas para etapa 1...')
         for i in range(1, 51):
+            cat_asignada = categorias_objs[(i - 1) % len(categorias_objs)]
             pregunta = Pregunta.objects.create(
                 evaluacion=evaluacion_etapa1,
-                text=f'Pregunta {i}: ¿Cuál es el resultado de {random.randint(1, 100)} + {random.randint(1, 100)}?',
+                categoria=cat_asignada,
+                text=f'Pregunta {i} [{cat_asignada.nombre}]: ¿Cuál es el resultado de {random.randint(1, 100)} + {random.randint(1, 100)}?',
                 puntos=1
             )
             
@@ -247,12 +294,12 @@ class Command(BaseCommand):
                     is_correct=False
                 )
         
-        self.stdout.write(f'✓ 50 preguntas creadas para etapa 1')
+        self.stdout.write(f'[+] 50 preguntas creadas para etapa 1')
         
         # Asignar grupos y participantes individuales a la evaluación de etapa 1
         evaluacion_etapa1.grupos_participantes.add(grupo_a, grupo_b)
         evaluacion_etapa1.participantes_individuales.add(*participantes_individuales)
-        self.stdout.write(f'✓ 2 grupos y 6 participantes individuales asignados a la evaluación de etapa 1')
+        self.stdout.write(f'[+] 2 grupos y 6 participantes individuales asignados a la evaluación de etapa 1')
         
         # Simular resultados de etapa 1
         self.stdout.write('Simulando resultados de etapa 1...')
@@ -279,7 +326,7 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
         
         # Últimos 15 participantes: nota menor a 10/10 (simular respuestas mixtas)
         for i in range(15, 30):
@@ -302,7 +349,7 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
         
         # Obtener los 15 mejores de etapa 1
         mejores_etapa1 = ResultadoEvaluacion.objects.filter(
@@ -325,17 +372,22 @@ class Command(BaseCommand):
             start_time=start_time_etapa2,
             end_time=end_time_etapa2,
             duration_minutes=60,
-            preguntas_a_mostrar=10  # Mostrar 10 de las 50 preguntas
+            preguntas_unidad_1=4,
+            preguntas_unidad_2=2,
+            preguntas_unidad_3=2,
+            preguntas_unidad_4=2
         )
         
-        self.stdout.write(f'✓ Evaluación creada: {evaluacion_etapa2.title}')
+        self.stdout.write(f'[+] Evaluación creada: {evaluacion_etapa2.title}')
         
         # Crear 50 preguntas con opciones para etapa 2
         self.stdout.write('Creando 50 preguntas para etapa 2...')
         for i in range(1, 51):
+            cat_asignada = categorias_objs[(i - 1) % len(categorias_objs)]
             pregunta = Pregunta.objects.create(
                 evaluacion=evaluacion_etapa2,
-                text=f'Pregunta Etapa 2 - {i}: ¿Cuál es el resultado de {random.randint(10, 500)} × {random.randint(2, 20)}?',
+                categoria=cat_asignada,
+                text=f'Pregunta Etapa 2 - {i} [{cat_asignada.nombre}]: ¿Cuál es el resultado de {random.randint(10, 500)} × {random.randint(2, 20)}?',
                 puntos=1
             )
             
@@ -362,11 +414,11 @@ class Command(BaseCommand):
                     is_correct=False
                 )
         
-        self.stdout.write(f'✓ 50 preguntas creadas para etapa 2')
+        self.stdout.write(f'[+] 50 preguntas creadas para etapa 2')
         
         # Asignar los 15 mejores de etapa 1 a etapa 2
         evaluacion_etapa2.participantes_individuales.add(*participantes_etapa2)
-        self.stdout.write(f'✓ 15 participantes de etapa 1 asignados a etapa 2')
+        self.stdout.write(f'[+] 15 participantes de etapa 1 asignados a etapa 2')
         
         # Simular resultados de etapa 2
         self.stdout.write('Simulando resultados de etapa 2...')
@@ -393,7 +445,7 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
         
         # Últimos 10 participantes: nota menor a 9/10
         for i in range(5, 15):
@@ -416,7 +468,7 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min')
         
         # Obtener los 5 mejores de etapa 2
         mejores_etapa2 = ResultadoEvaluacion.objects.filter(
@@ -439,17 +491,22 @@ class Command(BaseCommand):
             start_time=start_time_etapa3,
             end_time=end_time_etapa3,
             duration_minutes=60,
-            preguntas_a_mostrar=10  # Mostrar 10 de las 50 preguntas
+            preguntas_unidad_1=4,
+            preguntas_unidad_2=2,
+            preguntas_unidad_3=2,
+            preguntas_unidad_4=2
         )
         
-        self.stdout.write(f'✓ Evaluación creada: {evaluacion_etapa3.title}')
+        self.stdout.write(f'[+] Evaluación creada: {evaluacion_etapa3.title}')
         
         # Crear 50 preguntas con opciones para etapa 3
         self.stdout.write('Creando 50 preguntas para etapa 3...')
         for i in range(1, 51):
+            cat_asignada = categorias_objs[(i - 1) % len(categorias_objs)]
             pregunta = Pregunta.objects.create(
                 evaluacion=evaluacion_etapa3,
-                text=f'Pregunta Etapa 3 - {i}: ¿Cuál es el resultado de {random.randint(50, 1000)} ÷ {random.randint(2, 10)}?',
+                categoria=cat_asignada,
+                text=f'Pregunta Etapa 3 - {i} [{cat_asignada.nombre}]: ¿Cuál es el resultado de {random.randint(50, 1000)} ÷ {random.randint(2, 10)}?',
                 puntos=1
             )
             
@@ -476,11 +533,11 @@ class Command(BaseCommand):
                     is_correct=False
                 )
         
-        self.stdout.write(f'✓ 50 preguntas creadas para etapa 3')
+        self.stdout.write(f'[+] 50 preguntas creadas para etapa 3')
         
         # Asignar los 5 mejores de etapa 2 a etapa 3
         evaluacion_etapa3.participantes_individuales.add(*participantes_etapa3)
-        self.stdout.write(f'✓ 5 participantes de etapa 2 asignados a etapa 3')
+        self.stdout.write(f'[+] 5 participantes de etapa 2 asignados a etapa 3')
         
         # Simular resultados de etapa 3 con criterios específicos
         self.stdout.write('Simulando resultados de etapa 3...')
@@ -504,7 +561,7 @@ class Command(BaseCommand):
             numero_intento=1  # Asegurar que el número de intento esté establecido
         )
         
-        self.stdout.write(f'  ✓ {participante_oro.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [ORO]')
+        self.stdout.write(f'  [+] {participante_oro.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [ORO]')
         
         # 2 participantes: notas 9/10 y 8/10 (PLATA)
         for i in range(1, 3):
@@ -526,7 +583,7 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [PLATA]')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [PLATA]')
         
         # 2 participantes: notas 7/10 y 6/10 (BRONCE)
         for i in range(3, 5):
@@ -548,13 +605,13 @@ class Command(BaseCommand):
                 numero_intento=1  # Asegurar que el número de intento esté establecido
             )
             
-            self.stdout.write(f'  ✓ {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [BRONCE]')
+            self.stdout.write(f'  [+] {participante.NombresCompletos}: {puntaje_ponderado:.3f}/10 ({percentage:.1f}%) - {tiempo_utilizado} min [BRONCE]')
         
         # ===== RESUMEN FINAL =====
         self.stdout.write('\n=== RESUMEN DE EVALUACIONES CREADAS ===')
         
         # Etapa 1
-        self.stdout.write(f'\n📊 ETAPA 1 - Clasificatoria:')
+        self.stdout.write(f'\n[DATA] ETAPA 1 - Clasificatoria:')
         self.stdout.write(f'   ID: {evaluacion_etapa1.id}')
         self.stdout.write(f'   Grupos: 2 (A y B)')
         self.stdout.write(f'   Participantes por grupo: 12 cada uno')
@@ -564,14 +621,14 @@ class Command(BaseCommand):
         self.stdout.write(f'   Clasificados: 15 (10/10)')
         
         # Etapa 2
-        self.stdout.write(f'\n📊 ETAPA 2 - Semifinal:')
+        self.stdout.write(f'\n[DATA] ETAPA 2 - Semifinal:')
         self.stdout.write(f'   ID: {evaluacion_etapa2.id}')
         self.stdout.write(f'   Participantes: 15 (de etapa 1)')
         self.stdout.write(f'   Preguntas: 50 (mostrar 10)')
         self.stdout.write(f'   Finalistas: 5 (10/10)')
         
         # Etapa 3
-        self.stdout.write(f'\n📊 ETAPA 3 - Final:')
+        self.stdout.write(f'\n[DATA] ETAPA 3 - Final:')
         self.stdout.write(f'   ID: {evaluacion_etapa3.id}')
         self.stdout.write(f'   Participantes: 5 (de etapa 2)')
         self.stdout.write(f'   Preguntas: 50 (mostrar 10)')
@@ -586,29 +643,29 @@ class Command(BaseCommand):
         
         for i, resultado in enumerate(ranking_final, 1):
             if i == 1:
-                medalla = "🥇 ORO"
+                medalla = "[ORO] ORO"
             elif i in [2, 3]:
-                medalla = "🥈 PLATA"
+                medalla = "[PLATA] PLATA"
             elif i in [4, 5]:
-                medalla = "🥉 BRONCE"
+                medalla = "[BRONCE] BRONCE"
             else:
-                medalla = "🏅"
+                medalla = "[MEDALLA]"
             
-            self.stdout.write(f'{i}. {resultado.participante.NombresCompletos}: {resultado.get_puntaje_numerico()} ({resultado.puntaje:.1f}%) - {resultado.tiempo_utilizado} min {medalla}')
+            self.stdout.write(f'{i}. {resultado.participante.NombresCompletos}: {resultado.get_puntaje_numerico()} - {resultado.get_tiempo_formateado()} {medalla}')
         
         self.stdout.write('\n=== EVALUACIONES CREADAS EXITOSAMENTE ===')
-        self.stdout.write('✅ 2 Grupos creados con sus representantes')
-        self.stdout.write('✅ 30 Participantes totales (12+12+6)')
-        self.stdout.write('✅ Etapa 1: 30 participantes → 15 clasificados')
-        self.stdout.write('✅ Etapa 2: 15 participantes → 5 finalistas')
-        self.stdout.write('✅ Etapa 3: 5 participantes → 1 ORO, 2 PLATA, 2 BRONCE')
-        self.stdout.write(f'\n📋 INFORMACIÓN PARA ACCESO:')
+        self.stdout.write('[OK] 2 Grupos creados con sus representantes')
+        self.stdout.write('[OK] 30 Participantes totales (12+12+6)')
+        self.stdout.write('[OK] Etapa 1: 30 participantes -> 15 clasificados')
+        self.stdout.write('[OK] Etapa 2: 15 participantes -> 5 finalistas')
+        self.stdout.write('[OK] Etapa 3: 5 participantes -> 1 ORO, 2 PLATA, 2 BRONCE')
+        self.stdout.write(f'\n[INFO] INFORMACIÓN PARA ACCESO:')
         self.stdout.write(f'   - Todos los usuarios tienen contraseña temporal de 6 caracteres')
         self.stdout.write(f'   - El username de cada participante es su número de cédula')
         self.stdout.write(f'   - Los resultados incluyen el campo numero_intento = 1')
-        self.stdout.write('\n🎯 PRÓXIMOS PASOS:')
+        self.stdout.write('\n[PASOS] PRÓXIMOS PASOS:')
         self.stdout.write('   1. Verificar que las evaluaciones aparezcan en el admin')
         self.stdout.write('   2. Probar el procedimiento de preselección automática')
         self.stdout.write('   3. Validar que los rankings funcionen correctamente')
-        self.stdout.write(f'\n⚡ El script se ejecutó exitosamente sin errores')
+        self.stdout.write(f'\n[DONE] El script se ejecutó exitosamente sin errores')
         self.stdout.write('Ahora puedes verificar los procedimientos de preselección automática.') 

@@ -41,37 +41,6 @@ body.evaluacion-activa #sidebarToggleBtnHeader {
     display: none !important;
 }
 
-/* Estilos para alertas de cambio de pestaña */
-.swal-wide {
-    width: 600px !important;
-    max-width: 90% !important;
-}
-
-.swal2-html-container .alert {
-    margin-bottom: 1rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid transparent;
-    border-radius: 0.375rem;
-}
-
-.swal2-html-container .alert-warning {
-    color: #664d03;
-    background-color: #fff3cd;
-    border-color: #ffecb5;
-}
-
-.swal2-html-container .alert-info {
-    color: #055160;
-    background-color: #cff4fc;
-    border-color: #b6effb;
-}
-
-.swal2-html-container .alert-danger {
-    color: #721c24;
-    background-color: #f8d7da;
-    border-color: #f5c2c7;
-}
-
 /* Indicador de cambios de pestaña en el header */
 .tab-changes-indicator {
     position: absolute;

@@ -68,22 +68,16 @@
               placeholder="Ingrese su contraseña"
               required
             />
-            <span
+            <button
+              type="button"
               class="login-eye-icon position-absolute end-0 top-50 translate-middle-y"
-              style="cursor: pointer; color: #009933; font-size: 1.5rem"
               onclick="togglePassword()"
+              aria-label="Mostrar contraseña"
+              aria-pressed="false"
             >
               <i class="bi bi-eye"></i>
-            </span>
+            </button>
           </div>
-        </div>
-        <div class="mb-3 d-flex justify-content-between">
-          <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalClaveTemporal"
-            >Solicitar Clave Temporal</a
-          >
-          <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalCreditos"
-            >Créditos</a
-          >
         </div>
         <button
           type="submit"
@@ -92,8 +86,29 @@
           INICIAR SESIÓN
         </button>
       </form>
-      <div class="text-center mt-3">
-        <a href="#" class="text-success small fw-semibold" data-bs-toggle="modal" data-bs-target="#modalRegistro">Registrarme</a>
+
+      <div class="login-recovery text-center">
+        <button
+          type="button"
+          class="login-secondary-action"
+          data-bs-toggle="modal"
+          data-bs-target="#modalClaveTemporal"
+        >
+          <i class="bi bi-key" aria-hidden="true"></i>
+          <span>¿No puedes acceder?</span> Recuperar acceso
+        </button>
+      </div>
+
+      <div class="login-card-footer text-center">
+        <button
+          type="button"
+          class="login-credits-link"
+          data-bs-toggle="modal"
+          data-bs-target="#modalCreditos"
+        >
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          Créditos
+        </button>
       </div>
     </div>
   </div>
@@ -105,8 +120,10 @@
 <!-- Incluir el modal de créditos -->
 {% include 'quizzes/_modalCreditos.html' %}
 
-<!-- Incluir el modal de registro -->
+<!-- Registro público preparado para una futura activación mediante configuración. -->
+{% if registro_publico_habilitado %}
 {% include 'quizzes/_modalRegistro.html' %}
+{% endif %}
 
 {% endblock %}
 

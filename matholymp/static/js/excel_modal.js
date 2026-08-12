@@ -14,13 +14,13 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-// Función para procesar el archivo Excel
+// Función para procesar el archivo Excel (obtener headers desde el servidor)
 function processExcelFile() {
     const fileInput = document.getElementById('excelFile');
     const file = fileInput.files[0];
     
     if (!file) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Archivo requerido',
             text: 'Por favor selecciona un archivo Excel.',
@@ -28,43 +28,117 @@ function processExcelFile() {
         return;
     }
     
-    // Leer el archivo para obtener los headers
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, {type: 'array'});
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+    // Mostrar indicador de carga
+    showAppDialog({
+        title: 'Leyendo archivo...',
+        html: 'Por favor espera mientras se leen las columnas del Excel.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        customClass: {
+            container: 'swal2-container-over-modal',
+            popup: 'swal2-popup-over-modal'
+        },
+        didOpen: () => { showAppLoader(); }
+    });
+    
+    // Enviar el archivo al servidor para leer los headers con openpyxl
+    const formData = new FormData();
+    formData.append('excel_file', file);
+    
+    const modal = document.getElementById('loadExcelModal');
+    const headersUrl = modal.getAttribute('data-headers-url');
+    
+    fetch(headersUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        closeAppDialog();
         
-        if (jsonData.length > 0) {
-            excelHeaders = jsonData[0];
+        if (data.success && data.headers) {
+            // Usar los headers devueltos por openpyxl (mismos índices que process_excel_participants)
+            excelHeaders = data.headers;
             populateColumnMapping();
             showStep2();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
-                title: 'Archivo inválido',
-                text: 'El archivo Excel está vacío o no contiene datos válidos.',
+                title: 'Error al leer el archivo',
+                text: data.error || 'El archivo Excel está vacío o no contiene datos válidos.',
+                customClass: {
+                    container: 'swal2-container-over-modal',
+                    popup: 'swal2-popup-over-modal'
+                }
             });
         }
-    };
-    reader.readAsArrayBuffer(file);
+    })
+    .catch(error => {
+        closeAppDialog();
+        console.error('Error:', error);
+        showAppDialog({
+            icon: 'error',
+            title: 'Error al leer el archivo',
+            text: 'Por favor intenta de nuevo.',
+            customClass: {
+                container: 'swal2-container-over-modal',
+                popup: 'swal2-popup-over-modal'
+            }
+        });
+    });
 }
 
-// Función para poblar el mapeo de columnas
+// Función para poblar el mapeo de columnas con auto-detección inteligente
 function populateColumnMapping() {
-    const selects = ['mapCedula', 'mapNombres', 'mapEmail', 'mapTelefono', 'mapEdad'];
+    const fieldKeywords = {
+        'mapCedula': ['cédula', 'cedula', 'dni', 'identificación', 'identificacion', 'documento'],
+        'mapNombres': ['estudiante', 'participante', 'alumno', 'nombres completos', 'nombre completo', 'nombre', 'nombres'],
+        'mapEmail': ['correo electrónico del estudiante', 'correo estudiante', 'email estudiante', 'correo electrónico', 'correo electronico', 'correo', 'email', 'mail'],
+        'mapTelefono': ['teléfono de contacto del estudiante', 'teléfono estudiante', 'telefono estudiante', 'celular estudiante', 'teléfono', 'telefono', 'celular', 'móvil', 'movil', 'contacto'],
+        'mapEdad': ['edad', 'años', 'anos']
+    };
     
-    selects.forEach(selectId => {
+    Object.keys(fieldKeywords).forEach(selectId => {
         const select = document.getElementById(selectId);
+        if (!select) return;
         select.innerHTML = '<option value="">Seleccionar columna...</option>';
         
-        excelHeaders.forEach((header, index) => {
+        let bestMatchIndex = -1;
+        let bestMatchPriority = -1;
+        const keywords = fieldKeywords[selectId];
+        
+        // excelHeaders ahora son objetos {index: N, name: "..."} del servidor (openpyxl)
+        excelHeaders.forEach(headerObj => {
+            const colNum = headerObj.index;  // Índice 1-based directo de openpyxl
+            const headerName = headerObj.name || null;
+            
+            // Solo mostrar columnas que tengan nombre (header no vacío)
+            if (!headerName) return;
+            
             const option = document.createElement('option');
-            option.value = index + 1; // +1 porque las columnas empiezan en 1
-            option.textContent = `${index + 1}. ${header || `Columna ${index + 1}`}`;
+            option.value = colNum;
+            option.textContent = `${colNum}. ${headerName}`;
             select.appendChild(option);
+            
+            const headerLower = headerName.toLowerCase();
+            keywords.forEach((kw, kwIndex) => {
+                if (headerLower.includes(kw)) {
+                    const priority = keywords.length - kwIndex;
+                    if (priority > bestMatchPriority) {
+                        bestMatchPriority = priority;
+                        bestMatchIndex = colNum;
+                    }
+                }
+            });
         });
+
+        if (bestMatchIndex !== -1) {
+            select.value = bestMatchIndex;
+        }
     });
 }
 
@@ -82,7 +156,7 @@ function previewData() {
     });
     
     if (missingFields.length > 0) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'Campos requeridos',
             text: `Por favor selecciona los campos requeridos: ${missingFields.join(', ')}`,
@@ -104,7 +178,7 @@ function previewData() {
     if (mapEdad) columnMapping[mapEdad] = 'edad';
     
     // Mostrar indicador de carga
-    Swal.fire({
+    showAppDialog({
         title: 'Procesando archivo...',
         html: 'Por favor espera mientras se procesa el archivo Excel.',
         allowOutsideClick: false,
@@ -115,7 +189,7 @@ function previewData() {
             popup: 'swal2-popup-over-modal'
         },
         didOpen: () => {
-            Swal.showLoading();
+            showAppLoader();
         }
     });
     
@@ -139,14 +213,14 @@ function previewData() {
     .then(response => response.json())
     .then(data => {
         // Cerrar el loading
-        Swal.close();
+        closeAppDialog();
         
         if (data.success) {
             processedData = data.data;
             displayPreview(data);
             showStep3();
         } else {
-            Swal.fire({
+            showAppDialog({
                 icon: 'error',
                 title: 'Error al procesar el archivo',
                 text: 'Error: ' + data.error,
@@ -159,10 +233,10 @@ function previewData() {
     })
     .catch(error => {
         // Cerrar el loading
-        Swal.close();
+        closeAppDialog();
         
         console.error('Error:', error);
-        Swal.fire({
+        showAppDialog({
             icon: 'error',
             title: 'Error al procesar el archivo',
             text: 'Por favor intenta de nuevo.',
@@ -209,7 +283,7 @@ function displayPreview(data) {
             const btn = document.getElementById('showAllErrorsBtn');
             if (btn) {
                 btn.addEventListener('click', function() {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'info',
                         title: 'Todos los errores',
                         html: `
@@ -258,7 +332,7 @@ function displayPreview(data) {
 // Función para guardar participantes
 function saveParticipants() {
     if (processedData.length === 0) {
-        Swal.fire({
+        showAppDialog({
             icon: 'warning',
             title: 'No hay datos válidos',
             text: 'Por favor verifica los datos y vuelve a intentar.',
@@ -266,11 +340,9 @@ function saveParticipants() {
         return;
     }
 
-    Swal.fire({
+    confirmAppAction({
         title: `¿Guardar participantes?`,
         text: `Se guardarán ${processedData.length} participantes.`,
-        icon: 'question',
-        showCancelButton: true,
         confirmButtonText: 'Sí, guardar',
         cancelButtonText: 'Cancelar',
         customClass: {
@@ -280,7 +352,7 @@ function saveParticipants() {
     }).then((result) => {
         if (result.isConfirmed) {
             // Mostrar indicador de carga con título y mensaje personalizados
-            Swal.fire({
+            showAppDialog({
                 title: 'Guardando participantes...',
                 html: 'Por favor espera mientras se guardan los participantes en la base de datos.',
                 allowOutsideClick: false,
@@ -291,7 +363,7 @@ function saveParticipants() {
                     popup: 'swal2-popup-over-modal'
                 },
                 didOpen: () => {
-                    Swal.showLoading();
+                    showAppLoader();
                 }
             });
             
@@ -311,7 +383,7 @@ function saveParticipants() {
             .then(response => response.json())
             .then(data => {
                 // Cerrar el loading
-                Swal.close();
+                closeAppDialog();
                 
                 if (data.success) {
                     let errorHtml = '';
@@ -332,7 +404,7 @@ function saveParticipants() {
                         `;
                     }
 
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'success',
                         title: 'Participantes guardados',
                         html: `Se guardaron <strong>${data.created_count}</strong> participantes exitosamente.` + errorHtml,
@@ -345,7 +417,7 @@ function saveParticipants() {
                             const btn = document.getElementById('showAllSavedErrorsBtn');
                             if (btn) {
                                 btn.addEventListener('click', function() {
-                                    Swal.fire({
+                                    showAppDialog({
                                         icon: 'info',
                                         title: 'Todos los errores',
                                         html: `
@@ -369,7 +441,7 @@ function saveParticipants() {
                     });
 
                 } else {
-                    Swal.fire({
+                    showAppDialog({
                         icon: 'error',
                         title: 'Error al guardar',
                         text: data.error,
@@ -382,10 +454,10 @@ function saveParticipants() {
             })
             .catch(error => {
                 // Cerrar el loading
-                Swal.close();
+                closeAppDialog();
                 
                 console.error('Error:', error);
-                Swal.fire({
+                showAppDialog({
                     icon: 'error',
                     title: 'Error de red',
                     text: 'No se pudo guardar los participantes. Por favor intenta de nuevo.',

@@ -8,38 +8,109 @@ import re
 import os
 from datetime import datetime
 
-# Configuración global del sistema
-class SystemConfig(models.Model):
-    NUM_ETAPAS_CHOICES = [
-        (2, 'Dos etapas'),
-        (3, 'Tres etapas'),
-    ]
-    num_etapas = models.IntegerField(choices=NUM_ETAPAS_CHOICES, default=3, help_text='Cantidad de etapas del concurso')
-    active_year = models.IntegerField(default=datetime.now().year, help_text='Año activo del concurso')
+
+
+
+# Modelo para Facultades de la Institución
+class Facultad(models.Model):
+    nombre = models.CharField(max_length=150, unique=True, help_text='Nombre de la Facultad (ej: Facultad de Ciencias de la Ingeniería)')
+    siglas = models.CharField(max_length=20, blank=True, help_text='Ej: FCI')
+    activa = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = 'Configuración del Sistema'
-        verbose_name_plural = 'Configuración del Sistema'
+        verbose_name = 'Facultad'
+        verbose_name_plural = 'Facultades'
+        ordering = ['nombre']
 
     def __str__(self):
-        return f"Config: {self.num_etapas} etapas, año {self.active_year}"
+        return f"{self.nombre} ({self.siglas})" if self.siglas else self.nombre
 
-    @classmethod
-    def get_num_etapas(cls) -> int:
-        try:
-            obj = cls.objects.first()
-            return obj.num_etapas if obj else 3
-        except Exception:
-            # Si la tabla aún no existe o hay cualquier problema, usar 3 por defecto
-            return 3
 
-    @classmethod
-    def get_active_year(cls) -> int:
-        try:
-            obj = cls.objects.first()
-            return obj.active_year if obj else datetime.now().year
-        except Exception:
-            return datetime.now().year
+# Modelo para Carreras Universitarias
+class Carrera(models.Model):
+    facultad = models.ForeignKey(Facultad, related_name='carreras', on_delete=models.CASCADE)
+    nombre = models.CharField(max_length=150, help_text='Nombre de la Carrera (ej: Ingeniería de Software, Mecánica)')
+    codigo = models.CharField(max_length=20, blank=True)
+    activa = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Carrera'
+        verbose_name_plural = 'Carreras'
+        unique_together = ('facultad', 'nombre')
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f"{self.nombre} - {self.facultad.nombre}"
+
+
+# Modelo para Concursos / Olimpiadas (Evento con fechas, fases y participantes específicos)
+class Concurso(models.Model):
+    ESTADO_CHOICES = [
+        ('BORRADOR', 'Borrador / Registro'),
+        ('EN_CURSO', 'En Curso'),
+        ('FINALIZADO', 'Finalizado'),
+        ('ARCHIVADO', 'Archivado'),
+    ]
+    carrera = models.ForeignKey(Carrera, related_name='concursos', on_delete=models.CASCADE)
+    nombre = models.CharField(max_length=200, help_text='Nombre del Concurso (ej: I Olimpiada de Física FIC - Febrero 2026)')
+    anio = models.IntegerField(default=datetime.now().year)
+    num_etapas = models.PositiveSmallIntegerField(default=2, choices=[(2, '2 Etapas'), (3, '3 Etapas')])
+    fecha_inicio = models.DateField()
+    fecha_fin = models.DateField()
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='BORRADOR')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Concurso / Olimpiada'
+        verbose_name_plural = 'Concursos / Olimpiadas'
+        ordering = ['-fecha_creacion']
+
+    def clean(self):
+        super().clean()
+        f_inicio = self.fecha_inicio
+        f_fin = self.fecha_fin
+        if isinstance(f_inicio, str) and f_inicio:
+            try:
+                f_inicio = datetime.strptime(f_inicio, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if isinstance(f_fin, str) and f_fin:
+            try:
+                f_fin = datetime.strptime(f_fin, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        if f_inicio and f_fin and f_fin < f_inicio:
+            raise ValidationError({'fecha_fin': 'La fecha de fin no puede ser anterior a la fecha de inicio.'})
+
+        if self.pk:
+            old_instance = Concurso.objects.filter(pk=self.pk).first()
+            if old_instance and old_instance.carrera_id != self.carrera_id:
+                has_records = (
+                    self.participantes.exists() or
+                    self.representantes.exists() or
+                    self.grupos.exists() or
+                    self.evaluaciones.exists()
+                )
+                if has_records:
+                    raise ValidationError({'carrera': 'No se puede cambiar la Carrera de este concurso porque ya posee participantes, representantes, grupos o evaluaciones registradas.'})
+
+    def save(self, *args, **kwargs):
+        if self.fecha_inicio:
+            if isinstance(self.fecha_inicio, str):
+                try:
+                    self.anio = datetime.strptime(self.fecha_inicio, '%Y-%m-%d').year
+                except ValueError:
+                    self.anio = int(self.fecha_inicio[:4])
+            elif hasattr(self.fecha_inicio, 'year'):
+                self.anio = self.fecha_inicio.year
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.nombre} ({self.carrera.nombre})"
 
 # Validadores personalizados
 def validate_cedula(value):
@@ -165,6 +236,7 @@ def upload_to_avatar(instance, filename):
 
 # Nuevo modelo para representantes
 class Representante(models.Model):
+    concurso = models.ForeignKey('Concurso', related_name='representantes', on_delete=models.CASCADE, help_text='Concurso específico al que pertenece')
     NombreColegio = models.CharField(max_length=200)
     DireccionColegio = models.CharField(max_length=300)
     TelefonoInstitucional = models.CharField(max_length=10, validators=[validate_phone])
@@ -212,6 +284,7 @@ class Representante(models.Model):
 
 # Modelo para grupos de participantes
 class GrupoParticipantes(models.Model):
+    concurso = models.ForeignKey('Concurso', related_name='grupos', on_delete=models.CASCADE, help_text='Concurso específico al que pertenece')
     name = models.CharField(max_length=100)
     representante = models.ForeignKey(Representante, on_delete=models.SET_NULL, null=True, blank=True, related_name='grupos')
     participantes = models.ManyToManyField('Participantes', related_name='grupos', blank=True)
@@ -239,9 +312,19 @@ class UserProfile(models.Model):
 # Modelo para distinguir a los administradores (no superuser)
 class AdminProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    carrera = models.ForeignKey('Carrera', related_name='administradores', on_delete=models.SET_NULL, null=True, blank=True, help_text='Carrera asignada al administrador')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_admins')  # Super admin que lo creó
-    password = models.CharField(max_length=50, blank=True, help_text='Contraseña generada para el admin')
-    acceso_total = models.BooleanField(default=False, help_text='Permite acceso total al sistema')
+    acceso_total = models.BooleanField(default=False, help_text='Permite acceso total a la gestión dentro de su carrera asignada')
+
+    def clean(self):
+        super().clean()
+        if self.user_id and not self.user.is_superuser and not self.carrera_id:
+            raise ValidationError({'carrera': 'Todo administrador secundario debe tener asignada una carrera obligatoriamente.'})
+
+    def save(self, *args, **kwargs):
+        if self.user_id and not self.user.is_superuser:
+            self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.user.get_full_name() or self.user.username
@@ -272,12 +355,13 @@ class IntentosParticipante(models.Model):
 # Modelo para los participantes
 class Participantes(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    concurso = models.ForeignKey('Concurso', related_name='participantes', on_delete=models.CASCADE, help_text='Concurso al que pertenece')
+    carrera = models.ForeignKey('Carrera', related_name='participantes', on_delete=models.CASCADE, help_text='Carrera a la que pertenece')
     cedula = models.CharField(max_length=10, unique=True, validators=[validate_cedula])
     NombresCompletos = models.CharField(max_length=200)
     email = models.EmailField(unique=True, help_text='Correo electrónico único')
     phone = models.CharField(max_length=10, blank=True, validators=[validate_phone])
     edad = models.IntegerField(null=True, blank=True)
-    password_temporal = models.CharField(max_length=50, blank=True, help_text='Contraseña temporal para mostrar en correos')
     
     intentos_maximos_default = models.PositiveIntegerField(default=1, help_text='Intentos máximos por defecto para evaluaciones')
 
@@ -339,7 +423,7 @@ class Participantes(models.Model):
         return self.get_intentos_disponibles(evaluacion) > 0
 
     @staticmethod
-    def create_participant(cedula, NombresCompletos, email, phone=None, edad=None):
+    def create_participant(cedula, NombresCompletos, email, phone=None, edad=None, concurso=None, carrera=None):
         # Normalizar y validar datos antes de crear nada en BD
         cedula = str(cedula).strip()
         NombresCompletos = (NombresCompletos or '').strip()
@@ -388,10 +472,10 @@ class Participantes(models.Model):
                     email=email_normalized,
                     phone=phone or "",
                     edad=edad,
-                    password_temporal=password,
+                    concurso=concurso,
+                    carrera=carrera,
                 )
 
-                # Aquí se puede agregar lógica para enviar el correo con la contraseña
                 return participante, password
         except IntegrityError as exc:
             # Traducir errores de integridad a mensajes claros
@@ -405,6 +489,7 @@ class Evaluacion(models.Model):
         (3, 'Etapa 3 - Final'),
     ]
     
+    concurso = models.ForeignKey('Concurso', related_name='evaluaciones', on_delete=models.CASCADE, help_text='Concurso al que pertenece esta evaluación')
     title = models.CharField(max_length=200)
     etapa = models.IntegerField(choices=ETAPA_CHOICES, default=1, help_text='Etapa de la olimpiada')
     start_time = models.DateTimeField(help_text='Fecha y hora de inicio de la ventana de acceso')
@@ -412,10 +497,12 @@ class Evaluacion(models.Model):
     duration_minutes = models.PositiveIntegerField(help_text='Tiempo disponible para completar la evaluación (en minutos)')
     anio = models.IntegerField(default=datetime.now().year, help_text='Año del concurso al que pertenece esta evaluación')
     
-    # Nuevo campo para configurar preguntas
+    # Campo total auto-calculado como suma de cuotas de Unidades Temáticas (Null hasta configurar preguntas)
     preguntas_a_mostrar = models.PositiveIntegerField(
-        default=10, 
-        help_text='Número de preguntas que se mostrarán al estudiante (selección aleatoria)'
+        null=True,
+        blank=True,
+        default=None, 
+        help_text='Número total de preguntas que se mostrarán al estudiante (calculado automáticamente al configurar cuotas)'
     )
     
     # Campos para participantes de la etapa 1
@@ -425,6 +512,16 @@ class Evaluacion(models.Model):
     def __str__(self):
         return f"{self.title} - Etapa {self.etapa}"
     
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Recalcular el total si existen cuotas de unidades asociadas
+        if self.pk:
+            total_cuotas = sum(c.cantidad_preguntas for c in self.cuotas_unidades.all())
+            nuevo_total = total_cuotas if total_cuotas > 0 else None
+            if self.preguntas_a_mostrar != nuevo_total:
+                self.preguntas_a_mostrar = nuevo_total
+                super().save(update_fields=['preguntas_a_mostrar'])
+
     def is_available(self):
         """Verifica si la evaluación está disponible para ser tomada"""
         now = timezone.localtime(timezone.now())
@@ -491,75 +588,34 @@ class Evaluacion(models.Model):
             return []
         
         # Determinar cuántos pasan desde etapa 1
-        from .models import SystemConfig
-        num_etapas = SystemConfig.get_num_etapas()
+        num_etapas = self.concurso.num_etapas if self.concurso else 3
         top_n = 15 if num_etapas == 3 else 5
 
-        # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
-        from django.db.models import Max
-        
-        # Primero, obtener el mejor puntaje por participante
-        mejores_puntajes = ResultadoEvaluacion.objects.filter(
+        # Obtener los mejores resultados ordenados por nota (descendente) y tiempo en segundos (ascendente)
+        resultados = ResultadoEvaluacion.objects.filter(
             evaluacion=evaluacion_etapa1,
             completada=True
-        ).values('participante').annotate(
-            mejor_puntaje=Max('puntos_obtenidos')
-        )
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado').select_related('participante')
         
-        # Crear una lista de participantes con sus mejores puntajes
-        participantes_con_mejor_puntaje = []
-        for item in mejores_puntajes:
-            participante_id = item['participante']
-            mejor_puntaje = item['mejor_puntaje']
-            
-            # Obtener todos los intentos con el mejor puntaje para este participante
-            intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
-                evaluacion=evaluacion_etapa1,
-                participante_id=participante_id,
-                completada=True,
-                puntos_obtenidos=mejor_puntaje,
-                fecha_inicio__isnull=False,
-                fecha_fin__isnull=False
-            )
-            
-            # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
-            mejor_resultado = None
-            menor_tiempo = float('inf')
-            
-            for intento in intentos_con_mejor_puntaje:
-                tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
-                if tiempo_real < menor_tiempo:
-                    menor_tiempo = tiempo_real
-                    mejor_resultado = intento
-            
-            if mejor_resultado:
-                participantes_con_mejor_puntaje.append(mejor_resultado)
+        participantes = []
+        vistos = set()
+        for r in resultados:
+            if r.participante_id not in vistos:
+                vistos.add(r.participante_id)
+                participantes.append(r.participante)
+                if len(participantes) == top_n:
+                    break
         
-        # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
-        def get_tiempo_real(resultado):
-            if resultado.fecha_inicio and resultado.fecha_fin:
-                return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
-            return float('inf')  # Si no tiene fechas, lo colocamos al final
-        
-        resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
-        
-        # Tomar solo los mejores según la configuración
-        mejores_resultados = resultados_ordenados[:top_n]
-        
-        return [resultado.participante for resultado in mejores_resultados]
+        return participantes
     
     def has_students_taking_exam(self):
         """Verifica si hay estudiantes que están actualmente rindiendo la evaluación"""
-        # Si la evaluación no está guardada en la BD, no puede tener estudiantes rindiendo
         if not self.pk:
             return False
             
-        # Un estudiante está rindiendo si tiene un ResultadoEvaluacion no completado y activo
         from django.utils import timezone
         now = timezone.now()
         
-        # Verificar si hay resultados activos (no completados) donde la última actividad
-        # fue hace menos de 1 hora (consideramos que aún está activo)
         resultados_activos = self.resultados.filter(
             completada=False,
             fecha_inicio__isnull=False,
@@ -571,15 +627,10 @@ class Evaluacion(models.Model):
     def can_modify_questions(self):
         """
         Verifica si se pueden modificar las preguntas del banco de la evaluación.
-        No se puede modificar si:
-        1. La evaluación está en estado "Disponible" (activa)
-        2. Hay estudiantes rindiendo actualmente
         """
-        # Si la evaluación está disponible (activa)
         if self.is_available():
             return False
         
-        # Si hay estudiantes rindiendo
         if self.has_students_taking_exam():
             return False
         
@@ -602,184 +653,107 @@ class Evaluacion(models.Model):
         if self.etapa != 3:
             return []
         
-        from .models import SystemConfig
-        num_etapas = SystemConfig.get_num_etapas()
+        num_etapas = self.concurso.num_etapas if self.concurso else 3
         
         if num_etapas == 3:
-            # Flujo actual: top 5 desde etapa 2
-            evaluacion_etapa2 = Evaluacion.objects.filter(etapa=2, anio=self.anio).first()
-            if not evaluacion_etapa2:
-                return []
-            
-            # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
-            from django.db.models import Max
-            
-            # Primero, obtener el mejor puntaje por participante
-            mejores_puntajes = ResultadoEvaluacion.objects.filter(
-                evaluacion=evaluacion_etapa2,
-                completada=True
-            ).values('participante').annotate(
-                mejor_puntaje=Max('puntos_obtenidos')
-            )
-            
-            # Crear una lista de participantes con sus mejores puntajes
-            participantes_con_mejor_puntaje = []
-            for item in mejores_puntajes:
-                participante_id = item['participante']
-                mejor_puntaje = item['mejor_puntaje']
-                
-                # Obtener todos los intentos con el mejor puntaje para este participante
-                intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
-                    evaluacion=evaluacion_etapa2,
-                    participante_id=participante_id,
-                    completada=True,
-                    puntos_obtenidos=mejor_puntaje,
-                    fecha_inicio__isnull=False,
-                    fecha_fin__isnull=False
-                )
-                
-                # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
-                mejor_resultado = None
-                menor_tiempo = float('inf')
-                
-                for intento in intentos_con_mejor_puntaje:
-                    tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
-                    if tiempo_real < menor_tiempo:
-                        menor_tiempo = tiempo_real
-                        mejor_resultado = intento
-                
-                if mejor_resultado:
-                    participantes_con_mejor_puntaje.append(mejor_resultado)
-            
-            # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
-            def get_tiempo_real(resultado):
-                if resultado.fecha_inicio and resultado.fecha_fin:
-                    return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
-                return float('inf')  # Si no tiene fechas, lo colocamos al final
-            
-            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
-            
-            # Tomar solo los mejores 5
-            mejores_resultados = resultados_ordenados[:5]
-            
+            evaluacion_etapa = Evaluacion.objects.filter(etapa=2, anio=self.anio).first()
         else:
-            # Flujo de 2 etapas: tomar top 5 directamente desde etapa 1 (saltando etapa 2)
-            evaluacion_etapa1 = Evaluacion.objects.filter(etapa=1, anio=self.anio).first()
-            if not evaluacion_etapa1:
-                return []
+            evaluacion_etapa = Evaluacion.objects.filter(etapa=1, anio=self.anio).first()
             
-            # Usar la misma lógica que el ranking: obtener el mejor puntaje por participante
-            from django.db.models import Max
-            
-            # Primero, obtener el mejor puntaje por participante
-            mejores_puntajes = ResultadoEvaluacion.objects.filter(
-                evaluacion=evaluacion_etapa1,
-                completada=True
-            ).values('participante').annotate(
-                mejor_puntaje=Max('puntos_obtenidos')
-            )
-            
-            # Crear una lista de participantes con sus mejores puntajes
-            participantes_con_mejor_puntaje = []
-            for item in mejores_puntajes:
-                participante_id = item['participante']
-                mejor_puntaje = item['mejor_puntaje']
-                
-                # Obtener todos los intentos con el mejor puntaje para este participante
-                intentos_con_mejor_puntaje = ResultadoEvaluacion.objects.filter(
-                    evaluacion=evaluacion_etapa1,
-                    participante_id=participante_id,
-                    completada=True,
-                    puntos_obtenidos=mejor_puntaje,
-                    fecha_inicio__isnull=False,
-                    fecha_fin__isnull=False
-                )
-                
-                # De los intentos con el mejor puntaje, seleccionar el más rápido (menor tiempo real)
-                mejor_resultado = None
-                menor_tiempo = float('inf')
-                
-                for intento in intentos_con_mejor_puntaje:
-                    tiempo_real = (intento.fecha_fin - intento.fecha_inicio).total_seconds()
-                    if tiempo_real < menor_tiempo:
-                        menor_tiempo = tiempo_real
-                        mejor_resultado = intento
-                
-                if mejor_resultado:
-                    participantes_con_mejor_puntaje.append(mejor_resultado)
-            
-            # Ordenar por puntaje descendente y tiempo real ascendente (igual que el ranking)
-            def get_tiempo_real(resultado):
-                if resultado.fecha_inicio and resultado.fecha_fin:
-                    return (resultado.fecha_fin - resultado.fecha_inicio).total_seconds()
-                return float('inf')  # Si no tiene fechas, lo colocamos al final
-            
-            resultados_ordenados = sorted(participantes_con_mejor_puntaje, key=lambda x: (-x.puntos_obtenidos, get_tiempo_real(x)))
-            
-            # Tomar solo los mejores 5
-            mejores_resultados = resultados_ordenados[:5]
+        if not evaluacion_etapa:
+            return []
         
-        return [resultado.participante for resultado in mejores_resultados]
+        resultados = ResultadoEvaluacion.objects.filter(
+            evaluacion=evaluacion_etapa,
+            completada=True
+        ).order_by('-puntos_obtenidos', 'tiempo_utilizado').select_related('participante')
+        
+        participantes = []
+        vistos = set()
+        for r in resultados:
+            if r.participante_id not in vistos:
+                vistos.add(r.participante_id)
+                participantes.append(r.participante)
+                if len(participantes) == 5:
+                    break
+        
+        return participantes
     
     def get_participantes_autorizados(self):
         """Obtiene los participantes autorizados según la etapa"""
         if self.etapa == 1:
             return self.get_participantes_etapa1()
         elif self.etapa == 2:
-            # Para etapa 2: si hay participantes asignados manualmente, usar solo esos
-            # Si no hay manuales, usar automáticos (preseleccionados)
             if self.participantes_individuales.exists():
                 return list(self.participantes_individuales.all())
             else:
-                return self.get_participantes_etapa2()  # Automáticos
+                return self.get_participantes_etapa2()
         elif self.etapa == 3:
-            # Para etapa 3: si hay participantes asignados manualmente, usar solo esos
-            # Si no hay manuales, usar automáticos (preseleccionados)
             if self.participantes_individuales.exists():
                 return list(self.participantes_individuales.all())
             else:
-                return self.get_participantes_etapa3()  # Automáticos
+                return self.get_participantes_etapa3()
         return []
     
     def get_preguntas_aleatorias(self):
-        """Obtiene preguntas aleatorias según la configuración"""
-        total_preguntas = self.preguntas.count()
-        if total_preguntas == 0:
-            return []
-        
-        # Si hay menos preguntas que las configuradas, mostrar todas
-        if total_preguntas <= self.preguntas_a_mostrar:
-            return list(self.preguntas.prefetch_related('opciones').all())
-        
-        # Obtener preguntas aleatorias
-        return list(self.preguntas.prefetch_related('opciones').order_by('?')[:self.preguntas_a_mostrar])
+        """Obtiene preguntas aleatorias segmentadas por Unidades Temáticas"""
+        return self.get_preguntas_para_estudiante(participante_id=0, numero_intento=1)
     
     def get_preguntas_para_estudiante(self, participante_id, numero_intento=1):
-        """Obtiene preguntas específicas para un estudiante para un intento específico"""
-        import hashlib
+        """Obtiene preguntas segmentadas por Unidades Temáticas con fallback de seguridad para un estudiante e intento específico"""
+        import hashlib, random
         
         total_preguntas = self.preguntas.count()
         if total_preguntas == 0:
             return []
-        
-        # Si hay menos preguntas que las configuradas, mostrar todas
-        if total_preguntas <= self.preguntas_a_mostrar:
-            return list(self.preguntas.prefetch_related('opciones').all())
-        
-        # Usar hash del participante + número de intento para selección aleatoria por intento
+            
+        cuotas = list(self.cuotas_unidades.select_related('unidad').all())
+        total_requerido = sum(c.cantidad_preguntas for c in cuotas)
+        if total_requerido <= 0:
+            total_requerido = self.preguntas_a_mostrar or 10
+            
+        if total_preguntas <= total_requerido:
+            return list(self.preguntas.prefetch_related('opciones', 'categoria').order_by('id'))
+            
         hash_base = f"{self.id}_{participante_id}_{numero_intento}"
         hash_participante = hashlib.md5(hash_base.encode()).hexdigest()
         seed = int(hash_participante[:8], 16)
-        
-        # Obtener todas las preguntas ordenadas por ID
-        todas_preguntas = list(self.preguntas.prefetch_related('opciones').order_by('id'))
-        
-        # Seleccionar preguntas usando el seed
-        import random
         random.seed(seed)
-        preguntas_seleccionadas = random.sample(todas_preguntas, min(self.preguntas_a_mostrar, len(todas_preguntas)))
         
-        return preguntas_seleccionadas
+        seleccionadas = []
+        ids_seleccionados = set()
+        
+        # 1. Muestreo determinístico por cada cuota de Unidad Temática configurada
+        for cuota in cuotas:
+            if cuota.cantidad_preguntas <= 0:
+                continue
+            pool = list(
+                self.preguntas.filter(categoria__unidad=cuota.unidad)
+                .exclude(id__in=ids_seleccionados)
+                .prefetch_related('opciones', 'categoria')
+                .order_by('id')
+            )
+            n = min(cuota.cantidad_preguntas, len(pool))
+            if n > 0:
+                elegidas = random.sample(pool, n)
+                seleccionadas.extend(elegidas)
+                ids_seleccionados.update(p.id for p in elegidas)
+                
+        # 2. Fallback de Seguridad: Si alguna unidad no tenía suficiente stock, completar con preguntas restantes
+        if len(seleccionadas) < total_requerido:
+            faltantes = total_requerido - len(seleccionadas)
+            pool_restante = list(
+                self.preguntas.exclude(id__in=ids_seleccionados)
+                .prefetch_related('opciones', 'categoria')
+                .order_by('id')
+            )
+            if pool_restante:
+                n_extra = min(faltantes, len(pool_restante))
+                extra = random.sample(pool_restante, n_extra)
+                seleccionadas.extend(extra)
+                
+        random.shuffle(seleccionadas)
+        return seleccionadas
     
     def clean(self):
         """Validación personalizada del modelo"""
@@ -792,32 +766,96 @@ class Evaluacion(models.Model):
         if self.duration_minutes <= 0:
             raise ValidationError('La duración debe ser mayor a 0 minutos.')
         
-        if self.duration_minutes > 480:  # 8 horas máximo
+        if self.duration_minutes > 480:
             raise ValidationError('La duración no puede exceder 8 horas.')
     
     class Meta:
         verbose_name = 'Evaluación'
         verbose_name_plural = 'Evaluaciones'
 
-# Modelo para categorías de preguntas
-class Categoria(models.Model):
-    nombre = models.CharField(max_length=100, unique=True, help_text='Nombre de la categoría (ej: Álgebra, Geometría Analítica)')
-    descripcion = models.TextField(blank=True, help_text='Descripción opcional de la categoría')
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-    activa = models.BooleanField(default=True, help_text='Si la categoría está activa para su uso')
+
+# Modelo para Unidades Temáticas
+class UnidadTematica(models.Model):
+    carrera = models.ForeignKey(
+        'Carrera',
+        related_name='unidades_tematicas',
+        on_delete=models.CASCADE,
+        null=False,
+        blank=False,
+        help_text='Carrera a la que pertenece esta unidad temática'
+    )
+    numero = models.PositiveSmallIntegerField(help_text='Número de la unidad (ej: 1, 2, 3...)')
+    nombre = models.CharField(max_length=150, help_text='Nombre de la unidad temática')
+    descripcion = models.TextField(blank=True, help_text='Descripción opcional de la unidad')
 
     class Meta:
-        verbose_name = 'Categoría'
-        verbose_name_plural = 'Categorías'
-        ordering = ['nombre']
+        verbose_name = 'Unidad Temática'
+        verbose_name_plural = 'Unidades Temáticas'
+        ordering = ['carrera', 'numero']
+        unique_together = ('carrera', 'numero')
 
     def __str__(self):
+        carrera_name = f" [{self.carrera.siglas|default:self.carrera.nombre}]" if self.carrera else ""
+        return f"Unidad {self.numero}: {self.nombre}{carrera_name}"
+
+
+# Modelo intermedio para asignar cuotas dinámicas de Unidades Temáticas a cada Evaluación
+class EvaluacionCuotaUnidad(models.Model):
+    evaluacion = models.ForeignKey(
+        Evaluacion,
+        related_name='cuotas_unidades',
+        on_delete=models.CASCADE
+    )
+    unidad = models.ForeignKey(
+        UnidadTematica,
+        related_name='cuotas_evaluaciones',
+        on_delete=models.CASCADE
+    )
+    cantidad_preguntas = models.PositiveIntegerField(
+        default=2,
+        help_text='Cantidad de preguntas a seleccionar de esta unidad temática'
+    )
+
+    class Meta:
+        verbose_name = 'Cuota de Unidad Temática'
+        verbose_name_plural = 'Cuotas de Unidades Temáticas'
+        unique_together = ('evaluacion', 'unidad')
+
+    def __str__(self):
+        return f"{self.evaluacion.title} - Unidad {self.unidad.numero}: {self.cantidad_preguntas} preguntas"
+
+
+# Modelo para Temas (anteriormente Categorías)
+class Tema(models.Model):
+    unidad = models.ForeignKey(
+        UnidadTematica,
+        related_name='temas',
+        on_delete=models.CASCADE,
+        help_text='Unidad temática a la que pertenece el tema'
+    )
+    nombre = models.CharField(max_length=150, help_text='Nombre del tema (ej: Vectores, Leyes de Newton)')
+    descripcion = models.TextField(blank=True, help_text='Descripción opcional del tema')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    activa = models.BooleanField(default=True, help_text='Si el tema está activo para su uso')
+
+    class Meta:
+        verbose_name = 'Tema'
+        verbose_name_plural = 'Temas'
+        ordering = ['unidad', 'nombre']
+        unique_together = ('unidad', 'nombre')
+
+    def __str__(self):
+        if self.unidad:
+            return f"U{self.unidad.numero} - {self.nombre}"
         return self.nombre
+
+# Alias de compatibilidad hacia atrás
+Categoria = Tema
 
 # Modelo para las preguntas
 class Pregunta(models.Model):
     evaluacion = models.ForeignKey(Evaluacion, related_name='preguntas', on_delete=models.CASCADE)
-    categoria = models.ForeignKey(Categoria, related_name='preguntas', on_delete=models.SET_NULL, null=True, blank=True, help_text='Categoría temática de la pregunta')
+    categoria = models.ForeignKey(Categoria, related_name='preguntas', on_delete=models.CASCADE, help_text='Categoría temática de la pregunta')
     text = models.TextField(help_text='Use LaTeX para fórmulas')
     puntos = models.PositiveIntegerField(default=1, help_text='Puntos que vale esta pregunta')
 
@@ -837,8 +875,7 @@ class Opcion(models.Model):
 class ResultadoEvaluacion(models.Model):
     evaluacion = models.ForeignKey(Evaluacion, on_delete=models.CASCADE, related_name='resultados')
     participante = models.ForeignKey(Participantes, on_delete=models.CASCADE, related_name='resultados')
-    puntaje = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    tiempo_utilizado = models.PositiveIntegerField(help_text='Tiempo utilizado en minutos', default=0)
+    tiempo_utilizado = models.PositiveIntegerField(help_text='Tiempo utilizado en segundos', default=0)
     fecha_inicio = models.DateTimeField(auto_now_add=True)
     fecha_fin = models.DateTimeField(null=True, blank=True)
     completada = models.BooleanField(default=False)
@@ -848,45 +885,51 @@ class ResultadoEvaluacion(models.Model):
     tiempo_restante = models.PositiveIntegerField(help_text='Tiempo restante en segundos', default=0)
     ultima_actividad = models.DateTimeField(auto_now=True, help_text='Última actividad del estudiante')
     
-    # Nuevos campos para puntaje numérico
+    # Campos para puntaje numérico
     puntos_obtenidos = models.DecimalField(max_digits=5, decimal_places=3, default=0, help_text='Puntos obtenidos por el estudiante (ponderado sobre 10)')
     puntos_totales = models.PositiveIntegerField(default=10, help_text='Puntos totales de la evaluación (siempre 10)')
     
     # Campo para múltiples intentos
     numero_intento = models.PositiveIntegerField(default=1, help_text='Número del intento del participante')
     
-    # Campo para control de cambios de pestaña
+    # Campo para control de cambios de pestaña y alertas anti-fraude
     cambios_pestana = models.PositiveIntegerField(default=0, help_text='Número de cambios de pestaña durante la evaluación')
+    alertas_detectadas = models.JSONField(default=list, blank=True, help_text='Lista de alertas detectadas durante la prueba')
+    
+    # Control administrativo
+    finalizado_por_admin = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='evaluaciones_finalizadas_admin',
+        help_text='Administrador que finalizó la evaluación'
+    )
+    motivo_finalizacion = models.TextField(blank=True, help_text='Motivo de la finalización administrativa')
+    fecha_finalizacion_admin = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         unique_together = ['evaluacion', 'participante', 'numero_intento']
-        ordering = ['-puntaje', 'tiempo_utilizado']
+        ordering = ['-puntos_obtenidos', 'tiempo_utilizado']
     
     def get_tiempo_formateado(self):
         """Retorna el tiempo utilizado en formato legible"""
-        if self.fecha_inicio and self.fecha_fin:
-            # Calcular tiempo real utilizado
-            tiempo_total = (self.fecha_fin - self.fecha_inicio).total_seconds()
-            minutos = int(tiempo_total // 60)
-            segundos = int(tiempo_total % 60)
+        total_sec = self.tiempo_utilizado
+        if not total_sec and self.fecha_inicio and self.fecha_fin:
+            total_sec = int((self.fecha_fin - self.fecha_inicio).total_seconds())
             
-            if minutos > 0:
-                return f"{minutos}m {segundos}s"
-            else:
-                return f"{segundos}s"
-        elif self.tiempo_utilizado:
-            # Fallback al tiempo guardado
-            horas = self.tiempo_utilizado // 60
-            minutos = self.tiempo_utilizado % 60
-            
-            if horas > 0:
-                return f"{horas}h {minutos}m"
-            else:
-                return f"{minutos}m"
-        return "0m"
+        total_sec = max(0, int(total_sec or 0))
+        minutos, segundos = divmod(total_sec, 60)
+        horas, minutos = divmod(minutos, 60)
+        
+        if horas > 0:
+            return f"{horas}h {minutos}m {segundos}s"
+        elif minutos > 0:
+            return f"{minutos}m {segundos}s"
+        return f"{segundos}s"
     
     def __str__(self):
-        return f"{self.participante.NombresCompletos} - {self.evaluacion.title} ({self.puntaje}%)"
+        return f"{self.participante.NombresCompletos} - {self.evaluacion.title} ({self.puntos_obtenidos:.3f}/{self.puntos_totales})"
     
     def get_posicion_ranking(self):
         """Obtiene la posición en el ranking de la evaluación"""
@@ -918,172 +961,60 @@ class ResultadoEvaluacion(models.Model):
         ).order_by('-numero_intento').first()
         
         return (ultimo_resultado.numero_intento + 1) if ultimo_resultado else 1
-       
-    def get_puntaje_porcentaje(self):
-        """Retorna el puntaje como porcentaje"""
-        if self.puntos_totales > 0:
-            return (self.puntos_obtenidos / self.puntos_totales) * 100
-        return 0
 
-# Modelo para el monitoreo en tiempo real de evaluaciones
-class MonitoreoEvaluacion(models.Model):
-    ESTADO_CHOICES = [
-        ('pendiente', 'Pendiente'),
-        ('activo', 'Activo'),
-        ('inactivo', 'Inactivo'),
-        ('finalizado', 'Finalizado'),
-        ('suspendido', 'Suspendido'),
-    ]
-    
-    evaluacion = models.ForeignKey(Evaluacion, on_delete=models.CASCADE, related_name='monitoreos')
-    participante = models.ForeignKey(Participantes, on_delete=models.CASCADE, related_name='monitoreos')
-    resultado = models.OneToOneField(ResultadoEvaluacion, on_delete=models.CASCADE, related_name='monitoreo', null=True, blank=True)
-    
-    # Estado del monitoreo
-    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
-    
-    # Información de actividad
-    ultima_actividad = models.DateTimeField(auto_now=True)
-    tiempo_activo = models.PositiveIntegerField(default=0, help_text='Tiempo activo en segundos')
-    tiempo_inactivo = models.PositiveIntegerField(default=0, help_text='Tiempo inactivo en segundos')
-    
-    # Información de navegación
-    pagina_actual = models.PositiveIntegerField(default=1, help_text='Página actual del estudiante')
-    preguntas_respondidas = models.PositiveIntegerField(default=0, help_text='Número de preguntas respondidas')
-    preguntas_revisadas = models.PositiveIntegerField(default=0, help_text='Número de preguntas revisadas')
-    
-    # Alertas y irregularidades
-    alertas_detectadas = models.JSONField(default=list, blank=True, help_text='Lista de alertas detectadas')
-    irregularidades = models.TextField(blank=True, help_text='Descripción de irregularidades detectadas')
-    
-    # Control de cambios de pestaña
-    cambios_pestana = models.PositiveIntegerField(default=0, help_text='Número de cambios de pestaña detectados')
-    alertas = models.JSONField(default=list, blank=True, help_text='Lista de alertas específicas incluyendo cambios de pestaña')
-    
-    # Control administrativo
-    finalizado_por_admin = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='evaluaciones_finalizadas',
-        help_text='Administrador que finalizó la evaluación'
-    )
-    motivo_finalizacion = models.TextField(blank=True, help_text='Motivo de la finalización administrativa')
-    fecha_finalizacion_admin = models.DateTimeField(null=True, blank=True)
-    
-    # Timestamps
-    fecha_inicio_monitoreo = models.DateTimeField(auto_now_add=True)
-    fecha_ultima_actualizacion = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        unique_together = ['evaluacion', 'participante']
-        ordering = ['-fecha_ultima_actualizacion']
-        verbose_name = 'Monitoreo de Evaluación'
-        verbose_name_plural = 'Monitoreos de Evaluaciones'
-    
-    def __str__(self):
-        return f"Monitoreo: {self.participante.NombresCompletos} - {self.evaluacion.title}"
-    
-    def get_tiempo_total_activo(self):
-        """Retorna el tiempo total activo en formato legible"""
-        horas = self.tiempo_activo // 3600
-        minutos = (self.tiempo_activo % 3600) // 60
-        segundos = self.tiempo_activo % 60
-        
-        if horas > 0:
-            return f"{horas}h {minutos}m {segundos}s"
-        elif minutos > 0:
-            return f"{minutos}m {segundos}s"
-        else:
-            return f"{segundos}s"
-    
-    def get_tiempo_total_inactivo(self):
-        """Retorna el tiempo total inactivo en formato legible"""
-        horas = self.tiempo_inactivo // 3600
-        minutos = (self.tiempo_inactivo % 3600) // 60
-        segundos = self.tiempo_inactivo % 60
-        
-        if horas > 0:
-            return f"{horas}h {minutos}m {segundos}s"
-        elif minutos > 0:
-            return f"{minutos}m {segundos}s"
-        else:
-            return f"{segundos}s"
-    
-    def get_porcentaje_avance(self):
-        """Retorna el porcentaje de avance basado en preguntas respondidas"""
-        if self.preguntas_revisadas > 0:
-            return (self.preguntas_respondidas / self.preguntas_revisadas) * 100
-        return 0
-    
+    def get_snapshot_respuestas(self):
+        """Retorna la lista de preguntas congeladas si el examen está completado y tiene snapshot"""
+        if self.completada and isinstance(self.respuestas_guardadas, dict):
+            return self.respuestas_guardadas.get('preguntas_snapshot')
+        return None
+
     def agregar_alerta(self, tipo_alerta, descripcion, severidad='baja'):
-        """Agrega una nueva alerta al monitoreo"""
+        """Agrega una nueva alerta de auditoría al resultado del examen"""
         alerta = {
             'tipo': tipo_alerta,
             'descripcion': descripcion,
             'severidad': severidad,
             'timestamp': timezone.now().isoformat()
         }
+        if self.alertas_detectadas is None:
+            self.alertas_detectadas = []
         self.alertas_detectadas.append(alerta)
-        self.save()
-    
+        # Una acción administrativa no representa actividad del estudiante.
+        self.save(update_fields=['alertas_detectadas'])
+
     def finalizar_por_admin(self, admin_user, motivo):
         """Finaliza la evaluación por decisión administrativa"""
         with transaction.atomic():
-            self.estado = 'finalizado'
+            self.puntos_obtenidos = 0
+            self.puntos_totales = 10
+            self.completada = True
+            self.fecha_fin = timezone.now()
+            self.tiempo_restante = 0
             self.finalizado_por_admin = admin_user
             self.motivo_finalizacion = motivo
             self.fecha_finalizacion_admin = timezone.now()
-
-            # Obtener o crear el resultado de evaluación
-            if not self.resultado:
-                # Obtener el siguiente número de intento
-                siguiente_intento = ResultadoEvaluacion.get_siguiente_numero_intento(
-                    self.evaluacion, 
-                    self.participante
-                )
-                
-                self.resultado, created = ResultadoEvaluacion.objects.get_or_create(
-                    evaluacion=self.evaluacion,
-                    participante=self.participante,
-                    numero_intento=siguiente_intento,
-                    defaults={
-                        'puntaje': 0,
-                        'puntos_obtenidos': 0,
-                        'puntos_totales': 10,
-                        'tiempo_utilizado': 0,
-                        'completada': True,
-                        'fecha_fin': timezone.now(),
-                        'tiempo_restante': 0
-                    }
-                )
-            else:
-                # Si ya existe un resultado, asignar nota de 0 por finalización administrativa
-                self.resultado.puntaje = 0
-                self.resultado.puntos_obtenidos = 0
-                self.resultado.puntos_totales = 10
-                self.resultado.completada = True
-                self.resultado.fecha_fin = timezone.now()
-                self.resultado.tiempo_restante = 0
-                self.resultado.save()
-
+            self.agregar_alerta(
+                'finalizado_por_admin',
+                f'Evaluación finalizada administrativamente por {admin_user.username}. Motivo: {motivo}',
+                severidad='alta'
+            )
             self.save()
-    
+
     def esta_activo(self):
-        """Verifica si el estudiante está activo (última actividad en la última hora)"""
-        tiempo_limite = timezone.now() - timezone.timedelta(hours=1)
-        return self.ultima_actividad > tiempo_limite
-    
+        """Verifica si el estudiante ha registrado actividad reciente (últimos 5 minutos)"""
+        if self.completada:
+            return False
+        if not self.ultima_actividad:
+            return False
+        return (timezone.now() - self.ultima_actividad).total_seconds() < 300
+
     def get_estado_display_color(self):
-        """Retorna el color CSS para el estado"""
-        if self.estado == 'activo':
-            return 'success' if self.esta_activo() else 'warning'
-        elif self.estado == 'finalizado':
+        """Retorna la clase de color CSS para el estado"""
+        if self.completada:
             return 'secondary'
-        elif self.estado == 'suspendido':
-            return 'danger'
-        return 'info'
+        elif self.esta_activo():
+            return 'success'
+        return 'warning'
 
 class SolicitudClaveTemporal(models.Model):
     """
@@ -1138,4 +1069,40 @@ class SolicitudClaveTemporal(models.Model):
         (máximo 3 solicitudes por semana)
         """
         return cls.contar_solicitudes_semana(username, tipo_usuario) < 3
+
+
+# Modelo de Auditoría para registro de acciones administrativas e imborrables
+class AuditLog(models.Model):
+    usuario_ejecutor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones_auditoria')
+    accion = models.CharField(max_length=100, help_text='Tipo de acción realizada (ej. ELIMINACION_ADMINISTRADOR)')
+    detalles = models.TextField(help_text='Detalles completos de la acción y la entidad afectada')
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='Dirección IP del cliente')
+    fecha_hora = models.DateTimeField(auto_now_add=True, help_text='Fecha y hora del registro')
+
+    class Meta:
+        ordering = ['-fecha_hora']
+        verbose_name = 'Log de Auditoría'
+        verbose_name_plural = 'Logs de Auditoría'
+
+    def __str__(self):
+        ejecutor = self.usuario_ejecutor.username if self.usuario_ejecutor else 'Sistema'
+        return f"[{self.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')}] {ejecutor} - {self.accion}"
+
+    @classmethod
+    def registrar_accion(cls, usuario_ejecutor, accion, detalles, request=None):
+        """Registra de forma segura una acción en la bitácora de auditoría."""
+        ip = None
+        if request:
+            ip = request.META.get('HTTP_X_FORWARDED_FOR')
+            if ip:
+                ip = ip.split(',')[0].strip()
+            else:
+                ip = request.META.get('REMOTE_ADDR')
+        return cls.objects.create(
+            usuario_ejecutor=usuario_ejecutor,
+            accion=accion,
+            detalles=detalles,
+            ip_address=ip
+        )
+
 

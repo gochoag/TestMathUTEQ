@@ -93,14 +93,6 @@
     top: auto !important;
 }
 
-/* CSS para que SweetAlert2 aparezca por encima del modal */
-.swal2-container {
-    z-index: 9999 !important;
-}
-.swal2-popup {
-    z-index: 10000 !important;
-}
-
 /* Estilos modernos para las preguntas */
 .preguntas-container {
     padding: 0;
@@ -394,7 +386,6 @@
 
 .actions-section .btn {
     white-space: nowrap; /* Evita que el texto de los botones se rompa */
-    min-width: fit-content;
 }
 
 /* Responsive para el header */

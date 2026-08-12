@@ -55,9 +55,9 @@
                         <div class="col-md-4 text-center">
                             <div class="result-summary-badge d-inline-block" 
                                  style="min-width: 200px; height: 80px; 
-                                        background: {% if resultado.puntaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                        background: {% if resultado.puntos_obtenidos >= 8.0 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntos_obtenidos >= 6.0 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
                                         border-radius: 15px; 
-                                        border: 3px solid {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                        border: 3px solid {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#ffc107{% else %}#dc3545{% endif %}; 
                                         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
                                         display: flex;
                                         align-items: center;
@@ -66,7 +66,7 @@
                                 <div class="result-content">
                                     <span class="result-score fw-bold" 
                                           style="font-size: 1.8rem; 
-                                                 color: {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                                 color: {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#e0a800{% else %}#dc3545{% endif %}; 
                                                  font-family: 'Segoe UI', system-ui, sans-serif;
                                                  letter-spacing: -0.5px;">
                                         {{ resultado.get_puntaje_numerico }}
@@ -83,12 +83,12 @@
                                 </div>
                             </div>
                             
-                            {% if resultado.puntaje >= 80 %}
+                            {% if resultado.puntos_obtenidos >= 8.0 %}
                                 <div class="alert alert-success mt-3 py-2">
                                     <i class="bi bi-emoji-smile me-1"></i>
                                     <strong>¡Excelente trabajo!</strong>
                                 </div>
-                            {% elif resultado.puntaje >= 60 %}
+                            {% elif resultado.puntos_obtenidos >= 6.0 %}
                                 <div class="alert alert-warning mt-3 py-2">
                                     <i class="bi bi-emoji-neutral me-1"></i>
                                     <strong>Buen desempeño</strong>

@@ -46,9 +46,9 @@
                                     <div class="mb-3">
                                         <div class="score-badge d-inline-block text-center" 
                                              style="min-width: 160px; height: 60px; 
-                                                    background: {% if resultado.puntaje >= 80 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntaje >= 60 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
+                                                    background: {% if resultado.puntos_obtenidos >= 8.0 %}linear-gradient(145deg, #ffffff, #f8f9fa){% elif resultado.puntos_obtenidos >= 6.0 %}linear-gradient(145deg, #fff8e1, #fffbf0){% else %}linear-gradient(145deg, #ffebee, #fce4ec){% endif %}; 
                                                     border-radius: 12px; 
-                                                    border: 2px solid {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#ffc107{% else %}#dc3545{% endif %}; 
+                                                    border: 2px solid {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#ffc107{% else %}#dc3545{% endif %}; 
                                                     box-shadow: 0 3px 12px rgba(0,0,0,0.08);
                                                     display: flex;
                                                     align-items: center;
@@ -57,7 +57,7 @@
                                             <div class="score-content">
                                                 <span class="score-number fw-bold" 
                                                       style="font-size: 1.3rem; 
-                                                             color: {% if resultado.puntaje >= 80 %}#28a745{% elif resultado.puntaje >= 60 %}#e0a800{% else %}#dc3545{% endif %}; 
+                                                             color: {% if resultado.puntos_obtenidos >= 8.0 %}#28a745{% elif resultado.puntos_obtenidos >= 6.0 %}#e0a800{% else %}#dc3545{% endif %}; 
                                                              font-family: 'Segoe UI', system-ui, sans-serif;
                                                              letter-spacing: -0.5px;">
                                                     {{ resultado.get_puntaje_numerico }}
@@ -93,12 +93,12 @@
                                         </small>
                                     </div>
                                     
-                                    {% if resultado.puntaje >= 80 %}
+                                    {% if resultado.puntos_obtenidos >= 8.0 %}
                                         <div class="alert alert-success py-2">
                                             <i class="bi bi-emoji-smile me-1"></i>
                                             <small><strong>¡Excelente!</strong></small>
                                         </div>
-                                    {% elif resultado.puntaje >= 60 %}
+                                    {% elif resultado.puntos_obtenidos >= 6.0 %}
                                         <div class="alert alert-warning py-2">
                                             <i class="bi bi-emoji-neutral me-1"></i>
                                             <small><strong>Buen trabajo</strong></small>
@@ -111,11 +111,13 @@
                                     {% endif %}
                                     
                                     <div class="mt-3">
+                                        {% if resultado.evaluacion.is_finished %}
                                         <a href="{% url 'quizzes:revisar_intento_evaluacion' resultado.pk %}" 
                                            class="btn btn-info btn-sm w-100 mb-2">
                                             <i class="bi bi-search me-1"></i>
                                             Revisar Intento
                                         </a>
+                                        {% endif %}
                                         <a href="{% url 'quizzes:exportar_resultado_pdf' resultado.evaluacion.pk %}" 
                                            class="btn btn-outline-primary btn-sm w-100">
                                             <i class="bi bi-file-pdf me-1"></i>

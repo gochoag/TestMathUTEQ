@@ -1,3 +1,4 @@
+import threading
 from django.contrib.auth import logout
 from django.utils import timezone
 from django.conf import settings
@@ -5,7 +6,48 @@ from django.shortcuts import redirect
 from django.contrib import messages
 from django.http import JsonResponse
 
+_thread_locals = threading.local()
+
+def get_current_request():
+    """Retorna el objeto request HTTP de la petición activa en el hilo actual."""
+    return getattr(_thread_locals, 'request', None)
+
+def get_current_user():
+    """Retorna el usuario de la petición activa en el hilo actual."""
+    request = get_current_request()
+    if request and hasattr(request, 'user') and request.user.is_authenticated:
+        return request.user
+    return None
+
+def get_current_ip():
+    """Retorna la dirección IP de la petición activa en el hilo actual."""
+    request = get_current_request()
+    if request:
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
+    return None
+
+class AuditMiddleware:
+    """
+    Middleware que captura la petición HTTP actual en thread-local memory
+    para permitir que las Signals de auditoría asocien usuario e IP automáticamente.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        _thread_locals.request = request
+        response = self.get_response(request)
+        if hasattr(_thread_locals, 'request'):
+            del _thread_locals.request
+        return response
+
 class SessionTimeoutMiddleware:
+    """
+    Middleware que controla la expiración de sesión por inactividad.
+    """
     def __init__(self, get_response):
         self.get_response = get_response
 

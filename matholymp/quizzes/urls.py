@@ -17,6 +17,7 @@ urlpatterns = [
     path('quiz/<int:pk>/progreso/', views.obtener_progreso_evaluacion, name='obtener_progreso_evaluacion'),
     path('quiz/<int:pk>/verificar-estado/', views.verificar_estado_evaluacion, name='verificar_estado_evaluacion'),
     path('quiz/<int:pk>/cambio-pestana/', views.registrar_cambio_pestana, name='registrar_cambio_pestana'),
+    path('quiz/<int:pk>/auditoria/', views.registrar_evento_auditoria, name='registrar_evento_auditoria'),
     path('evaluaciones/', views.quiz_view, name='quiz'),  # Nueva URL para evaluaciones
     path('evaluaciones/crear/', views.create_evaluacion, name='create_evaluacion'),
     path('mis-resultados/', views.student_results, name='student_results'),
@@ -40,6 +41,7 @@ urlpatterns = [
     path('evaluacion/<int:pk>/ranking/', views.ranking_evaluacion, name='ranking_evaluacion'),
     path('evaluacion/<int:pk>/ranking/pdf/', views.exportar_ranking_pdf, name='exportar_ranking_pdf'),
     path('evaluacion/<int:pk>/participantes/', views.gestionar_participantes_evaluacion, name='gestionar_participantes_evaluacion'),
+    path('evaluacion/<int:eval_id>/cuotas/', views.update_evaluacion_cuotas, name='update_evaluacion_cuotas'),
     
     path('gestionar-participantes/', views.manage_participants, name='manage_participants'),
     path('gestionar-admins/', views.manage_admins, name='manage_admins'),
@@ -48,6 +50,7 @@ urlpatterns = [
     path('gestionar-grupos/', views.manage_grupos, name='manage_grupos'),
     path('gestionar-grupos/<int:grupo_id>/enviar-correo/', views.send_participants_email, name='send_participants_email'),
     path('enviar-credenciales/<str:user_type>/<int:user_id>/', views.send_credentials_email, name='send_credentials_email'),
+    path('obtener-headers-excel/', views.get_excel_headers, name='get_excel_headers'),
     path('procesar-excel-participantes/', views.process_excel_participants, name='process_excel_participants'),
     path('guardar-excel-participantes/', views.save_excel_participants, name='save_excel_participants'),
     path('upload-image/', views.upload_image, name='upload_image'),
@@ -70,8 +73,16 @@ urlpatterns = [
     path('categoria/<int:categoria_id>/editar/', views.editar_categoria, name='editar_categoria'),
     path('categoria/<int:categoria_id>/toggle/', views.toggle_categoria, name='toggle_categoria'),
     
-    # URL para solicitud de clave temporal
+    # URLs para solicitud de clave temporal
     path('solicitar-clave-temporal/', views.solicitar_clave_temporal, name='solicitar_clave_temporal'),
+    
+    # URLs para gestión organizacional y curricular (DEBE IR ANTES DEL CATCH-ALL)
+    path('gestionar-facultades/', views.gestionar_facultades, name='gestionar_facultades'),
+    path('gestionar-carreras/', views.gestionar_carreras, name='gestionar_carreras'),
+    path('gestionar-concursos/', views.gestionar_concursos, name='gestionar_concursos'),
+    path('concurso/<int:concurso_id>/editar/', views.editar_concurso, name='editar_concurso'),
+    path('cambiar-contexto/', views.cambiar_contexto_activo, name='cambiar_contexto_activo'),
+    path('gestionar-unidades-temas/', views.gestionar_unidades_temas, name='gestionar_unidades_temas'),
     
     # Catch-all para URLs no encontradas (debe ir al final)
     # Excluye rutas que empiecen con 'media/' o 'static/' para evitar conflictos
