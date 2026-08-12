@@ -17,8 +17,9 @@ pipeline {
 
         stage('Desplegar') {
             steps {
-                sh 'docker compose down --remove-orphans || true'
-                sh 'docker compose up -d --build'
+                sh 'docker compose -p testmath-uteq down --remove-orphans || true'
+                sh 'docker rm -f webtestmathuteq nginx_ssl_django_webtestmathuteq || true'
+                sh 'docker compose -p testmath-uteq up -d --build'
             }
         }
     }
